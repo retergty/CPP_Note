@@ -104,3 +104,118 @@ const char **q = (const char **) p;
 ### `-Winit-self`
 
 包含在`-Wall`中，警告所有未初始化的变量初始化为其本身，必须与`-Wuninitialized`同用。
+
+### `-Wlogical-op`
+
+警告有关逻辑运算符可疑的使用与使用同一种逻辑运算符。
+
+```CPP
+extern int a;
+if (a < 0 && a < 0) { … }
+```
+
+### `-Wmissing-declarations`
+
+警告在使用全局函数前未声明该函数的情况。但是不会对函数模板，内联函数，或者是匿名名称空间的函数产生警告。
+
+### `-Wmissing-include-dirs`
+
+警告如果用户提供给编译器的`include`目录不存在。
+
+### `-Wno-sign-compare`
+
+关闭有关于`sign`与`unsign`数值比较的警告。
+
+### `-Wunused`
+
+包含在`-Wall`,警告有未使用资源的情况。
+
+### `-Wnoexcept`
+
+警告当`noexcept`表达式返回`false`但是编译器却认为这个函数调用不会产生异常。
+
+### `-Wold-style-cast`
+
+警告当`C++`程序使用了`C`风格的`cast`,比如`(int) a`.通常使用`C++`风格的类型转换,`dynamic_cast, static_cast, reinterpret_cast, and const_cast`.
+
+### `-Woverloaded-virtual`,`-Woverloaded-virtual=n`
+
+警告派生类的函数声明隐藏了基类的`virtual`函数声明而不是覆盖的情况。
+
+```CPP
+struct A {
+  virtual void f();
+};
+
+struct B: public A {
+  void f(int); // does not override
+};
+```
+
+默认情况下`n=2`，当`n=2`时,要求派生类必须全部重写基类的`virtual`方法。`n=1`包含在`-Wall`中了。
+
+```CPP
+struct C {
+  virtual void f();
+  virtual void f(int);
+};
+
+struct D: public C {
+  void f(int); // does override
+}
+```
+
+### `-Wpointer-arith`
+
+包含在`-Wpedantic`中，警告当代码中有依赖于`sizeof`函数类型或`void`.在`C++`里，也会警告在算术中使用`NULL`的情况。
+
+### `-Wredundant-decls`
+
+警告当一个对象在一个作用域中声明了多于一次的情况，哪怕多重声明是合法的且不改变任何东西。
+
+### `-Wreorder`
+
+包含在`-Wall`中，警告当在构造函数格式里成员变量初始化顺序与定义顺序不同的情况.
+
+```CPP
+struct A {
+  int i;
+  int j;
+  A(): j (0), i (1) { }
+};
+```
+
+此时。编译器会重新排序构造函数里成员变量的初始化以符合成员变量定义顺序，同时产生警告。
+
+### `-Wshadow`
+
+警告当本地变量或者类型声明隐藏了别的对象的情况。
+
+### `-Wsign-conversion`
+
+警告一个隐式转换可能会改变整型的符号，比如当使用有符号整型给无符号整型赋值时。显式的类型转换不会产生这个警告。
+
+### `-Wsign-promo`
+
+警告当重载决议选择了一个函数，这个函数需要把无符号提升为有符号。
+
+### `Wstrict-null-sentinel`
+
+警告当使用未类型转换的`NULL`作为哨兵的情况。
+
+### `-Wswitch-default`
+
+警告当`switch`语句不包含`default`的情况。
+
+### `-Wundef`
+
+警告当一个未定义的标识符出现在`#if`预处理语句中的情况，这个标识符会被替换为0.
+
+### `-Wuninitialized`
+
+包含在`-Wall`中，警告当一个变量初始化时。
+
+### `-Wunused-variable`
+
+包含在`-Wall`中，警告当一个变量未使用的情况。
+
