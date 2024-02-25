@@ -69,3 +69,41 @@ auto& p5 = pic;//int* const &
 auto& p6 = ii; //int&
 auto& p7 = cii;//const int&
 ```
+
+## decltype(auto)
+
+参考文档
+
+* [What are some uses of decltype(auto)](https://stackoverflow.com/questions/24109737/what-are-some-uses-of-decltypeauto)
+
+允许`auto`推导类型时使用`decltype`的规则。通常用在函数返回类型自动转发中，原因就是`auto`类型推导忽略的一些有用的限定符。
+
+```CPP
+auto const& Example(int const& i) 
+{ 
+    return i; 
+}
+```
+
+如果我们向为`Example`写下返回类型推导，单纯使用`auto`,只会使得返回类型被推导为`int`,这个类型显然不能作为`Example`函数的返回类型。所以我们必须使用`auto const&`.
+
+但是对于模板函数，我们不能提前知道模板实参类型。
+
+```CPP
+template<class Fun, class... Args>
+decltype(auto) Example(Fun fun, Args&&... args) 
+{ 
+    return fun(std::forward<Args>(args)...); 
+}
+```
+
+可以理解为，`decltype(auto)`推断类型时，把`auto`替换为了返回值，比如
+
+```CPP
+delctype(auto) Example(int const& i) 
+{
+  return i;
+}
+```
+
+先把`auto`替换为`i`,变为`decltype(i)`，之后类型推导为`const int&`.
