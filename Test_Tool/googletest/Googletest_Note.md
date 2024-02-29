@@ -62,7 +62,7 @@ for (int i = 0; i < x.size(); ++i) {
 
 注意！测试的名字**都不能有**下划线`_`.
 
-### TEST 宏
+### TEST
 
 ```CPP
 TEST(TestSuiteName, TestName) {
@@ -168,7 +168,7 @@ TEST_F(QueueTest, DequeueWorks) {
 }
 ```
 
-## TEST_P
+### TEST_P
 
 ```CPP
 TEST_P(TestFixtureName, TestName) {
@@ -179,8 +179,6 @@ TEST_P(TestFixtureName, TestName) {
 定义一个参数化测试，测试名为`TestName`使用测试固件`TestFixtureName`.此时，测试套件也是`TestFixtureName`。
 
 参数化测试(Value-parameterized tests)允许我们用不同的参数测试代码，而不必写多个测试。
-
-### 参数化测试写法
 
 为了写参数化测试，我们应该先定义一个测试固件，这个固件继承`testing::Test`和`testing::WithParamInterface<T>`(后者是一个纯接口)，`T`是参数的类型,可以是任何可复制的类型。也可以直接继承`testing::TestWithParam<T>`,`testing::TestWithParam<T>`继承`testing::Test`与`testing::WithParamInterface<T>`.
 
@@ -215,9 +213,48 @@ TEST_P(FooTest, DoesBlah) {
 TEST_P(FooTest, HasBlahBlah) {
   ...
 }
+
+INSTANTIATE_TEST_SUITE_P(MeenyMinyMoe,
+                         FooTest,
+                         testing::Values("meeny", "miny", "moe"));
 ```
 
+通过`GetParam()`函数取得当前输入的参数值。
+
 最后，我们使用`INSTANTIATE_TEST_SUITE_P`测试宏指定参数，实例化测试套件。
+
+上述的代码段，`GoogleTest`会运行如下
+
+* `MeenyMinyMoe/FooTest.DoesBlah/0` for `"meeny"`
+* `MeenyMinyMoe/FooTest.DoesBlah/1` for `"miny"`
+* `MeenyMinyMoe/FooTest.DoesBlah/2` for `"moe"`
+* `MeenyMinyMoe/FooTest.HasBlahBlah/0` for `"meeny"`
+* `MeenyMinyMoe/FooTest.HasBlahBlah/1` for `"miny"`
+* `MeenyMinyMoe/FooTest.HasBlahBlah/2` for `"moe"`
+
+### INSTANTIATE_TEST_SUITE_P
+
+```CPP
+INSTANTIATE_TEST_SUITE_P(InstantiationName,TestSuiteName,param_generator)
+INSTANTIATE_TEST_SUITE_P(InstantiationName,TestSuiteName,param_generator,name_generator)
+```
+
+实例化参数测试套件`TestSuiteName`.
+
+`InstantiationName`表示这个测试套件实例化的名字。这样，我们就可以使用不同的参数实例化同一个测试套件。在测试的输出，`InstantiationName`会加在`TestSuiteName`前面。
+
+`param_generator`是如下的`GoogleTest`提供的函数，用来生成测试参数。定义在`::testing`名称空间。
+
+| param_generator       | Behavior |
+| -------------------- | ----------- |
+| `Range(begin, end [, step])` | 展开为值 `{begin, begin+step, begin+step+step, ...}`.不包括`end`,`step`默认为1. |
+| Values(v1, v2, ..., vN) | 展开为值 `{v1, v2, ..., vN}` |
+| `ValuesIn(container)`或 `ValuesIn(begin,end)` | 从C风格的数组或者是`STL`风格的容器，或者是迭代器`[beg,end)`获取值 |
+| `Bool()` | 展开为值`{false, true}` |
+| `Combine(g1, g2, ..., gN)` | 展开为`std::tuple` |
+| `ConvertGenerator<T>(g)` | 将`param_generator`,`static_cast`为`T` |
+
+`name_generator`是函数或者是函数式对象，返回`std::string`给测试加上自定义后缀名。
 
 ## 运行测试
 
