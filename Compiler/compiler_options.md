@@ -6,6 +6,20 @@
 
 * [gcc option summary](https://gcc.gnu.org/onlinedocs/gcc/Option-Summary.html)
 
+## 代码生成选项
+
+参考文章
+
+* [Options for Code Generation Conventions](https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html)
+
+### `-fpic`
+
+如果目标机器支持，产生位置无关代码。这种类型的代码会把所有常量存储在`GOT`表里。如果`GOT`表过大，就会产生连接错误。
+
+### `-fPIC`
+
+如果目标机器支持，产生位置无关代码,且去除了最大允许的`GOT`表的限制。
+
 ## 在代码中插入额外指令的选项
 
 参考文章
@@ -218,4 +232,3 @@ struct A {
 ### `-Wunused-variable`
 
 包含在`-Wall`中，警告当一个变量未使用的情况。
-
