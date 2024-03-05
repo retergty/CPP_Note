@@ -20,11 +20,44 @@
 
 如果目标机器支持，产生位置无关代码,且去除了最大允许的`GOT`表的限制。
 
+## 链接时选项
+
+参考文章
+
+* [Options for Linking](https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html)
+
+### `-pie`
+
+如果目标主机支持，生成动态链接的位置独立可执行文件。通常还需要与编译时的选项`-fpie`或`-fPIE`一起使用。
+>>>>>>> refs/remotes/origin/master
+
 ## 在代码中插入额外指令的选项
 
 参考文章
 
 * [gcc Program Instrumentation Options](https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html)
+
+### `-fsanitize=address`
+
+使能一个检测内存错误的工具`AddressSanitizer`，能够检测越界，使用已经释放的内存等运行时的程序错误。
+
+* [AddressSanitizer](../Test_Tool/sanitizer/AddressSanitizer.md)
+
+### `-fsanitize=thread`
+
+使能一个检测线程数据竞争的工具`ThreadSanitizer`,能够检测不同线程间的数据竞争等运行时程序错误。
+
+* [ThreadSanitizer](../Test_Tool/sanitizer/ThreadSanitizer.md)
+
+### `-fsanitize=memory`
+
+使能一个检测未初始化的内存区域的工具`MemorySanitizer`,能够检测未初始化的内存区域的访问。
+
+* [MemorySanitizer](../Test_Tool/sanitizer/MemorySanitizer.md)
+
+### `-fsanitize=undefined`
+
+使能一个检测未定义行为的工具`UndefinedBehaviorSanitizer`,可以检测运行时的未定义行为，
 
 ### `--coverage`
 
