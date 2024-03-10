@@ -8,7 +8,7 @@
 
 ## 用法
 
-在编译时指定`-fsanitize=address`即可。
+在编译和连接时指定`-fsanitize=address`即可。
 
 ## 可以发现的问题
 
