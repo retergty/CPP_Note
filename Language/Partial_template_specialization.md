@@ -306,3 +306,34 @@ using bool_constant = integral_constant<bool, _Val>;
 ```
 
 标准库`bool_constant`实际上是`integral_constant`的别名，但是指定了一个模板参数`bool`,这样我们在使用`bool_constant`时，可以这样使用`bool_constant<true>`.
+
+## 注意点
+
+### 不能在类内声明它本身的偏特化
+
+实际上，这是混淆概念的表现，模板特化只能在主模板定义后定义，在主模板之中显然无法定义而且也没有语法支持。
+
+```CPP
+template<typename Type,size_t M,size_t N>
+class Matrix
+{
+    Matrix& operator=(Matrix & rhs);
+
+    template<>
+    Matrix<Type,1,N>& operator=(Matrix<Type,1,N> & rhs);
+}
+```
+
+上图好像我们想要为`Matrix<Type,1,N>`定义一个独有的`opeator=`,但实际上，这是不合理的。需要这么做
+
+```CPP
+template<typename Type,size_t M,size_t N>
+class Matrix
+{
+    Matrix& operator=(Matrix & rhs);
+}
+
+
+template<typename Type,size_t N>
+Matrix<Type,1,N>& Matrix<Type,1,N>::operator=(Matrix<Type,1,N> & rhs);
+```
