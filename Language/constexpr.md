@@ -315,3 +315,20 @@ int main()
 注意，不用担心要是`x2.setX(20.0)`怎么办，因为`constexpr`变量隐含`const`不可能调用这个函数。
 
 如果我们对非`constexpr`变量调用`setX()`,那么这个函数肯定不可能在编译期计算出来。
+
+* `constexpr`变量声明必须使用常量表达式初始化，但是，在初始化`constexpr`变量时，却不认为这个变量时`const`的。
+
+```CPP
+constexpr int coexp_a = 1;
+constexpr int& c = coexp_a; //error! 失去了`const`修饰符
+constexpr const int& c = coexp_a; //right!
+```
+
+* `auto`推导`constexpr`变量类型时，总是会忽略`constexpr`或者是降级为`const`.
+
+```CPP
+constexpr int coexp_a = 1;
+auto b =  coexp_a; // type of b is int
+auto &c = coexp_a; // type of c is const int &
+constexpr auto d =  coexp_a; // type of d is constexpr int
+```

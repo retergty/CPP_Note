@@ -14,6 +14,8 @@
 
 * `auto x = expr`形式，`x`的类型由`expr`推断得来，推导规则和模板参数推导规则相同。比如对于`const auto& i = expr;`，`i`的类型就和模板`template<class U> void f(const U& u)`实例化`f(expr)`时`U`的类型。
 
+`auto`也会忽略`expr`的`constexpr`修饰符。
+
 ## 例子
 
 ```CPP

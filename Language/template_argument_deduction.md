@@ -4,7 +4,7 @@
 
 * CPP reference[Template argument deduction](https://en.cppreference.com/w/cpp/language/template_argument_deduction)
 
-对于`template<typename T> void f(ParamType u)`实例化`f(Arg)`时，其中`ParamType`就是模板类型与`const`，`&`,`&&`，`volatile`的组合。表达式`Arg`的类型为`A`.
+对于`template<typename T> void f(ParamType u)`实例化`f(Arg)`时，其中`ParamType`就是模板类型与`const`，`&`,`&&`，`volatile`,`constexpr`的组合。表达式`Arg`的类型为`A`.
 
 在开始模板参数推断前，会对`P`和`A`做一些处理。
 
@@ -57,48 +57,48 @@ int main()
 
 1. 如果`P`是引用类型，推导出的`A`可以加上`cv`限定符。
 
-```CPP
-template<typename T>
-void f(const T& t);
- 
-bool a = false;
-f(a); // P = const T&, adjusted to const T, A = bool:
-      // deduced T = bool, deduced A = const bool
-      // deduced A is more cv-qualified than A
-```
+      ```CPP
+      template<typename T>
+      void f(const T& t);
+      
+      bool a = false;
+      f(a); // P = const T&, adjusted to const T, A = bool:
+            // deduced T = bool, deduced A = const bool
+            // deduced A is more cv-qualified than A
+      ```
 
 2. 经过修改的`A`是指针，且可以进行`const`转换为推导出的`A`.
 
-```CPP
-template<typename T>
-void f(const T*);
- 
-int* p;
-f(p); // P = const T*, A = int*:
-      // deduced T = int, deduced A = const int*
-      // qualification conversion applies (from int* to const int*)
-```
+      ```CPP
+      template<typename T>
+      void f(const T*);
+      
+      int* p;
+      f(p); // P = const T*, A = int*:
+            // deduced T = int, deduced A = const int*
+            // qualification conversion applies (from int* to const int*)
+      ```
 
 3. 如果`P`是类，且经过修改的`A`可以是推导出的`A`的派生类，指针也可以。
 
-```CPP
-template<class T>
-struct B {};
- 
-template<class T>
-struct D : public B<T> {};
- 
-template<class T>
-void f(B<T>&) {}
- 
-void f()
-{
-    D<int> d;
-    f(d); // P = B<T>&, adjusted to P = B<T> (a simple-template-id), A = D<int>:
-          // deduced T = int, deduced A = B<int>
-          // A is derived from deduced A
-}
-```
+      ```CPP
+      template<class T>
+      struct B {};
+      
+      template<class T>
+      struct D : public B<T> {};
+      
+      template<class T>
+      void f(B<T>&) {}
+      
+      void f()
+      {
+      D<int> d;
+      f(d); // P = B<T>&, adjusted to P = B<T> (a simple-template-id), A = D<int>:
+            // deduced T = int, deduced A = B<int>
+            // A is derived from deduced A
+      }
+      ```
 
 ## 例子
 
