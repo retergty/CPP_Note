@@ -59,90 +59,96 @@ void swap( vector& other );
 
 ## 常用成员函数
 
-### `std::vector<T,Allocator>::swap`
+### 构建容器
 
-参考文档
+* [assign](https://en.cppreference.com/w/cpp/container/vector/assign)
 
-* [swap](https://en.cppreference.com/w/cpp/container/vector/swap)
+  替换容器内的内容。
 
-函数原型为
+  ```CPP
+  void assign( size_type count, const T& value );
+  template< class InputIt >
 
-```CPP
-void swap( vector& other ) noexcept;
-```
+  void assign( InputIt first, InputIt last );
 
-交换两个`vector`的内容与容量，**不会调用**任何容器内元素`move`,`copy`,`swap`操作。
+  void assign( std::initializer_list<T> ilist );
+  ```
 
-除了`end()`迭代器失效，任何其他的迭代器与引用均不失效，指向原来的位置。（但是所属的`vector`不同了）。
+  会失效所有迭代器。
 
-```CPP
-std::vector<int> a1{1, 2, 3}, a2{4, 5};
- 
-auto it1 = std::next(a1.begin());
-auto it2 = std::next(a2.begin());
-
-int& ref1 = a1.front();
-int& ref2 = a2.front();
-
-std::cout << a1 << a2 << *it1 << ' ' << *it2 << ' ' << ref1 << ' ' << ref2 << '\n';
-a1.swap(a2);
-std::cout << a1 << a2 << *it1 << ' ' << *it2 << ' ' << ref1 << ' ' << ref2 << '\n';
-```
-
-输出
-
-```text
-{ 1 2 3 } { 4 5 } 2 5 1 4
-{ 4 5 } { 1 2 3 } 2 5 1 4
-```
-
-### `std::vector<T,Allocator>::assign`
-
-参考文档
-
-* [assgin](https://en.cppreference.com/w/cpp/container/vector/assign)
-
-替换容器内的内容。
-
-```CPP
-void assign( size_type count, const T& value );
-template< class InputIt >
-
-void assign( InputIt first, InputIt last );
-
-void assign( std::initializer_list<T> ilist );
-```
-
-会失效所有迭代器。
-
-### `std::vector<T,Allocator>::at`
-
-参考文档
+### 访问数据
 
 * [at](https://en.cppreference.com/w/cpp/container/vector/at)
 
-通过边界检查访问指定元素。
+  通过边界检查访问指定元素。
 
-```CPP
-reference at( size_type pos );
-const_reference at( size_type pos ) const;
-```
+  ```CPP
+  reference at( size_type pos );
+  const_reference at( size_type pos ) const;
+  ```
 
-如果`pos`不在容器的范围内，抛出异常。
-
-### `std::vector<T,Allocator>::data`
-
-参考文档
+  如果`pos`不在容器的范围内，抛出异常。
 
 * [data](https://en.cppreference.com/w/cpp/container/vector/data)
 
-直接访问底层的连续存储空间。
+  直接访问底层的连续存储空间。
 
-```CPP
-T* data() noexcept;
-const T* data() const;
-```
+  ```CPP
+  T* data() noexcept;
+  const T* data() const;
+  ```
 
-返回指向底层存储空间首元素的指针，指针合法范围为`[data(), data() + size())`
+  返回指向底层存储空间首元素的指针，指针合法范围为`[data(), data() + size())`
 
-### `
+### 访问容量
+
+* [empty](https://en.cppreference.com/w/cpp/container/vector/empty)
+
+  返回容器是否为空。
+
+  ```CPP
+  bool empty() const noexcept;
+  ```
+
+* [size](https://en.cppreference.com/w/cpp/container/vector/size)
+
+  返回容器当前存储的元素个数。
+
+  ```CPP
+  size_type size() const noexcept;
+  ```
+
+### 修改容器
+
+* [swap](https://en.cppreference.com/w/cpp/container/vector/swap)
+
+  函数原型为
+
+  ```CPP
+  void swap( vector& other ) noexcept;
+  ```
+
+  交换两个`vector`的内容与容量，**不会调用**任何容器内元素`move`,`copy`,`swap`操作。
+
+  除了`end()`迭代器失效，任何其他的迭代器与引用均不失效，指向原来的位置。（但是所属的`vector`不同了）。
+
+  ```CPP
+  std::vector<int> a1{1, 2, 3}, a2{4, 5};
+  
+  auto it1 = std::next(a1.begin());
+  auto it2 = std::next(a2.begin());
+
+  int& ref1 = a1.front();
+  int& ref2 = a2.front();
+
+  std::cout << a1 << a2 << *it1 << ' ' << *it2 << ' ' << ref1 << ' ' << ref2 << '\n';
+  a1.swap(a2);
+  std::cout << a1 << a2 << *it1 << ' ' << *it2 << ' ' << ref1 << ' ' << ref2 << '\n';
+  ```
+
+  输出
+
+  ```text
+  { 1 2 3 } { 4 5 } 2 5 1 4
+  { 4 5 } { 1 2 3 } 2 5 1 4
+  ```
