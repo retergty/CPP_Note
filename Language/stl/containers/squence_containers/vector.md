@@ -61,6 +61,10 @@ void swap( vector& other );
 
 ### `std::vector<T,Allocator>::swap`
 
+参考文档
+
+* [swap](https://en.cppreference.com/w/cpp/container/vector/swap)
+
 函数原型为
 
 ```CPP
@@ -91,3 +95,54 @@ std::cout << a1 << a2 << *it1 << ' ' << *it2 << ' ' << ref1 << ' ' << ref2 << '\
 { 1 2 3 } { 4 5 } 2 5 1 4
 { 4 5 } { 1 2 3 } 2 5 1 4
 ```
+
+### `std::vector<T,Allocator>::assign`
+
+参考文档
+
+* [assgin](https://en.cppreference.com/w/cpp/container/vector/assign)
+
+替换容器内的内容。
+
+```CPP
+void assign( size_type count, const T& value );
+template< class InputIt >
+
+void assign( InputIt first, InputIt last );
+
+void assign( std::initializer_list<T> ilist );
+```
+
+会失效所有迭代器。
+
+### `std::vector<T,Allocator>::at`
+
+参考文档
+
+* [at](https://en.cppreference.com/w/cpp/container/vector/at)
+
+通过边界检查访问指定元素。
+
+```CPP
+reference at( size_type pos );
+const_reference at( size_type pos ) const;
+```
+
+如果`pos`不在容器的范围内，抛出异常。
+
+### `std::vector<T,Allocator>::data`
+
+参考文档
+
+* [data](https://en.cppreference.com/w/cpp/container/vector/data)
+
+直接访问底层的连续存储空间。
+
+```CPP
+T* data() noexcept;
+const T* data() const;
+```
+
+返回指向底层存储空间首元素的指针，指针合法范围为`[data(), data() + size())`
+
+### `
