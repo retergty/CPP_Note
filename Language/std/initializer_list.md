@@ -18,6 +18,8 @@
 
 `std::initializer_list`并不会复制对应的数组，而是存储指针。
 
+在函数重载决议中，不使用`std::initializer_list`作为参数的函数比使用`std::initializer_list`作为参数的函数要更优。
+
 ## 例子
 
 ```CPP
