@@ -101,6 +101,17 @@ constexpr变量一定是常量表达式，如果编译器不能初始化这个co
 
     注意，似乎`i`可以在编译期得出，但是可能在另一个线程改变`i`，编译期不能做这么危险的假设。
 
+    此外，`constexpr`变量必须立即被常量表达式初始化，当编译器运行到这一行时，无法马上初始化这个`constexpr`变量。如果我们只是想要这个函数在编译期运行，这样写也是可以的
+
+    ```CPP
+    constexpr int t1(const int i)
+    {
+        int ii = i;  // error! occurs here (i is not a constant expression)
+        return ii;
+    }
+    constexpr int a = t1(0);
+    ```
+
 * `const`变量与常量表达式不同，不是任何时候都可以转化为常量表达式
 
     ```CPP
