@@ -308,4 +308,4 @@ void swap( vector& other );
 
 ### 常用非成员函数
 
-## 比较两个`vector`的运算符重载函数。
+## 比较两个`vector`的运算符重载函数
