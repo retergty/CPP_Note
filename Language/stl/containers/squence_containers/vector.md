@@ -59,11 +59,9 @@ void swap( vector& other );
 
 ## 常用成员函数
 
-### 构造函数
+### 构建容器
 
 * [vector](https://en.cppreference.com/w/cpp/container/vector/vector)
-
-### 构建容器
 
 * [assign](https://en.cppreference.com/w/cpp/container/vector/assign)
 
