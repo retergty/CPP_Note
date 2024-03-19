@@ -59,6 +59,10 @@ void swap( vector& other );
 
 ## 常用成员函数
 
+### 构造函数
+
+* [vector](https://en.cppreference.com/w/cpp/container/vector/vector)
+
 ### 构建容器
 
 * [assign](https://en.cppreference.com/w/cpp/container/vector/assign)
@@ -104,21 +108,170 @@ void swap( vector& other );
 
 * [empty](https://en.cppreference.com/w/cpp/container/vector/empty)
 
-  返回容器是否为空。
-
   ```CPP
   bool empty() const noexcept;
   ```
 
-* [size](https://en.cppreference.com/w/cpp/container/vector/size)
+  返回容器是否为空。
 
-  返回容器当前存储的元素个数。
+* [size](https://en.cppreference.com/w/cpp/container/vector/size)
 
   ```CPP
   size_type size() const noexcept;
   ```
 
+  返回容器当前存储的元素个数。
+
+* [reserve](https://en.cppreference.com/w/cpp/container/vector/reserve)
+
+  ```CPP
+  void reserve( size_type new_cap );
+  ```
+
+  提升`vector`的容量，使得容量满足或者多于`new_cap`,不会降低`vector`的容量。
+
+  如果改变了容量，失效所有的迭代器。
+
+* [capacity](https://en.cppreference.com/w/cpp/container/vector/capacity)
+
+  ```CPP
+  size_type capacity() const noexcept;
+  ```
+
+  返回`vector`目前的容量。
+
+* [shrink_to_fit](https://en.cppreference.com/w/cpp/container/vector/shrink_to_fit)
+
+  ```CPP
+  void shrink_to_fit();
+  ```
+
+  移去没有使用的容量，会缩小`vector`的容量.
+
+  如果改变了容量，失效所有的迭代器。
+
 ### 修改容器
+
+* [clear](https://en.cppreference.com/w/cpp/container/vector/clear)
+
+  ```CPP
+  void clear() noexcept;
+  ```
+
+  清除`vector`中所有的元素，调用完毕后，`size()`为`0`.
+
+  失效所有的迭代器。
+
+* [insert](https://en.cppreference.com/w/cpp/container/vector/insert)
+
+  ```CPP
+  iterator insert( const_iterator pos, const T& value );
+  iterator insert( const_iterator pos, T&& value );
+  iterator insert( const_iterator pos, size_type count, const T& value );
+  template< class InputIt >
+  iterator insert( const_iterator pos, InputIt first, InputIt last );
+  iterator insert( const_iterator pos, std::initializer_list<T> ilist );
+  ```
+
+  `1`和`2`将`value`插入到`pos`前面。
+  `3`将`count`个`value`的副本插入到`pos`前面。
+  `4`利用输入迭代器，把`[first,last)`范围的元素插入到`pos`前。
+  `5`将初始化列表`ilist`的元素插入到`pos`前面。
+
+  `1`和`2`返回指向`value`的迭代器。
+
+  `3`,`4`,`5`返回指向第一个插入的元素的迭代器。
+
+  如果插入后，元素数目大于容量，会引发重分配，失效所有的迭代器。
+
+  如果没有引发重分配，失效所有指向插入点后（包括插入点自身）的迭代器。
+
+  这个函数是通过调用元素的复制构造函数或者是移动构造函数实现的。
+
+* [emplace](https://en.cppreference.com/w/cpp/container/vector/emplace)
+
+  ```CPP
+  template< class... Args >
+  iterator emplace( const_iterator pos, Args&&... args );
+  ```
+
+  在`pos`前原地构建新的元素。`args`就是传递给元素构造函数的参数。依照参数的不同，可能会调用复制构造或者是移动构造或者是特定的构造函数。
+
+  元素会通过`std::allocator_traits::construct`函数直接就地构建新的元素。但是，如果指定的位置已经存在了元素，那么将要插入的元素会在别的地方先行构建并移动到要求的地方。
+
+  如果插入后，元素数目大于容量，会引发重分配，失效所有的迭代器。
+
+  如果没有引发重分配，失效所有指向插入点后（包括插入点自身）的迭代器。
+
+* [erase](https://en.cppreference.com/w/cpp/container/vector/erase)
+
+  ```CPP
+  iterator erase( const_iterator pos );
+  iterator erase( const_iterator first, const_iterator last );
+  ```
+
+  `1`擦除`pos`指向的元素。
+
+  `2`擦除`[first,last)`范围指向的元素。
+
+  显然`pos`不能是尾后迭代器。
+
+  在插入点及其之后的迭代器会失效。
+
+  返回指向删除元素之后的迭代器。
+
+* [push_back](https://en.cppreference.com/w/cpp/container/vector/push_back)
+
+  ```CPP
+  void push_back( const T& value );
+  void push_back( T&& value );
+  ```
+
+  将`value`添加到到`vector`末尾，具有常数复杂度。也就是，插入点为`end()`.
+
+  如果插入后，元素数目大于容量，会引发重分配，失效所有的迭代器。
+
+  如果没有引发重分配，失效所有指向插入点后（包括插入点自身）的迭代器。  
+
+* [emplace_back](https://en.cppreference.com/w/cpp/container/vector/emplace_back)
+
+  ```CPP
+  template< class... Args >
+  reference emplace_back( Args&&... args );
+  ```
+
+  在`vector`的末尾就地构建新的元素。
+
+  返回指向构造的元素的引用。
+
+  如果插入后，元素数目大于容量，会引发重分配，失效所有的迭代器。
+
+  如果没有引发重分配，失效所有指向插入点后（包括插入点自身）的迭代器。  
+
+* [pop_back](https://en.cppreference.com/w/cpp/container/vector/pop_back)
+
+  ```CPP
+  void pop_back();
+  ```
+
+  删除`vector`最后的一个元素。
+
+  失效指向最后一个元素与`end()`的迭代器。
+
+* [resize](https://en.cppreference.com/w/cpp/container/vector/resize)
+
+  ```CPP
+  void resize( size_type count );
+  void resize( size_type count, const value_type& value );
+  ```
+
+  调整`vector`,使之包含`count`个元素。
+
+  如果当前的元素数目多于`count`,将所有多余的元素删除。
+
+  如果当前的元素数目少于`count`,`1`会插入默认值，`2`会插入指定值。
+
+  注意，这个函数不会修改容量。
 
 * [swap](https://en.cppreference.com/w/cpp/container/vector/swap)
 
