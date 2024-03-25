@@ -172,8 +172,11 @@ void swap( vector& other );
   ```
 
   `1`和`2`将`value`插入到`pos`前面。
+
   `3`将`count`个`value`的副本插入到`pos`前面。
+
   `4`利用输入迭代器，把`[first,last)`范围的元素插入到`pos`前。
+  
   `5`将初始化列表`ilist`的元素插入到`pos`前面。
 
   `1`和`2`返回指向`value`的迭代器。

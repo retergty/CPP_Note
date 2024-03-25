@@ -245,4 +245,73 @@ namespace pmr {
   void splice( const_iterator pos, list& other );
   void splice( const_iterator pos, list&& other );
   void splice( const_iterator pos, list& other, const_iterator it );
+  void splice( const_iterator pos, list&& other, const_iterator it );
+  void splice( const_iterator pos, list& other,
+             const_iterator first, const_iterator last);
+  void splice( const_iterator pos, list&& other,
+             const_iterator first, const_iterator last );
   ```
+
+  将`other`里的元素转移到`*this`中，不会实际复制和移动元素，而是修改指针的指向，不会失效迭代器，但是操作完成后，迭代器指向的被转移的函数已经转移到了`*this`内。
+
+  `1`和`2`会把`other`里的所有元素转移到`*this`中，插入的位置是`pos`前。
+
+  `3`和`4`会把`other`里`it`指向的元素转移到`*this`中，插入的位置是`pos`前。
+
+  `5`和`6`会把`other`里`[first,last)`指向的元素转移到`*this`中，插入的位置是`pos`前。
+
+* [remove, remove_if](https://en.cppreference.com/w/cpp/container/list/remove)
+
+  ```CPP
+  void remove( const T& value );
+  template< class UnaryPredicate >
+  void remove_if( UnaryPredicate p );
+  ```
+
+  移去满足条件的元素。
+
+  `1`会把等于`value`的元素移除，使用`operator==`.
+
+  `2`会移去所有一元谓词`p`返回为`true`的元素。
+
+  只会失效指向被移去的元素的迭代器。
+
+* [reverse](https://en.cppreference.com/w/cpp/container/list/reverse)
+
+  ```CPP
+  void reverse() noexcept;
+  ```
+
+  反转列表元素，不会失效任何迭代器。
+
+* [unique](https://en.cppreference.com/w/cpp/container/list/unique)
+
+  ```CPP
+  void unique();
+  template< class BinaryPredicate >
+  void unique( BinaryPredicate p );
+  ```
+
+  从容器中删除所有**连续**的重复元素，只保留一个元素。
+
+  `1`使用`operator==`比较元素。
+
+  `2`使用二元谓词`p`比较元素，返回为`true`时，两元素相等。
+
+  只会失效指向被移去的元素的迭代器。
+
+* [sort](https://en.cppreference.com/w/cpp/container/list/sort)
+
+  ```CPP
+  void sort();
+  template< class Compare >
+  void sort( Compare comp );
+  ```
+
+  排序元素，并保持相等元素的顺序。
+
+  `1`使用`operator<`比较两个元素。
+
+  `2`使用比较器`comp`比较两个元素。
+
+  不会失效任何迭代器。

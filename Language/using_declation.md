@@ -257,4 +257,4 @@ using Eigen::Matrix; //error!
 }
 ```
 
-`using`声明在类中只能用于引用基类的名字，如果想要实现这个功能，请使用`typedef`.
+`using`声明在类中只能用于引入基类的名字，如果想要实现这个功能，请使用`typedef`.或者是`using xxx = xxxx`,如果是模版，必须使用`template`格式。
