@@ -108,6 +108,16 @@ B::h
 D::h
 ```
 
+如果基类是依赖名称，引入类型时不要忘记`typename`.
+
+```CPP
+template<typename scalar>
+class Derive : public Base<scalar>
+{
+    using typename Base<scalar>::value_type;
+}
+```
+
 ### 构造函数继承
 
 当`using`声明声明了直接基类的构造函数，直接基类的所有构造函数都会（忽略成员可见性）都会在初始化派生类时的函数重载决议可见，这个特性叫做构造函数继承

@@ -321,6 +321,19 @@ struct A {
 
 这个选项是用于当编译器优化运算时，没有考虑到数据溢出的情况而发出的警告。通常`n=4`即可。
 
+### `-Wno-missing-template-keyword`
+
+如果一个类成员访问使用`.`,`->`,`::`三者之一，而且类对象是依赖对象且该成员是模板成员时，需要加上`template`.这是因为编译器可能会认为`<>`是大于和小于符号，认为成员访问是比较表达式。
+
+```CPP
+template <class X>
+void DoStuff (X x)
+{
+  x.template DoSomeOtherStuff<X>(); // Good.
+  x.DoMoreStuff<X>(); // Warning, x is dependent.
+}
+```
+
 ## 用于debug的选项
 
 这一类选项告诉gcc去生成额外的信息用于debugger，在大部分情况下`-g`就足够了。
