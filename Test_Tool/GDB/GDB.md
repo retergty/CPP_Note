@@ -165,18 +165,129 @@ func<int>()    func<float>()
 
 ### 断点
 
-断点分为三大类，断点(Breakpoints)，观察点(Watchpoints)，捕捉点(Watchpoints)。
+断点分为三大类，断点(Breakpoints)，观测点(Watchpoints)，捕获点(Catchpoints)。
 
 程序运行到断点时便会暂停，还可以添加断点条件。
 
-观察点是特殊的断点，它会在指定表达式的值发生改变时停止程序。
+观测点是特殊的断点，它会在指定表达式的值发生改变时停止程序。
 
-捕捉点也是特殊的断点，会在程序发生特定事件是停止程序，比如C++丢出异常，或者加载动态库等。
+捕获点也是特殊的断点，会在程序发生特定事件是停止程序，比如C++丢出异常，或者加载动态库等。
 
 GDB会给断点分配一个数字id，之后可以用这个id指定特定的断点。每个断点也可以独立使能和失能。
 
-如果指明添加断点的对象
+如果指明添加断点的对象不只有一处，比如C++模板函数，内联函数，重载函数等，GDB就会给每个位置分配一个位置id。不能单独删除一个位置的断点，但是可以单独失能它。
 
 GDB提供了一系列方便的变量提供断点的信息，`$bpnum`记录了最近设置的断点的id，`$_hit_bpnum`和`$_hit_locno`分别表示当前碰到的断点id和断点位置id。
 
-* `break locspec`在`locspec`处设置断点，`locspec`可以是函数
+* `break locspec`
+  
+  在`locspec`处设置断点，`locspec`可以是函数名，代码行号，指令的地址等。
+
+  `locspec`可以是如下的格式
+
+  * `Linenum`
+  * `+/-offset`
+  * `filename:linenum`
+  * `function`
+  * `function:label`
+  * `filename:function`
+
+* `break`
+
+  当没有参数时，`GDB`在选定的栈帧的下一个要被执行的指令处设置断点。在除了最内层以外，这个命令会使得程序在回到这一层的那一刻停止，和指令`finish`的效果类似；在最内层，程序会在下一次它运行到当前位置时停止，（通常用在循环）。
+
+* `break ... if cond`
+
+  设置一个条件断点，当程序运行到这个断点时，首先判断是否`cond`为非零值，若是，则停止程序。如果在特定位置上条件无效，那么`GDB`就会失能这个位置的断点设置。
+
+  ```shell
+  (gdb) break func if a == 10
+  warning: failed to validate condition at location 0x11ce, disabling:
+    No symbol "a" in current context.
+  warning: failed to validate condition at location 0x11b6, disabling:
+    No symbol "a" in current context.
+  Breakpoint 1 at 0x11b6: func. (3 locations)
+  ```
+
+* `break ... -force-condition if cond`
+
+  和上一个指令效果相同，只不过会强制设置条件。
+
+* `tbreak args`
+
+  设置一个一次性断点，程序在这个断点停止时，`GDB`会自动删除这个断点。`args`和`break`能接受的参数一样。
+
+* `rbreak regex`
+
+  给所有满足正则表达式`regex`的函数设置断点。当这些断点被设置之后，它们就和普通的断点没什么区别了。
+
+* `rbreak file:regex`
+
+  给文件`file`里的满足正则表达式`regex`的函数设置断点。
+
+* `info breakpoints list...`
+  
+  显示当前设置的断点类型与相应的信息。
+
+### 观测点
+
+可是设置一个观测点，这个观测点会在指定的表达式的值发生改变时停止程序，不必猜测这个修改发生在代码的那个位置。（这个也可以叫做数据断点(data breakpoint).表达式可以是简单的变量的值，也可以是复杂的表达式，结合C++运算符重载。
+
+取决于操作系统，观测点可以是软件实现或者是硬件实现，软件实现下，程序运行速度会大幅减慢。
+
+* `watch [-l|-location] expr [thread thread-id] [mask maskvalue]`
+
+  为表达式`expr`设置观测点，程序会在表达式被写入与它的值被改变时停止程序。
+
+  如果指定了`[thread thread-id]`，那么GDB会在指定线程id改变表达式的值时停止程序，其它线程改变表达式不会停止程序、
+
+  通常来说，观测点会遵循表达式里变量的作用域，但如果指定了`-location`，就会告诉`GDB`观测表达式指向的地址。在这种情况下，GDB会计算表达式的值，取结果的地址，观测在这个地址的内存。但如果表达式的结果不指向一个内存地址，那么就会报错。
+
+* `rwatch [-l|-location] expr [thread thread-id] [mask maskvalue]`
+
+  设置一个观测点，这个观测点会在程序试图读取表达式时停止。
+
+* `awatch [-l|-location] expr [thread thread-id] [mask maskvalue]`
+
+  设置一个观测点，这个观测点会在程序试图读取或写入表达式时停止。
+
+* `info watchpoints [list…]`
+
+  打印目前设置的观测点
+
+观测一个复杂的表达式可能会耗尽系统允许设置的硬件观测点。
+
+### 捕获点
+
+我们可以设置捕获点捕获特定的程序事件，比如C++异常，动态库加载，系统调用等。
+
+### 删除断点
+
+* `clear`
+
+  删除在选定栈帧下一个指令的所有断点。当最内层栈帧被选择了，就会删除程序刚刚停止在的那个断点。
+
+* `clear locspec`
+
+  删除符合`locspec`的断点。
+
+* `delete [breakpoints] [list…]`
+
+  删除指定的断点，观测点，捕获点。如果没有指定参数，那么就会删除全部断点。
+
+### 使能失能断点
+
+一个断点可以有以下的状态，使能状态，失能状态，使能一次状态，使能N次状态，使能后删除状态。
+
+* `disable [breakpoints] [list…]`
+
+* `enable [breakpoints] [list…]`
+
+* `enable [breakpoints] once list…`
+
+* `enable [breakpoints] count count list…`
+
+* `enable [breakpoints] delete list…`
+
+### 断点条件
+
