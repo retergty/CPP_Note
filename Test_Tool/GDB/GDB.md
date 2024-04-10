@@ -563,4 +563,472 @@ bar(boring());
 
 在某些平台上，`GDB`提供了一个特别的目标记录进程的运行日志，并可以在稍后正反双向重放。
 
-当这个目标使用时，`GDB`会以`replay`模式进行调试。
+当这个目标使用时，且处理日志中包含了下一行机器指令，那么`GDB`会以`replay`模式进行调试。当在`replay`模式中运行时，进程不会真的执行代码，相反，代码执行期间通常发生的所有事件都从执行日志中获取。尽管代码实际没有在`replay`模式中运行，但寄存器的值，内存值都会改变，这些改变值是从运行日志中获取的。
+
+如果处理日志中不包含下一行机器指令，那么`GDB`就会以`record`模式运行，在这个模式中，进程正常运行，`GDB`记录运行结果到处理日志中。
+
+进程记录与重放支持反向运行，尽管当前操作系统不支持反向运行。但是，反向运行的范围限制在运行日志所记录的范围中。
+
+* `record method`
+
+  这个命令开启进程记录与重放目标，可以指定记录方法。默认的方法是`full`，可用的记录方法如下。
+
+  * `full`
+  
+    使用`GDB`的软件完全记录信息，这个方法允许重放和反向运行。
+
+  * `btrace format`
+
+    英特尔处理器硬件支持的机器指令记录方法。
+
+  记录命令只可以记录一个已经在运行的进程,所以运行命令`record`前，需要运行命令`start`或者`run`.
+
+* `record stop`
+
+  停止当前记录目标的运行。当记录目标停止时，整个处理日志会被删除，被记录的进程要不停止，要不保持在最后的状态。
+
+  当在`record`模式下停止了记录目标时，被记录的进程会停止在下一条本应被记录的机器指令处。换句话说，当记录目标停止时，被记录的进程会处于好像记录从来没有开始过的状态中。
+
+  而在`replay`模式下停止了记录目标时，被记录的进程之后可能会继续调试。
+
+* `record goto`
+
+  跳转到处理日志的特殊位置，以下是可能的位置
+
+  * `record goto begin`,`record goto start`
+
+    跳转到处理日志的开头。
+
+  * `record goto end`
+
+    跳转到处理日志的末尾
+
+  * `record goto n`
+
+    跳转到处理日志的第`n`行
+
+* `record save filename`
+
+  保存处理日志到文件`filename`里，默认文件名为`gdb_record.process_id`.
+
+* `record restore filename`
+
+  从文件`filename`中获得处理日志。
+
+* `set record full insn-number-max limit`,`set record full insn-number-max unlimited`
+
+  设置处理日志可以保存的最多指令数，默认是200000.
+
+  如果`limit`是正数，`GDB`会在达到记录的指令数时，删除最早记录的指令。
+
+  如果`limit`是`unlimited`或是`0`,`GDB`会尽可能地保存更多的指令，直到内存限制。
+
+* `show record full insn-number-max`
+
+  显示处理日志可以保存的最多指令数。
+
+* `set record full stop-at-limit`
+
+  控制当处理日志达到最多指令数时的行为，为`ON`是程序停止，为`OFF`时，删除最早记录的指令。
+
+* `show record full stop-at-limit`
+
+  显示当处理日志达到最多指令数时的行为。
+
+* `info record`
+
+  显示当前记录的处理日志的信息
+
+* `record delete`
+
+  当记录目标运行在`replay`模式时，删除接下来的处理日志，并从当前地址开始记录新的处理日志。
+
+## 栈
+
+当程序停止时，首先要知道的就是程序在哪里停止的以及它是怎么来到这的。
+
+每次程序调用函数时，都会生成有关这个调用的信息，这些信息包括程序调用这个函数的位置，传递的实参，被调用函数的本地变量，这些信息会被保存在一块数据中，这块数据叫做栈帧(stack frame)，栈帧是在一段叫做调用栈(call stack)的内存中分配空间的。
+
+当程序停止时，特定的`GDB`命令可以帮助我们取得栈帧的信息。
+
+当一个栈帧被`GDB`特定命令选择时，许多`GDB`命令会隐式的相对于这个栈帧运行。比如，当打印变量值时，指的就是当前栈帧可见的变量。
+
+当程序停止时，`GDB`自动选择当前正在运行的帧并简单地描述了一下。
+
+### 回溯(Backtraces)
+
+回溯指的是程序如何到达这里的信息总结，每行信息包含一个栈帧，对于多个栈帧，开始于当前正在运行的栈帧(frame zero)，接着是调用者(frame one)，以此类推。
+
+使用`backtrace`打印回溯信息，默认情况下，所有的栈帧都会被打印。
+
+* `backtrace [option]… [qualifier]… [count]`,`bt [option]… [qualifier]… [count]`
+
+  打印整个回溯信息。
+
+  `count`可以指示要打印多少个栈帧，为正数时,打印`count`个最内层栈帧；为负数时，打印`count`个最外层栈帧。
+
+  `option`可以是
+
+  * `-full`
+
+    打印所有本地变量的值。
+
+  * `-no-filters`
+
+    不要运行`Python`栈帧过滤。
+
+  `backtrace`命令还支持一系列的命令用来覆盖全局打印回溯信息的参数。可参考`GDB`官方文档。
+
+`where`和`info stack`是`backtrace`的别名。
+
+对于多线程程序，`GDB`默认只打印当前线程的回溯信息，为了显示别的线程的回溯信息，使用`tread apply all backtrace`显示所有线程的回溯信息。
+
+回溯信息的每一行都展示了一个栈帧，包含栈帧编号，函数名，pc指针，源代码文件名，行号以及函数实参。如果该栈帧是源代码行中的开始，则忽略pc指针。
+
+比如`bt 3`会显示如下信息
+
+```text
+#0  m4_traceon (obs=0x24eb0, argc=1, argv=0x2b8c8)
+    at builtin.c:993
+#1  0x6e38 in expand_macro (sym=0x2b600, data=...) at macro.c:242
+#2  0x6840 in expand_token (obs=0x0, t=177664, td=0xf7fffb08)
+    at macro.c:71
+(More stack frames follow...)
+```
+
+栈帧1的实参`data`被`...`替换了，这是因为，默认情况下`GDB`只会打印数值类型的实参。
+
+如果使用了优化编译，一些编译器可能会优化掉传递的实参，这些优化直接使用寄存器传递实参，没有把实参存储在栈帧中，`GDB`没有办法在不是最内层的栈帧上显示这些实参。
+
+通常境况下，`GDB`会在发现`main_`程序入口点时停止接下来的栈帧回溯，因为之后的栈帧都是系统级别的调用了。
+
+* `set backtrace past-main [on|off]`
+
+  栈帧回溯是否在`main_`停止。
+
+* `set backtrace past-entry [on|off]`
+
+  栈帧回溯是否在入口点停止，这个入口点是链接器生成的，再往外便是系统级别的调用了。
+
+* `set backtrace limit n`
+
+  设置最多打印栈帧的数量，为`0`和`unlimited`时，无限制。
+
+* `set filename-display [relative|basename|absolute]`
+
+  设置显示文件名的方法，相对于当前的编译目录，还是只显示目录，还是显示绝对地址。
+
+### 选择栈帧
+
+几乎所有的有关打印栈信息的`GDB`命令的行为都与当前选择的栈帧有关。
+
+* `frame [frame-selection-spec]`,`f [frame-selection-spec]`
+
+  选择指定的栈帧。
+
+  `frame-selection-spec`可以是如下的值
+
+  * `num`,`level num`
+
+    栈帧数字，从零开始，可以使用`backtrace`查看。
+  
+  * `adresss stack-address`
+
+    通过栈地址选择栈帧
+
+  * `function function-name`
+
+    通过函数名选择栈帧，如果多个栈帧都有同一函数名，则选择最内层的。
+
+* `up n`
+
+  向上选择当前的第`n`的栈帧，默认为1，方向是从小栈帧编号到大栈帧编号
+
+* `down n`
+
+  向下选择当前的第`n`的栈帧，默认为1，方向是从大栈帧编号到小栈帧编号
+
+上面的命令都会输出两行来描述选择的栈帧，第一行是栈帧编号，函数名，实参，源文件以及对应的行号。第二行显示了源文件对应行号的代码。
+
+```text
+(gdb) up
+#1  0x22f0 in main (argc=1, argv=0xf7fffbf4, env=0xf7fffbfc)
+    at env.c:10
+10              read_input_file (argv[i]);
+```
+
+### 栈帧信息
+
+有几种命令可以打印选择的栈帧信息
+
+* `frame`,`f`
+  
+  当不指定参数时，这个命令不会切换栈帧，而是打印当前栈帧的简短信息。
+
+* `info frame [frame-selection-spec]`,`info f [frame-selection-spec]`
+
+  这个命令打印选定栈帧的详细信息，包括栈帧地址，调用和被调用的栈帧地址等。没有指定参数时则是当前栈帧。
+
+* `info args`
+
+  打印当前栈帧的实参。
+
+* `info locals [-q] [-t type_regexp] [regexp]`
+
+  打印当前栈帧的本地变量。这些变量是当前栈帧处理点可以访问的所有变量。
+
+  `-t type_regexp`指定时，只打印类型满足该正则表达式的本地变量。
+
+  `regexp`指定值，只打印名字满足该正则表达式的本地变量。
+  
+### 将命令应用到复数个栈帧
+
+* `frame apply [all|count|-count|level level...] [option]... command`
+
+  将命令`command`应用到多个栈帧。
+
+  `all`指应用到所有栈帧。
+
+  `count`指应用到从最内层开始的`count`个栈帧。
+
+  `-count`指应用到从最外层开始的`count`个栈帧。
+
+  `level`指特定编号的栈帧，比如`level 2-4 6-8 3`.
+
+## 源代码
+
+GDB提供了许多命令方便地查看源代码。
+
+### 打印源代码
+
+使用`list`打印特定的源代码，默认是打印10行。
+
+* `list linenum`
+
+  打印当前源文件行号`linenum`周围的源代码行。
+
+* `list function`
+
+  打印函数`function`周围的源代码行。
+
+* `list`
+
+  打印更多的行，打印的行取决于之前的命令。如果上一次的行打印是使用`list`命令打印的，那么这一个命令就会打印上一次的行后面的源代码行。但是，如果上一次行打印是使用栈帧命令打印的，这个命令就会打印上一次行的周围。如果上述条件都不满足，打印`main`周围的行。
+
+* `list +`
+
+  和`list`一样
+
+* `list -`
+
+  只打印上次打印行的前几行。
+
+* `list .`
+
+  打印当前选择的栈帧周围的源代码。
+
+默认`GDB`打印10行代码，可以通过命令修改
+
+* `set listsize count`,`set listsize unlimited`
+
+  设置`list`打印的行数。
+
+* `show listsize`
+
+  显示`list`默认打印的行数。
+
+使用回车重复`list`命令会丢弃传递给`list`的参数，也就是等同于输入`list`.
+
+* `list locspec`
+
+  打印满足`locspec`名字周围的代码。
+
+* `list first,last`
+
+  打印从`first`到`last`行的源代码。
+
+* `list ,last`
+
+  打印以`last`结尾的行
+
+* `list first,last`
+
+  打印以`first`开头的行
+
+### 指定位置(Location Specifications)
+
+许多`GDB`命令支持指定位置的参数，也就是`locspec`.使用这个来指定诸如源代码行号，函数名，地址，标签等。
+
+#### 指定行号
+
+这种类型的位置指定的是行号位置。
+
+* `linenum`
+
+  指定当前源文件的第`linenum`行。
+
+* `-offset`,`+offset`
+
+  指定当前行的前或后`offset`行。对于`list`命令，当前行指的就是上一次打印的行，或是在使用了两个行号位置时，比如`first,last`时，`last`的当前行就是`first`指定的行；对于`breakpoint`命令，当前行指的就是当前程序停止在的地方。
+
+* `filename:linenum`
+
+  指定文件`filename`的第`linenum`行，如果文件名`filename`是相对路径，那么它就会匹配所有包含这个部分的文件名。比如`gcc/expr.c`就会匹配`/build/trunk/gcc/expr.c`,不匹配`/build/trunk/libcpp/expr.c`和`/build/trunk/gcc/x-expr.c`
+
+* `function`
+
+  指定函数`function`函数体开始的行，比如,对于`C/C++`来说直接就是`{`所在的那一行。
+
+  默认情况下，对于`C++`来说，`function`会被翻译为所有作用域中名字为`function`的函数，也就是所有名称空间和类定义的函数。
+
+  比如`C++`程序中有两个函数，`A::B::func`,`B::func`，使用命令`break func`或`break B::func`会给这两个函数都设置上断点。
+
+  可以使用`-qualified func`指定取设置一个`func`全局函数名，而不是类方法也名称空间函数名。
+
+* `function:label`
+
+  指定出现在`function`里的`label`哪一行
+
+* `filename:function`
+
+  指定在文件`filename`里的函数`function`函数体开始的行。
+
+* `label`
+
+  指定当前栈帧下，函数中名为`label`的标签那一行。
+
+#### 显式指定
+
+使用参数`-source filename`,`-function function`,`-qualified`,`-label label`,`-line number`.可以显式指定位置
+
+#### 指定地址
+
+可以直接指定地址，形如`*address`.
+
+## 显示数据
+
+通常的方法显示数据就是使用命令`print`。这个命令会计算并打印指定的表达式的值。
+
+* `print [[options] --] expr`,`print [[options] --] /f expr`
+
+  `expr`就是当前语言合法的表达式，我们可以指定`/f`来选定打印格式。
+
+  `option`可以是如下的选项
+
+  * `-address [on|off]`
+
+    也打印地址。
+
+  * `-array [on|off]`
+
+    更漂亮地打印数组。
+
+  * `-array-indexes [on|off]`
+
+    也打印数组的下标。
+
+  * `-characters number-of-characters|elements|unlimited`
+
+    设置最多打印的字符数。
+
+  * `-elements number-of-elements|unlimited`
+
+    设置最多打印的数组元素个数和字符串长度。
+
+  * `-max-depth depth|unlimited`
+
+    设置打印结构体类型的最大深度。
+
+  * `-nibbles [on|off]`
+
+    设置是否以四位为一组（称为“半字节”）打印二进制值。
+
+  * `-memory-tag-violations [on|off]`
+
+    设置打印有关内存标签违规的附加信息.
+
+  * `-null-stop [on|off]`
+
+    将字符数组的打印设置为在第一个`null`字符处停止。
+
+  * `-object [on|off]`
+
+    打印`C++`虚函数表
+
+  * `-pretty [on|off]`
+
+    更漂亮地打印结构体。
+
+  * `-raw-values [on|off]`
+
+    是否取消所有的格式化，直接打印原始形式。
+
+  * `-repeats number-of-repeats|unlimited`
+
+    设置重复打印元素的阈值。
+
+  * `-static-members [on|off]`
+
+    设置打印`C++`静态成员。
+
+  * `-symbol [on|off]`
+
+    设置打印指针时打印符号名称。
+
+  由于`print`可以接受任何表达式，所以，如果想指定形如参数的表达式，需要用`--`分割开来。
+
+  如果省略了`expr`，会默认是上一次打印地表达式。
+
+  ```text
+  (gdb) print -pretty -- *myptr
+  $1 = {
+    next = 0x0,
+    flags = {
+      sweet = 1,
+      sour = 1
+    },
+    meat = 0x54 "Pork"
+  }
+  ```
+
+* `explore arg`
+
+  `arg`可以是一个表达式，也可以是一个类型，这个命令对于复杂的结构体很有用。
+
+  ```C
+  struct SimpleStruct
+  {
+    int i;
+    double d;
+  };
+
+  struct ComplexStruct
+  {
+    struct SimpleStruct *ss_p;
+    int arr[10];
+  };
+  ```
+
+  初始化为
+
+  ```C
+  struct SimpleStruct ss = { 10, 1.11 };
+  struct ComplexStruct cs = { &ss, { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 } };
+  ```
+
+  使用`explore`有
+
+  ```text
+  (gdb) explore cs
+  The value of `cs' is a struct/class of type `struct ComplexStruct' with
+  the following fields:
+
+    ss_p = <Enter 0 to explore this field of type `struct SimpleStruct *'>
+    arr = <Enter 1 to explore this field of type `int [10]'>
+
+  Enter the field number of choice:
+  ```
+
+  我们之后可以输入编号进入结构体成员中。
+
+  总的来说，使用这个命令，可以沿着复杂结构体查找。
