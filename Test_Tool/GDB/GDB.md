@@ -1032,3 +1032,105 @@ GDB提供了许多命令方便地查看源代码。
   我们之后可以输入编号进入结构体成员中。
 
   总的来说，使用这个命令，可以沿着复杂结构体查找。
+
+### 表达式
+
+`print`等许多`GDB`命令可以接受一个表达式并计算它的值，表达式可以是任何的当前语言合法的表达式，比如条件表达式，函数调用，类型强制转换，字符串常量等。
+
+`GDB`定义了以下的运算符
+
+* `@`
+
+  `@`是一个二元运算符，用于把部分内存视为数组。
+
+* `::`
+
+  `::`允许特别指定一变量的定义在的文件位置或者作用域
+
+* `{type} addr`
+
+  指向一个类型为`type`的对象，这个对象储存在地址`addr`里。`addr`可以是任意的表达式，只要它的值是一个整数。
+
+#### 表达式多义性
+
+对于`C++`来说，一个表达式可以有多种意思，比如函数重载和模版函数情况下，有时我们需要指定具体的表达式。
+
+取决于`GDB`设置，`GDB`会打印一个表格供我们选择，我们输入序号就可以了。
+
+```text
+(gdb) b String::after
+[0] cancel
+[1] all
+[2] file:String.cc; line number:867
+[3] file:String.cc; line number:860
+[4] file:String.cc; line number:875
+[5] file:String.cc; line number:853
+[6] file:String.cc; line number:846
+[7] file:String.cc; line number:735
+> 2 4 6
+Breakpoint 1 at 0xb26c: file String.cc, line 867.
+Breakpoint 2 at 0xb344: file String.cc, line 875.
+Breakpoint 3 at 0xafcc: file String.cc, line 846.
+Multiple breakpoints were set.
+Use the "delete" command to delete unwanted
+ breakpoints.
+(gdb)
+```
+
+* `set multiple-symbols mode`
+
+  这个选项允许我们指定`GDB`当遇到多义的表达式时的行为。
+
+  这个选项默认是`all`,意味着如果表达式是多义的，默认选择所有表达式。比如，插入一个具有重载的函数断点会给所有对应的函数插入断点。但是，如果命令需要一个独一无二的表达式，`GDB`还是会打印一个表格供我们选择。
+
+  当模式是`ask`时，`GDB`总是会询问我们。
+
+  当模式是`cancel`时，`GDB`会对多义表达式报告错误。
+
+#### 变量
+
+最常用的表达式类型就是变量名。
+
+表达式中使用的变量名必须当前栈帧合法且可见的变量名。但有一个例外，可以指定作用域为单个源文件的变量或者函数，无论当前程序运行点是否在这个文件里。如果有多个变量或者函数同名，我们需要使用`file::var`或`function::var`指定变量。
+
+```text
+p 'f2.c'::x
+```
+
+`::`通常用于指定静态变量，也可以用它来指向最近的含有这个变量的上层栈帧。
+
+```CPP
+void
+foo (int a)
+{
+  if (a < 10)
+    bar (a);
+  else
+    process (a);    /* Stop here */
+}
+
+int
+bar (int a)
+{
+  foo (a + 5);
+}
+```
+
+```text
+(gdb) p a
+$1 = 10
+(gdb) p bar::a
+$2 = 5
+(gdb) up 2
+#2  0x080483d0 in foo (a=5) at foobar.c:12
+(gdb) p a
+$3 = 5
+(gdb) p bar::a
+$4 = 0
+```
+
+当我们在`process(a)`打上断点，并在程序中写下`bar(0)`.我们就可以用`::`指定特定的变量。
+
+有时`::`会与`C++`里作用域解析符`::`冲突，此时，选择`C++`的含义。但是我们可以用双引号选择`GDB`里的含义。
+
+注意！当处于刚刚进入后或者刚刚退出前，一个本地变量可能会有错误的值，这是因为大部分的架构，设置一个栈帧需要多于一个机器指令。如果是以机器指令步进的话，直到一个栈帧彻底构建完成前，变量可能会有错误的值。同理，退出一个栈帧也需要多于一个机器指令，直到一个栈帧被彻底销毁前，变量也可能有错误的值。
