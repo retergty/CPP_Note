@@ -46,3 +46,25 @@ decltype(foo()) d = foo();      // d is an "int"    [(foo()) is a prvalue]
 decltype(foo()) && r1 = foo();  // int &&
 decltype((n)) && r2 = n;        // int & [& && collapses to &]
 ```
+
+## 接受“两个”参数的`decltype`
+
+以下的例子看似`decltype`接受了两个参数
+
+```CPP
+// Non-templated helper struct:
+struct _test_has_foo {
+    template<class T>
+    static auto test(T* p) -> decltype(p->foo(), std::true_type());
+
+    template<class>
+    static auto test(...) -> std::false_type;
+};
+
+// Templated actual struct:
+template<class T>
+struct has_foo : decltype(_test_has_foo::test<T>(0))
+{};
+```
+
+实则不然，这个是逗号表达式，类型取决于最后一个成员的类型，也就是`std::true_type()`.
