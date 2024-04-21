@@ -2,6 +2,10 @@
 
 在头文件`utility`定义，用于把类型`T`变为右值引用，这样我们就可以在`decltype`中使用成员函数了。
 
+参考文档
+
+* CPP Reference[declval](https://en.cppreference.com/w/cpp/utility/declval)
+
 ## 声明
 
 ```CPP

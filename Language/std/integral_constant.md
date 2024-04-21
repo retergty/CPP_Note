@@ -2,6 +2,10 @@
 
 在头文件`<type_traits>`中定义。这个类包装了指定的常量。
 
+参考文档
+
+* CPP Reference[integral_constant](https://en.cppreference.com/w/cpp/types/integral_constant)
+
 ## 声明
 
 ```CPP
