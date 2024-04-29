@@ -176,6 +176,34 @@ template<typename U>
 void A<T, 2>::t_f() {};
 ```
 
+注意！我们不能删除`A`的偏特化定义，这是因为函数不能被偏特化，但是对于大型的模板类，声明这个类的偏特化是不现实的，这时，我们可以使用“委托到类”的小技巧。
+
+```CPP
+//helper:
+template <typename dataT, typename numericalT, unsigned int dataDim>
+class specialised{
+public:
+  numericalT& access(dataT& x, const unsigned int index){return x[index];}
+};
+
+//partial specialisation:
+template <typename dataT, typename numericalT>
+class specialised<dataT,numericalT,1>{
+public:
+  numericalT& access(dataT& x, const unsigned int index){return x;}
+};
+
+//your actual class:
+template <typename dataT, typename numericalT, unsigned int dataDim>
+class actualClass{
+private:
+  dataT x;
+  specialised<dataT,numericalT,dataDim> accessor;
+public:
+  //... for(int i=0;i<dataDim;++i) ...accessor.access(x,i) ...
+};
+```
+
 如果主模板和偏特化模板是包括在另一个模板（称作模板`E`）里的，那么，如同其它成员一样，在`E`实例化时，会实例化**所有的声明**（不是定义）。这意味着，如果我们指定了`E`在特定模板下的主模板，编译器就会按照我们指定的生成声明，**忽略偏特化模板**。
 
 ```CPP
