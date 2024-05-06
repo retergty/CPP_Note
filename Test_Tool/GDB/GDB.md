@@ -1148,7 +1148,7 @@ $1 = 31
 $2 = 30
 ```
 
-#### 数组
+### 数组
 
 使用指针打印数组时，我们可以在后面加上`@len`指定打印的数组元素数量。
 
@@ -1162,3 +1162,146 @@ int *array = (int *) malloc (len * sizeof (int));
 p *array@len
 ```
 
+### 显示内存值
+
+可以使用命令`x`或`examine`来显示内存值。
+
+* `x/nfu addr`
+
+  显示指定地址的内存值，`n`,`f`,`u`控制显示内存的数量与格式。
+
+  `n`是显示内存的数量，默认值是`1`,如果是负数，则从指定的地址逆序显示。
+
+  `f`显示的格式，可以是`‘x’, ‘d’, ‘u’, ‘o’, ‘t’, ‘a’, ‘c’, ‘f’, ‘s’`,机器指令`i`，内存标签`m`,默认是`x`,十六进制。
+
+  `u`是内存单元的大小，可以是字节`b`，两个字节`h`,四个字节`w`,八个字节`g`。
+
+### 自动显示
+
+如果想要每次程序停止时就会显示相同的表达式，可以把这个表达式加入到自动显示列表中，这个表达式会被附上一个编号。
+
+```text
+2: foo = 38
+3: bar[5] = (struct hack *) 0x3804
+```
+
+自动显示表达式编号，表达式，以及表达式的值，如同使用`print`一样。
+
+* `display expr`
+
+  把表达式加入到自定显示列表中。
+
+* `undisplay dnum`,`delete display dnum`
+
+  把指定表达式从表达式列表中删除。
+
+* `disable display dnums`,`enable display dnums`
+
+  失能或者使能指定的表达式
+
+* `display`
+
+  显示当前所有自动显示的表达式的值。
+
+* `info display`
+
+  打印自动显示列表。
+
+### 便捷变量
+
+`gdb`提供了便捷变量用来保存一个值，方便后续使用，这些便捷变量只存在与`gdb`中，对程序的运行没有影响。
+
+便捷变量都以`$`开头。
+
+比如，我们可以设置一个变量用于保存指定的表达式的值。
+
+```gdb
+set $foo = *object_ptr
+```
+
+* `show convenience`
+
+  显示至今为止用过的便捷变量。
+
+* `init-if-undefined $variable = expression`
+
+  初始化一个便捷变量。
+
+通常使用便捷变量的情况就是连续检测数组的值时。
+
+```gdb
+set $i = 0
+print bar[$i++]->contents
+```
+
+这样我们就可以使用回车键连续检测数组的值。
+
+在使用`print`打印变量时，`gdb`就会自动赋值一个便捷变量，之后便可以引用。
+
+```gdb
+(gdb) print s
+$2 = "abcd"
+```
+
+### 优化打印
+
+`gdb`提供了一个使用`python`代码更好地打印数据结构的机制，它大幅简化了复杂类的显示。
+
+当`gdb`打印一个变量时，它会首先寻找这个类型是否有优化打印的方法注册，如果有，`gdb`就会调用优化打印来打印这个变量。反之，则普通地打印。
+
+优化打印通常由名字，可以简单地操纵。使用命令`info pretty-printer`就会列出所有已安装的优化打印方法与它们的名字。如果一个优化打印可以处理多种数据类型，它就会有一个子优化打印用于每个独立的数据类型，子优化打印也有名字，形如`printer-name;subprinter-name`.
+
+通常优化打印方法会在调试信息加载时自动注册。
+
+优化打印依照作用域分为三种，
+
+* 全局可用的优化方法
+* 特定程序可用的优化方法
+* 特定文件（比如共享库）可用的优化方法。
+
+比如，`std::string`在没有优化打印时显示如下
+
+```gdb
+(gdb) print s
+$1 = {
+  static npos = 4294967295, 
+  _M_dataplus = {
+    <std::allocator<char>> = {
+      <__gnu_cxx::new_allocator<char>> = {
+        <No data fields>}, <No data fields>
+      },
+    members of std::basic_string<char, std::char_traits<char>,
+      std::allocator<char> >::_Alloc_hider:
+    _M_p = 0x804a014 "abcd"
+  }
+}
+```
+
+而在有优化打印时如下
+
+```gdb
+(gdb) print s
+$2 = "abcd"
+```
+
+#### 安装优化打印
+
+优化打印方法是使用`python`编写的，通常大型库都会提供优化打印方法的文件，我们只需要安装即可。
+
+进入用户根目录`~`,创建（或修改）`.gdbinit`文件，文件如下
+
+```python
+python
+import sys
+sys.path.insert(0, '/cygdrive/d/gdb_pretty/Eigen')
+from printers import register_eigen_printers
+register_eigen_printers(None)
+
+sys.path.insert(0, '/usr/share/gcc-11/python')
+from libstdcxx.v6.printers import register_libstdcxx_printers
+register_libstdcxx_printers(None)
+```
+
+其中`sys.path.insert(0, '/cygdrive/d/gdb_pretty/Eigen')`是把优化打印的文件添加到`path`环境变量中。`from printers import register_eigen_printers`，就是从`printers.py`文件中引入`register_eigen_printers`函数。
+
+这个文件会在`gdb`启动时自动读取，例子注册了`Eigen`矩阵库的优化打印和`stl`容器的优化打印。
