@@ -132,6 +132,8 @@ namespace pmr {
 
   在`pos`前插入元素，直接调用元素的构造函数进行构造，`args`就是传递给元素构造函数的参数。
 
+  不会失效所有的迭代器。
+
 * [erase](https://en.cppreference.com/w/cpp/container/list/erase)
 
   ```CPP
