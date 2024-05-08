@@ -23,7 +23,7 @@ namespace pmr {
 
 `deque`是一个双端的队列，允许快速在首尾插入和删除元素，同时保持快速的随机访问能力（性能劣于`vector`。同样地在首尾插入或删除元素不会失效除了尾后迭代器的所有迭代器。
 
-`deque`的内部结构是一个个区块，第一个区块朝一个方向拓展，另一个区块朝另一个方向拓展，并用一个映射结构跟踪这些块。这样保持了高性能的随机访问。不同于`vector`也不需要重分配空间。
+`deque`的内部结构是一个个区块，第一个区块朝一个方向拓展，另一个区块朝另一个方向拓展，并用一个映射结构跟踪这些块。这样保持了高性能的随机访问。不同于`vector`，它也不需要重分配空间。
 
 ## 迭代器类型
 
@@ -173,3 +173,80 @@ namespace pmr {
   显然`pos`不能是尾后迭代器。
 
   如果删除两端的元素，指向其他元素的迭代器不会失效。删除尾端的元素还会失效尾后迭代器。如果删除其他位置的元素，所有迭代器均失效。
+
+* [push_back](https://en.cppreference.com/w/cpp/container/deque/push_back)
+
+  ```CPP
+  void push_back( const T& value );
+  void push_back( T&& value );
+  ```
+
+  将`value`添加到到`deque`末尾，具有常数复杂度。也就是，插入点为`end()`.
+
+  会失效所有的迭代器。不会失效任何引用。
+
+* [emplace_back](https://en.cppreference.com/w/cpp/container/deque/emplace_back)
+
+  ```CPP
+  template< class... Args >
+  reference emplace_back( Args&&... args );
+  ```
+
+  在`deque`的末尾就地构建新的元素。
+
+  返回指向构造的元素的引用。
+
+  会失效所有的迭代器。不会失效任何引用。
+
+* [pop_back](https://en.cppreference.com/w/cpp/container/deque/pop_back)
+
+  ```CPP
+  void pop_back();
+  ```
+
+  删除`deque`最后一个元素。
+
+  失效指向最后一个元素与`end()`的迭代器。
+
+* [push_front](https://en.cppreference.com/w/cpp/container/deque/push_front)
+
+  ```CPP
+  void push_front( const T& value );
+  void push_front( T&& value );
+  ```
+
+  将`value`添加到到`deque`头部.
+
+  会失效所有的迭代器。不会失效任何引用。
+
+* [emplace_front](https://en.cppreference.com/w/cpp/container/deque/emplace_front)
+
+  ```CPP
+  template< class... Args >
+  reference emplace_front( Args&&... args );
+  ```
+
+  在`deque`的头部就地构建新的元素。
+
+  返回指向构造的元素的引用。
+
+  会失效所有的迭代器。不会失效任何引用。
+
+* [pop_front](https://en.cppreference.com/w/cpp/container/deque/pop_front)
+
+  删除`deque`第一个元素。
+
+  失效指向第一个元素的迭代器。
+
+* [resize](https://en.cppreference.com/w/cpp/container/deque/resize)
+
+  ```CPP
+  void resize( size_type count );
+  void resize( size_type count, const value_type& value );
+  ```
+
+  调整`vector`,使之包含`count`个元素。
+
+  如果当前的元素数目多于`count`,将所有多余的元素删除。
+
+  如果当前的元素数目少于`count`,`1`会插入默认值，`2`会插入指定值。
