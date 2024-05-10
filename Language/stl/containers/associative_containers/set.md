@@ -131,4 +131,34 @@ namespace pmr {
 
   返回值指向插入元素的迭代器，或者是已经存在的相等的元素的迭代器。
 
-  参考文档中讲解了`emplace_hint`插入的速度比较，可见，往正确的位置插入时，时间大幅缩短。
+  参考文档中讲解了`emplace_hint`插入的速度比较，可见，往正确的位置插入时，时间大幅缩短。注意，如果插入的元素刚好在`hint`右边，也是只需要一次比较即可插入。
+
+* [erase](https://en.cppreference.com/w/cpp/container/set/erase)
+
+  ```CPP
+  iterator erase( iterator pos );
+  iterator erase( const_iterator pos );
+  iterator erase( iterator first, iterator last );
+  iterator erase( const_iterator first, const_iterator last );
+  size_type erase( const Key& key );
+  ```
+
+  `1`,`2`删除`pos`指向的元素。
+
+  `3`，`4`擦除`[first,last)`范围指向的元素。
+
+  `5`擦除关键字为`key`的元素，没有则不做，返回值为擦除元素的个数（1或0）。
+
+* [swap](https://en.cppreference.com/w/cpp/container/set/swap)
+
+  函数原型为
+
+  ```CPP
+  void swap( set& other ) noexcept;
+  ```
+
+  交换两个`set`的内容与容量，**不会调用**任何容器内元素`move`,`copy`,`swap`操作。
+
+  除了`end()`迭代器失效，任何其他的迭代器与引用均不失效，指向原来的位置。（但是所属的`set`不同了）。
+
+* 
