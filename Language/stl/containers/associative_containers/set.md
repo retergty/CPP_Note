@@ -149,6 +149,8 @@ namespace pmr {
 
   `5`擦除关键字为`key`的元素，没有则不做，返回值为擦除元素的个数（1或0）。
 
+  指向被擦除元素的迭代器会失效，其它位置的迭代器不会失效。
+
 * [swap](https://en.cppreference.com/w/cpp/container/set/swap)
 
   函数原型为
@@ -161,4 +163,15 @@ namespace pmr {
 
   除了`end()`迭代器失效，任何其他的迭代器与引用均不失效，指向原来的位置。（但是所属的`set`不同了）。
 
-* 
+* [extract](https://en.cppreference.com/w/cpp/container/set/extract)
+
+  ```CPP
+  node_type extract( const_iterator position );
+  node_type extract( const Key& k );
+  ```
+
+  提取出指定迭代器或者是指定关键字的元素所在的节点。
+
+  不会调用元素的移动或者是复制函数，而是改变容器内部指针的指向(可能会发生重平衡)。
+
+  提取出一个节点只会失效指向这个元素的迭代器，但是指向这个元素的引用和指针**不会失效**。
