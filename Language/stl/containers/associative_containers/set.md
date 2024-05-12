@@ -24,7 +24,7 @@ namespace pmr {
 
 ## 描述
 
-`set`是一个关联容器，存储了指定数据类型的有序唯一元素，排序是使用可调用对象`Compare`实现的，默认是对元素升序排列。
+`set`是一个关联容器，存储了指定数据类型的有序唯一元素，排序是使用可调用对象`Compare`实现的，对元素升序排列。
 
 `set`通常实现为红黑树，在`set`中查找，删除，插入操作复杂度都是`O(logN)`。
 
@@ -174,4 +174,97 @@ namespace pmr {
 
   不会调用元素的移动或者是复制函数，而是改变容器内部指针的指向(可能会发生重平衡)。
 
-  提取出一个节点只会失效指向这个元素的迭代器，但是指向这个元素的引用和指针**不会失效**。
+  提取出一个节点只会失效指向这个元素的迭代器，但是指向这个元素的引用和指针**不会失效**,但是当这个元素被节点句柄拥有时**不能使用**，只有当其插入到容器后才能使用。否则会违反严格别名规则，带来未定义行为。
+
+* [merge](https://en.cppreference.com/w/cpp/container/set/merge)
+
+  ```CPP
+  template< class C2 >
+  void merge( std::set<Key, C2, Allocator>& source );
+  template< class C2 >
+  void merge( std::set<Key, C2, Allocator>&& source );
+  template< class C2 >
+  void merge( std::multiset<Key, C2, Allocator>& source );
+  template< class C2 >
+  void merge( std::multiset<Key, C2, Allocator>&& source );
+  ```
+
+  将`source`中的每个元素提取出来，并插入到`*this`中，并使用`*this`的比较器，如果`source`中有和`*this`相等的元素，这个元素不会被提取出来。不会调用元素的移动或者是复制函数，而是改变容器内部指针的指向(可能会发生重平衡)。不会失效任何迭代器，但是现在指向了`*this`里的元素了。
+
+### 查找
+
+* [count](https://en.cppreference.com/w/cpp/container/set/count)
+
+  ```CPP
+  size_type count( const Key& key ) const;
+  template< class K >
+  size_type count( const K& x ) const;
+  ```
+
+  返回满足关键字`key`的元素的数目。
+
+  `1`只会返回0或1，因为`set`不允许相同关键字的元素重复出现。
+
+  `2`是使用一个比较器`x`.
+
+* [find](https://en.cppreference.com/w/cpp/container/set/find)
+
+  ```CPP
+  iterator find( const Key& key );
+  const_iterator find( const Key& key ) const;
+  template< class K >
+  iterator find( const K& x );
+  template< class K >
+  const_iterator find( const K& x ) const;
+  ```
+
+  查找满足关键字的元素，返回指向这个元素的迭代器，若没有，则返回尾后迭代器。
+
+* [contains](https://en.cppreference.com/w/cpp/container/set/contains)
+
+  ```CPP
+  bool contains( const Key& key ) const;
+  template< class K >
+  bool contains( const K& x ) const;
+  ```
+
+  检查是否有满足关键字的元素，若有，则返回`true`，若无，则返回`false`.
+
+* [equal_range](https://en.cppreference.com/w/cpp/container/set/equal_range)
+
+  ```CPP
+  std::pair<iterator, iterator> equal_range( const Key& key );
+  std::pair<const_iterator, const_iterator> equal_range( const Key& key ) const;
+  template< class K >
+  std::pair<iterator, iterator> equal_range( const K& x );
+  template< class K >
+  std::pair<const_iterator, const_iterator> equal_range( const K& x ) const;
+  ```
+
+  返回一个范围，这个范围包含所有与关键字相等的元素，这个范围由两个迭代器组成，第一个迭代器指向第一个不小于`key`的元素，第二个迭代器指向第一个大于`key`的元素。如果没有则返回尾后迭代器。
+
+* [lower_bound](https://en.cppreference.com/w/cpp/container/set/lower_bound)
+
+  ```CPP
+  iterator lower_bound( const Key& key );
+  const_iterator lower_bound( const Key& key ) const;
+  template< class K >
+  iterator lower_bound( const K& x );
+  template< class K >
+  const_iterator lower_bound( const K& x ) const;
+  ```
+
+  返回第一个不小于指定关键字的元素的迭代器。对于`set`来说就是对应的元素的迭代器，若没有，则返回尾后迭代器。
+
+* [upper_bound](https://en.cppreference.com/w/cpp/container/set/upper_bound)
+
+  ```CPP
+  iterator upper_bound( const Key& key );
+  const_iterator upper_bound( const Key& key ) const;
+  template< class K >
+  iterator upper_bound( const K& x );
+  template< class K >
+  const_iterator upper_bound( const K& x ) const;
+  ```
+
+  返回第一个大于指定关键字的元素的迭代器。若没有，则返回尾后迭代器。
