@@ -87,7 +87,7 @@ auto const& Example(int const& i)
 }
 ```
 
-如果我们向为`Example`写下返回类型推导，单纯使用`auto`,只会使得返回类型被推导为`int`,这个类型显然不能作为`Example`函数的返回类型。所以我们必须使用`auto const&`.
+如果我们想为`Example`写下返回类型推导，单纯使用`auto`,只会使得返回类型被推导为`int`,这个类型显然不能作为`Example`函数的返回类型。所以我们必须使用`auto const&`.
 
 但是对于模板函数，我们不能提前知道模板实参类型。
 
