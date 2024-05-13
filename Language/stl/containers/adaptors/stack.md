@@ -84,3 +84,22 @@ template<
   decltype(auto) emplace( Args&&... args );
   ```
   
+  使用参数`args`在栈顶原地构建元素，通常只是调用`c.emplace_back(std::forward<Args>(args)...)`
+
+  返回指向压入元素的引用。
+
+* [pop](https://en.cppreference.com/w/cpp/container/stack/pop)
+
+  ```CPP
+  void pop();
+  ```
+
+  将栈顶的元素推出。调用函数`c.pop_back()`
+
+* [swap](https://en.cppreference.com/w/cpp/container/stack/swap)
+
+  ```CPP
+  void swap( stack& other ) noexcept;
+  ```
+
+  交换两个栈的元素。

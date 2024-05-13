@@ -206,6 +206,8 @@ namespace pmr {
 
   删除`deque`最后一个元素。
 
+  如果`deque`为空，则行为未定义。
+
   失效指向最后一个元素与`end()`的迭代器。
 
 * [push_front](https://en.cppreference.com/w/cpp/container/deque/push_front)
@@ -233,6 +235,10 @@ namespace pmr {
   会失效所有的迭代器。不会失效任何引用。
 
 * [pop_front](https://en.cppreference.com/w/cpp/container/deque/pop_front)
+
+  ```CPP
+  void pop_front();
+  ```
 
   删除`deque`第一个元素。
 
