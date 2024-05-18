@@ -14,7 +14,7 @@ template< class T > class shared_ptr;
 
 ## 描述
 
-`std::shared_ptr`是一个行为和指针十分类似的类，它通过指针取得动态分配的对象的所有权。多个`shared_ptr`可以指向同一个对象。
+`std::shared_ptr`是一个智能指针，行为和指针十分类似，它通过指针取得动态分配的对象的所有权。多个`shared_ptr`可以指向同一个对象。
 
 由`shared_ptr`所拥有的对象当如下情况满足时被销毁，并释放其所占有的动态内存。
 
@@ -29,7 +29,9 @@ template< class T > class shared_ptr;
 
 所有的`shared_ptr`都是`复制可构造(CopyConstructible)`，`复制可赋值(CopyAssignable)`，以及可`小于比较(LessThanComparable)`的。
 
-`shared_ptr`**所有的**成员函数，都可以在不同线程的不同的`shared_ptr`对象上调用，不需要额外的同步操作，哪怕这些`shared_ptr`对象是一个`shared_ptr`的复制，且拥有同一个对象的所有权。但是，在不同线程操作同一个`shared_ptr`对象会带来竞争，`std::atomic<shared_ptr>`可以避免这个事情发生。
+`shared_ptr`**所有的**成员函数，都可以在不同线程的不同的`shared_ptr`对象上调用，不需要额外的同步操作，哪怕这些`shared_ptr`对象是一个`shared_ptr`的复制，且共享同一个对象的所有权。但是，在不同线程操作同一个`shared_ptr`对象且其中任何一个线程使用了非`const`成员函数,则会带来竞争,`std::atomic<shared_ptr>`可以避免这个事情发生。
+
+`shared_ptr`管理对象的所有权只能通过复制构造或复制赋值运算符与其它`shared_ptr`共享所有权，如果使用裸指针创建`shared_ptr`但是这个指针指向的对象早已通过另一个`shared_ptr`进行管理，那么程序行为未定义。
 
 ## 概念
 
@@ -99,6 +101,8 @@ template< class T > class shared_ptr;
   Bar const& specific_data = Foo(...).bar;
   Bar&& also_specific_data = Foo(...).bar;
   ```
+
+  也就是延长了右值Foo的存在时间，直到`specific_data`离开作用域。
 
 * [operator=](https://en.cppreference.com/w/cpp/memory/shared_ptr/operator%3D)
 
@@ -211,7 +215,7 @@ template< class T > class shared_ptr;
 
   如果两个`shared_ptr`都为空，则函数返回`true`.
 
-  这是用在判断两个`shared_ptr`是否管理同一个管理对象或者都为空的相等判断中的。
+  这是用在判断两个`shared_ptr`是否管理同一个管理对象或者都为空的相等判断中的。如果使用比较运算符，比较的就是存储指针的大小，但是，管理指针和存储指针可能指向不同的地方。
 
   两个智能指针被认为是相等的，当且仅当它们共享同一个对象的所有权或者是均为空。与存储指针的值无关。
 
@@ -220,3 +224,102 @@ template< class T > class shared_ptr;
     return !p1.owner_before(p2) && !p2.owner_before(p1);
   }
   ```
+
+## 非成员函数
+
+* [make_shared](https://en.cppreference.com/w/cpp/memory/shared_ptr/make_shared)
+
+  ```CPP
+  template< class T, class... Args >
+  shared_ptr<T> make_shared( Args&&... args );
+  ```
+
+  构建类`T`,并给构造函数传递`args`的参数，也就是使用表达式`::new (pv) T(std::forward<Args>(args)...)`，并使用`shard_ptr`管理动态内存的分配。
+
+* [allocate_shared](https://en.cppreference.com/w/cpp/memory/shared_ptr/allocate_shared)
+
+  ```CPP
+  template< class T, class Alloc, class... Args >
+  shared_ptr<T> allocate_shared( const Alloc& alloc, Args&&... args );
+  ```
+
+  构建类`T`,并给构造函数传递`args`的参数,使用`alloc`分配内存，并使用`shard_ptr`管理动态内存的分配。
+
+* [多线程支持函数](https://en.cppreference.com/w/cpp/memory/shared_ptr/atomic)
+
+## 可能实现
+
+`shared_ptr`通常实现为包含两个指针。
+
+* 存储指针，就是通过`get()`返回的指针。
+* 指向控制块的指针
+
+控制块也是一个动态分配的区域，包含
+
+* 指向管理对象的指针，或者是管理对象本身
+* 删除器
+* 分配器
+* 使用计数，表示有多少个`shared_ptr`目前拥有管理对象的所有权
+* 计数，表示有多少个`weak_ptr`指向管理对象
+
+显然，共享一个对象所有权的`shared_ptr`都指向同一块控制块。标准库保证访问控制块的操作是线程安全的。
+
+当一个`shared_ptr`使用`std::make_shared`或`std::allocate_shared`创建时,控制块和管理对象的内存分配一次完成，并且管理对象就地在控制块中构建。而当`shared_ptr`使用`shared_ptr`的构造函数创建时，管理对象和控制块的内存就不会在同一地方，那么控制块只能存储指向管理对象的指针。
+
+`shared_ptr`的析构函数减少使用计数，如果使用计数为零，控制块会调用管理对象的析构函数。但是控制块只有在`weak_ptr`计数为零时，自身才会析构，以保证`weak_ptr`的正确运行。
+
+## 常见问题
+
+### 线程安全
+
+参考文档
+
+* [std::shared_ptr thread safety](https://stackoverflow.com/questions/14482830/stdshared-ptr-thread-safety)
+
+标准库保证`shared_ptr`**所有的**成员函数，都可以在不同线程的不同的`shared_ptr`对象上调用，不需要额外的同步操作，哪怕这些`shared_ptr`对象是一个`shared_ptr`的复制，且共享同一个对象的所有权。但是，在不同线程操作同一个`shared_ptr`对象且其中任何一个线程使用了非`const`成员函数,则会带来竞争，`std::atomic<shared_ptr>`可以避免这个事情发生。
+
+这个意味着,我们可以在多线程读取同一个`shared_ptr`,但不能在读取的同时写同一个`shared_ptr`.
+
+```CPP
+// In main()
+shared_ptr<myClass> global_instance = make_shared<myClass>();
+// (launch all other threads AFTER global_instance is fully constructed)
+
+//In thread 1
+shared_ptr<myClass> local_instance = global_instance;
+
+//In thread 2
+shared_ptr<myClass> local_instance = global_instance;
+```
+
+这个代码时线程安全的.
+
+```CPP
+// In main()
+shared_ptr<myClass> global_instance = make_shared<myClass>();
+// (launch all other threads AFTER global_instance is fully constructed)
+
+//In thread 1
+shared_ptr<myClass> local_instance = global_instance;
+
+//In thread 2
+shared_ptr<myClass> local_instance = global_instance;
+
+//In thread 3
+global_instance = make_shared<myClass>();
+```
+
+这个代码不是线程安全的.
+
+注意，不意味着访问`shared_ptr`指向的对象是线程安全的，比如多线程写`shared_ptr`指向的对象时，会发生竞争.
+
+```CPP
+// In thread 3
+*global_instance = 3;
+int a = *global_instance;
+
+// In thread 4
+*global_instance = 7;
+```
+
+发生竞争,代码行为未定义.
