@@ -23,7 +23,7 @@ template <
 
 `unique_ptr`是一个智能指针，行为和指针十分类似，它通过指针取得一个的对象的所有权，当对象离开作用域时，它按照要求处置对象。
 
-由`unique_ptr`所拥有的对象当如下情况满足时被处置，使用用户指定的`Deleter`删除对象。
+由`unique_ptr`所拥有的对象当如下情况满足时被处置，使用用户指定的`Deleter`，使用表达式`get_deleter()(get())`删除对象，
 
 * 管理这个对象的`unique_ptr`被析构。
 * 管理这个对象的`unique_ptr`使用函数`operator=`或`reset()`分配给了另一个对象。

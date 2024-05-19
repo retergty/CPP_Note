@@ -16,7 +16,7 @@ template< class T > class shared_ptr;
 
 `std::shared_ptr`是一个智能指针，行为和指针十分类似，它通过指针取得动态分配的对象的所有权。多个`shared_ptr`可以指向同一个对象。
 
-由`shared_ptr`所拥有的对象当如下情况满足时被销毁，并释放其所占有的动态内存。
+由`shared_ptr`所拥有的对象当如下情况满足时,使用表达式`get_deleter()(get())`销毁，并释放其所占有的动态内存
 
 * 最后一个拥有这个对象的`shared_ptr`被销毁
 * 最后一个拥有这个对象的`shared_ptr`被分配给另一个指针通过函数`operator=`或`reset()`.
@@ -235,6 +235,8 @@ template< class T > class shared_ptr;
   ```
 
   构建类`T`,并给构造函数传递`args`的参数，也就是使用表达式`::new (pv) T(std::forward<Args>(args)...)`，并使用`shard_ptr`管理动态内存的分配。
+
+  不同于构造函数，这个函数不支持自定义删除器。
 
 * [allocate_shared](https://en.cppreference.com/w/cpp/memory/shared_ptr/allocate_shared)
 
