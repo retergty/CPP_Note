@@ -31,7 +31,7 @@ struct keep_apart
 
 ### hardware_constructive_interference_size
 
-促进真共享的最大的连续内存大小。保证至少是`alignof(std::max_align_t)`
+促进真共享的最大的连续内存大小，小于这个量的变量是真共享的，保证至少是`alignof(std::max_align_t)`
 
 ```CPP
 struct together
