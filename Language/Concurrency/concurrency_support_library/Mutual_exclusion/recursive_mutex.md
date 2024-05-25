@@ -43,6 +43,8 @@ class recursive_mutex;
 
   构造`recursive_mutex`类，构造完毕后，`recursive_mutex`类处于`unlock`状态。
 
+### 锁定与解锁
+
 * [lock](https://en.cppreference.com/w/cpp/thread/mutex/lock)
 
   ```CPP

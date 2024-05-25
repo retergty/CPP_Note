@@ -52,4 +52,3 @@ class lock_guard;
 ## 常见错误
 
 有时会忘记给`lock_guard`一个名字，比如`std::lock_guard(mtx)`，默认构建一个名为`mtx`的`lock_guard`.或`std::lock_guard{mtx}`构建一个`prvalue`的`lock_guard`并立即析构，这些都是错误的。
-
