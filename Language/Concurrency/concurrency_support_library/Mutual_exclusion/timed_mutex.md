@@ -95,6 +95,8 @@ class timed_mutex;
 
   尝试锁定`timed_mutex`,阻塞直到指定的`timeout_time`到达或者是成功锁定`timed_mutex`.如果成功获得`timed_mutex`的所有权就返回`true`,否则返回`false`.
 
+  如果`timeout_time`早已到达，那么函数行为如同`try_lock`.
+
   由于调度器延迟等，线程可能会阻塞超过指定时间。
 
   哪怕是`timed_mutex`当前没有被任何其他线程锁定，该函数也允许虚假失败并返回`false`。
