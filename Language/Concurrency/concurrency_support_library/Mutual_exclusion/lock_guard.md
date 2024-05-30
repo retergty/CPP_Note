@@ -13,13 +13,19 @@ class lock_guard;
 
 `Mutex`是锁定的`mutex`的类型，必须符合`BasicLockable`要求。
 
+定义在头文件`<mutex>`中。
+
 ## 描述
 
 `lock_guard`是一个互斥锁的包装器，提供了`RAII`机制管理互斥锁。
 
 当一个`lock_guard`类创建时，它就会尝试获取传递给构造函数的互斥锁的所有权。当控制流离开了`lock_guard`的作用域后，`lock_guard`析构并释放锁定的互斥锁。
 
-`lock_guard`是不能复制的类。
+`lock_guard`是不能复制，不可移动的类。
+
+## 成员类型定义
+
+* `mutex_type`就是`Mutex`
 
 ## 成员函数
 
