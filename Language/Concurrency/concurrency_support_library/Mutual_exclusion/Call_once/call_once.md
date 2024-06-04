@@ -82,3 +82,41 @@ int main()
     t4.join();
 }
 ```
+
+## 可能实现
+
+本节给出了`call_once`的主要部分的可能实现，使用的多线程编程方法可能有所帮助。
+
+```CPP
+struct once_flag {
+private:
+    std::mutex _M_mutex;
+    std::atomic_bool _M_has_run;
+public:
+    /// Default constructor
+    once_flag() : _M_has_run(false) {}
+
+    /// Deleted copy constructor
+    once_flag(const once_flag&) = delete;
+    /// Deleted assignment operator
+    once_flag& operator=(const once_flag&) = delete;
+
+    template<typename _Callable, typename... _Args>
+    friend void
+    call_once(once_flag& __once, _Callable&& __f, _Args&&... __args);
+};
+
+/// call_once
+template<typename _Callable, typename... _Args>
+void
+call_once(once_flag& __once, _Callable&& __f, _Args&&... __args)
+{
+    // Early exit without locking
+    if(__once._M_has_run) return;
+    unique_lock<mutex> __l(__once._M_mutex);
+    // Check again now that we locked the mutex
+    if(__once._M_has_run) return;
+    __f(std::forward<_Args>(__args)...);
+    __once._M_has_runs = true;
+}
+```
