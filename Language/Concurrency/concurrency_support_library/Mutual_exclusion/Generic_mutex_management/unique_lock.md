@@ -128,7 +128,13 @@ class unique_lock;
 
 * [release](https://en.cppreference.com/w/cpp/thread/unique_lock/release)
 
+  ```CPP
+  mutex_type* release() noexcept;
+  ```
+
   取消目前与`unique_lock`所关联的`mutex`,但是不调用`unlock`.
+
+  返回指向这个`mutex`的指针，或者是`nullptr`（如果没有与`unique_lock`所关联的`mutex`).
 
 ### 获取信息
 
