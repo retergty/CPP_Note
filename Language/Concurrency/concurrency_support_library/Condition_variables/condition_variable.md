@@ -38,3 +38,4 @@ class condition_variable;
 * 获取对应的`std::mutex`的所有权，也就是写入这个条件变量的互斥锁，通过`std::unique_lock<std::mutex>`
 * 使用谓词版本的`wait`，`wait_for`,`wair_until`成员函数（它会把上面三步合一）.
 
+`std::condition_variable`只能与`std::unique_lock<std::mutex>`一起使用
