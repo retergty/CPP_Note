@@ -23,3 +23,20 @@ f<int&>(a); // f<int&>(int&)
 ```
 
 由于发生了引用折叠，模板生成的函数签名才会是`f<int&>(int&)`
+
+## 作用在`const`上导致`const`消失
+
+```CPP
+template <typename T>
+void f3(const T& t) { t = t + 1; }
+
+int main() {
+   int a = 3;
+   f3<int&>(a);
+   ....
+}
+```
+
+`f3<int&>(a)`的函数原型为`f3(int&)`,`const`消失了。
+
+这是由于`const`修饰的是`T`，等价于`T const &`，但是，引用不能为`const`，所以当模板实参是`int&`时，先去除了`const`再发生引用折叠。
