@@ -1,0 +1,7 @@
+# CMAKE_RUNTIME_OUTPUT_DIRECTORY
+
+参考文档
+
+* [CMAKE_RUNTIME_OUTPUT_DIRECTORY](https://cmake.org/cmake/help/latest/variable/CMAKE_RUNTIME_OUTPUT_DIRECTORY.html#variable:CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+
+表示在哪里存放生成的可执行文件，目标属性`RUNTIME_OUTPUT_DIRECTORY`的初始值。

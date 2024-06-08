@@ -1,0 +1,7 @@
+# CMAKE_POSITION_INDEPENDENT_CODE
+
+参考文档
+
+* [CMAKE_POSITION_INDEPENDENT_CODE](https://cmake.org/cmake/help/latest/variable/CMAKE_POSITION_INDEPENDENT_CODE.html#variable:CMAKE_POSITION_INDEPENDENT_CODE)
+
+是否编译位置无关代码，这个变量是目标属性`POSITION_INDEPENDENT_CODE`的初始值。
