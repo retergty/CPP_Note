@@ -18,7 +18,7 @@ class thread;
 
 线程在它对应的`thread`类构造完毕后，从作为参数传递给`thread`类构造函数的执行函数立即开始执行，当然还需等待操作系统的调度延迟，但是这个取决于操作系统，不在`C++`负责范围内。执行函数可以传递它的返回值或者异常给父线程通过`std::promise`,或者修改共享资源（可能需要同步）。
 
-`thread`对象可能不代表任何线程（默认构造，被移动，`detach`,`join`后)，一个线程也可能不与任何`thread`对象相关联（`detach`)后。
+`thread`对象可能不代表任何线程（默认构造，被移动，`detach`,`join`后），一个线程也可能不与任何`thread`对象相关联（`detach`）后。
 
 两个`thread`对象**不可能**代表同一个线程，也就是说，`thread`对象不能复制可构造(CopyConstructible)与复制可赋值(CopyAssignable),但是可以移动可构造(MoveConstructible)与移动可赋值(MoveAssignable).
 
