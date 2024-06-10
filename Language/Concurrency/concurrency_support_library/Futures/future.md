@@ -34,7 +34,7 @@ template<> class future<void>;
   future( const future& other ) = delete;
   ```
 
-  `1`默认构造函数，构造`std::future`，没有共享状态。构造完毕后`valid() == false`
+  `1`默认构造函数，构造`std::future`，不指向任何共享状态。构造完毕后`valid() == false`
 
   `2`移动构造函数，构造完毕后，`other.valid() == false`
 
