@@ -110,12 +110,16 @@ printenv | grep -i ROS
 
 进入之前存储源码的工作文件夹
 
+如果想设置编译器，只需要设置环境变量`CC`,`CXX`即可。
+
 ```shell
 cd ~/ros2_jazzy/
 colcon build --symlink-install
 ```
 
 ## 设置环境
+
+为了能够使用ROS2的命令，我们必须读取设置文件，或者加入到系统环境变量中。
 
 ```shell
 # Replace ".bash" with your shell if you're not using bash
