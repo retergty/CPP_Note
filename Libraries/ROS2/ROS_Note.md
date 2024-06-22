@@ -28,3 +28,31 @@ DDS是网络端口，协议为UDP进行通信的，域ID用于计算同一个域
 export ROS_DOMAIN_ID=<your_domain_id>
 ```
 
+### Node
+
+节点(Node)是ROS2抽象概念，每个节点实现单一的模块化的功能，比如控制车轮或者从传感器接收数据并发送。每个节点都可以通过主题(topics)、服务(services)、操作(actions)或参数(parameters)从其他节点发送和接收数据。
+
+一个完全的机器人控制系统是由许多节点组成。在`ROS2`中，一个可执行文件可以包含一个或者多个节点。
+
+![Node](Picture/Nodes-TopicandService.gif)
+
+### Topic
+
+主题(Topic)是ROS2抽象通信概念，主题是ROS系统中关键的元素，用于在节点中交换信息。
+
+![Topic](Picture/Topic-SinglePublisherandSingleSubscriber.gif)
+
+向主题发送讯息(messages)的节点叫做发布者(Publisher),从主题接收讯息(messages)的节点叫做订阅者(Subscriber),一个节点可以同时是任意多的主题的发布者与任意多的主题的订阅者。一个主题也可以有任意多的发布者与任意多的订阅者。
+
+### Service
+
+服务(Topic)是ROS2抽象通信概念，用于在节点中交换信息。
+
+![Service](Picture/Service-MultipleServiceClient.gif)
+
+服务是基于请求(call)-响应(response)模型的。发送请求的叫做客户端(client)，发送响应的叫做服务器(server),同一个服务可以有多个客户端，但是只能有一个服务器。只有当客户端发送请求后，服务器才会发送响应（也有可能不发送响应），并且请求响应是一个节点对一个节点的，也就是说，其它客户端收不到这个响应。
+
+请求和响应可能会带有负载数据，但也可能不带有，具体情况有服务的类型定义。
+
+### parameters
+
