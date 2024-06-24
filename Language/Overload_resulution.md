@@ -45,7 +45,7 @@ void Fun(const int&);
 void Fun(const int &&) = delete;
 ```
 
-讨论经典的赋值运算符重载
+经典的赋值运算符重载
 
 ```CPP
 class T
