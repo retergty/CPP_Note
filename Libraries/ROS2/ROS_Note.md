@@ -161,7 +161,7 @@ string EXAMPLE='bar'
 
 服务是基于请求(call)-响应(response)模型的。发送请求的叫做客户端(client)，发送响应的叫做服务器(server),同一个服务可以有多个客户端，但是只能有一个服务器。只有当客户端发送请求后，服务器才会发送响应（也有可能不发送响应），并且请求响应是一个节点对一个节点的，也就是说，其它客户端收不到这个响应。
 
-请求和响应可能会带有负载数据，但也可能不带有，具体情况有服务的类型定义。
+请求和响应可能会带有负载数据，但也可能不带有，由具体的服务类型定义。
 
 服务是通过`.srv`文件描述并定义的，统一保存在ROS包中的`srv/`目录中。
 
@@ -249,4 +249,16 @@ int32[] sequence
 
 第二个回调函数是`set parameter`回调函数，通过节点API函数`add_on_set_parameters_callback`设置。这个回调函数接受包含正在改变的参数的列表的不可变的引用，返回`rcl_interfaces/msg/SetParametersResult`。此回调的主要目的是使用户能够检查即将发生的参数更改并明确拒绝更改。最重要的是，这个回调函数不能有任何副作用，因为可能会调用这个回调函数多次。例如，如果单个回调要对其所在的类进行更改，则它可能与实际参数不同步。
 
-第三个回调函数是`post set parameter`回调函数，
+第三个回调函数是`post set parameter`回调函数，通过节点API函数`add_post_set_parameters_callback`设置。这个回调函数接受包含已经改变的参数的列表的不可变的引用，没有返回值。此回调的主要目的是使用户能够对已成功接受的参数的更改做出反应。
+
+#### 与参数交互
+
+节点可以通过节点API进行参数的修改。而对于外部进程，可以通过有关参数的服务与参数交互，在节点初始化会默认创建这些服务。
+
+* `/node_name/describe_parameters`:服务的类型为`rcl_interfaces/srv/DescribeParameters`,传递一个包含参数名的列表，返回一个对应的参数描述符的列表。
+* `/node_name/get_parameter_types`:服务的类型为`rcl_interfaces/srv/GetParameterTypes`,传递一个包含参数名的列表，返回一个对应的参数类型的列表。
+* `/node_name/get_parameters`:服务的类型为`rcl_interfaces/srv/GetParameters`,传递一个包含参数名的列表，返回一个对应的参数值的列表。
+* `/node_name/list_parameters`:服务的类型为`rcl_interfaces/srv/ListParameters`,传递一个可选的包含参数前缀的列表，返回一个满足参数前缀的参数的列表。
+* `/node_name/set_parameters`:服务的类型为`rcl_interfaces/srv/SetParameters`,传递一个包含参数名与参数值的列表，返回一个设置参数的结果列表（参数设置可能失败）。
+* `/node_name/set_parameters_atomically`：服务的类型为`rcl_interfaces/srv/SetParametersAtomically`,传递一个包含参数名与参数值的列表，返回一个设置参数的结果（全部成功才算成功）。
+
