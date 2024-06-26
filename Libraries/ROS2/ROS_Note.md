@@ -261,3 +261,11 @@ int32[] sequence
 * `/node_name/list_parameters`:服务的类型为`rcl_interfaces/srv/ListParameters`,传递一个可选的包含参数前缀的列表，返回一个满足参数前缀的参数的列表。
 * `/node_name/set_parameters`:服务的类型为`rcl_interfaces/srv/SetParameters`,传递一个包含参数名与参数值的列表，返回一个设置参数的结果列表（参数设置可能失败）。
 * `/node_name/set_parameters_atomically`：服务的类型为`rcl_interfaces/srv/SetParametersAtomically`,传递一个包含参数名与参数值的列表，返回一个设置参数的结果（全部成功才算成功）。
+
+### Client libraries
+
+客户端库(Client libraries)是ROS系统的API库，用户可以使用客户端库与ROS2其它部分，比如节点，主题，服务等交互。客户端库支持多种开发语言，常见的两种是`C++`和`Python`.且不同开发语言开发的内容可以相互通信。
+
+`C++`客户端库的名称是`rclcpp`包，`Python`客户端库名称是`rclpy`包，它们都是封装了底层的`rcl`库。
+
+底层`rcl`库为所有开发语言提供了一致性，提高了通用性。
