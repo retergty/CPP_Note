@@ -82,3 +82,34 @@ back-attr(optional) trailing-type(optional) requires(optional) { body }
   `parms`就是Lambda表达式中声明的`parms`,如果没有则为空。
 
   `ret`的类型就是Lambda表达式中声明的`trailing-type`,如果没有声明，则自动推断返回值类型。
+
+  除非使用`mutable`修饰`Lambda`表达式，否则该函数都会是`const`的，值捕获的变量不能在函数体内修改。`operator()`不会是`virtual`的，不能有`volatile`修饰符。
+
+  `operator()`如果满足了`constexpr`函数的要求，那么`operator()`都是`constexpr`的。
+
+  如果在定义`Lambda`表达式时，参数使用了`auto`,那么就会依照顺序添加在`template-params`.
+
+  ```CPP
+  // generic lambda, operator() is a template with two parameters
+  auto glambda = [](auto a, auto&& b) { return a < b; };
+  bool b = glambda(3, 3.14); // OK
+  
+  // generic lambda, operator() is a template with one parameter
+  auto vglambda = [](auto printer)
+  {
+      return [=](auto&&... ts) // generic lambda, ts is a parameter pack
+      { 
+          printer(std::forward<decltype(ts)>(ts)...);
+          // nullary lambda (takes no parameters):
+          return [=] { printer(ts...); };
+      };
+  };
+  
+  auto p = vglambda([](auto v1, auto v2, auto v3)
+  {
+      std::cout << v1 << v2 << v3;
+  });
+  
+  auto q = p(1, 'a', 3.14); // outputs 1a3.14
+  q();                      // outputs 1a3.14
+  ```
