@@ -269,3 +269,18 @@ int32[] sequence
 `C++`客户端库的名称是`rclcpp`包，`Python`客户端库名称是`rclpy`包，它们都是封装了底层的`rcl`库。
 
 底层`rcl`库为所有开发语言提供了一致性，提高了通用性。
+
+### workspace
+
+工作区(workspace)是包含ROS2包的目录。在使用ROS2前，需要`source`ROS2在`install`目录下生成的`setup.bash`,会设置对应的环境变量使得ROS2包可用。
+
+通常设置工作区是使用叫做覆盖`overlay`的方法的，把新的工作区覆盖在底层(underlay)工作区上。在新的工作区上添加包不会修改已经存在的底层工作区。底层工作区必须包含了新工作区的所有包的依赖，新的工作区的包会覆盖掉相同的底层工作区的包。可以有多层覆盖，每个工作区相互堆叠。
+
+* 可以修改覆盖层的工作区内容而不影响底层工作区，底层工作区也不需要重新编译。
+* 覆盖层工作区优先于底层工作区
+
+### `setup.bash` vs `local_setup.bash`
+
+当使用覆盖方法时，`setup.bash`会`source`覆盖工作区与底层工作区，但是`local_setup.bash`只会`source`覆盖工作区，`setup.bash`就好像是从底层工作区开始一步步地`source`对应的`locak_setup.bash`.
+
+推荐是在主`ROS2`安装处使用`setup.bash`,覆盖工作区使用`local_setup.bash`.
