@@ -284,3 +284,75 @@ int32[] sequence
 当使用覆盖方法时，`setup.bash`会`source`覆盖工作区与底层工作区，但是`local_setup.bash`只会`source`覆盖工作区，`setup.bash`就好像是从底层工作区开始一步步地`source`对应的`locak_setup.bash`.
 
 推荐是在主`ROS2`安装处使用`setup.bash`,覆盖工作区使用`local_setup.bash`.
+
+### package
+
+ROS2包(package)是ROS2代码的组织单元。如果想要把代码安装或者分享给别人，就需要把代码打包成一个包。
+
+在ROS2中，包的创建是使用`ament`工具，而包的构建则是使用`colcon`.官方支持使用`CMake`或`Python`创建的包。
+
+对于`CMake`创建的包，在包的目录里至少要包含
+
+* `CMakeLists.txt`，用于描述如何构建代码的文件。
+* `include/<package_name>`，用于存放包的公共头文件的目录。
+* `package.xml`，用于存储包的元信息的文件。
+* `src`，用于存放包的源文件的目录。
+
+比如对于名为`my_package`的包，至少要包含
+
+```tree
+my_package/
+     CMakeLists.txt
+     include/my_package/
+     package.xml
+     src/
+```
+
+对于`Python`创建的包，在包的目录里至少要包含
+
+* `package.xml`,用于存储包的元信息的文件。
+* `resource/<package_name>`,包的标记文件。
+* `setup.cfg`用于当包执行时。
+* `setup.py`包含如何安装包的信息。
+* `<package_name>`用于ROS2工具发现包的目录，包含`__init__.py`
+
+比如对于名为`my_package`的包，至少要包含
+
+```tree
+my_package/
+      package.xml
+      resource/my_package
+      setup.cfg
+      setup.py
+      my_package/
+```
+
+### package and workspace
+
+一个简单的工作区可以包含任意多的包，分别在其各自的文件夹里。可以在一个工作区里有不同的构建类型的相同的包。但是包之间不能嵌套。
+
+最佳实践方法是创建一个`src`文件夹，并把所有的包放置于其中，这个方法保证了顶层工作区的干净。
+
+```tree
+workspace_folder/
+    src/
+      cpp_package_1/
+          CMakeLists.txt
+          include/cpp_package_1/
+          package.xml
+          src/
+
+      py_package_1/
+          package.xml
+          resource/py_package_1
+          setup.cfg
+          setup.py
+          py_package_1/
+      ...
+      cpp_package_n/
+          CMakeLists.txt
+          include/cpp_package_n/
+          package.xml
+          src/
+```
+

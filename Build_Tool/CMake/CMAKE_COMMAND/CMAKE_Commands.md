@@ -28,6 +28,8 @@ CMake命令大全
 
 #### [`set_property()`](set_property.md)
 
+#### [`install()`](install.md)
+
 ### 用于CMake语法的命令
 
 #### [`cmake_parse_arguments()`](cmake_parse_arguments.md)
@@ -105,3 +107,4 @@ CMake命令大全
 ### [`ExternalProject`](Module/ExternalProject.md)
 
 ### [`FetchContent`](Module/FetchContent.md)
+

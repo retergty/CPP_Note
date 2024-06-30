@@ -95,3 +95,5 @@ CMake 变量大全
 ### 用于控制CMake命令的变量
 
 #### [`CMAKE_MODULE_PATH`](CMAKE_MODULE_PATH.md)
+
+#### [`CMAKE_INSTALL_PREFIX`](CMAKE_INSTALL_PREFIX.md)
