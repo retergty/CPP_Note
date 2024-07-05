@@ -30,6 +30,8 @@ CMake命令大全
 
 #### [`install()`](install.md)
 
+#### [`find_package()`](find_package.md)
+
 ### 用于CMake语法的命令
 
 #### [`cmake_parse_arguments()`](cmake_parse_arguments.md)
