@@ -356,3 +356,14 @@ workspace_folder/
           src/
 ```
 
+### Build Tool
+
+这是用于控制一个单独的包的编译和测试的工具。通常在`ROS2`中使用`CMake`作为`C++`的构建工具。使用`setuptools`作为`Python`的构建工具。
+
+### Build Helper
+
+这是与构建工具挂钩的辅助函数，以提高开发人员的体验。`ROS 2`软件包通常依赖于`ament`系列软件包来实现此目的.
+
+#### Meta-build tool
+
+这是一个软件，它知道如何对一组包进行拓扑排序，并以正确的依赖顺序构建或测试。在`ROS2`中使用`colcon`作为构建工具。
