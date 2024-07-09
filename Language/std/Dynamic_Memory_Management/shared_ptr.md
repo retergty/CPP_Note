@@ -266,11 +266,60 @@ template< class T > class shared_ptr;
 
 显然，共享一个对象所有权的`shared_ptr`都指向同一块控制块。标准库保证访问控制块的操作是线程安全的。
 
+当使用原始指针构造或初始化`shared_ptr`时，会创建一个新的控制块。为了确保对象仅由一个共享控制块管理，对对象的任何额外的`shared_ptr`实例必须通过复制已经存在的指向该对象的`shared_ptr`来产生.
+
 当一个`shared_ptr`使用`std::make_shared`或`std::allocate_shared`创建时,控制块和管理对象的内存分配一次完成，并且管理对象就地在控制块中构建。而当`shared_ptr`使用`shared_ptr`的构造函数创建时，管理对象和控制块的内存就不会在同一地方，那么控制块只能存储指向管理对象的指针。
 
 `shared_ptr`的析构函数减少使用计数，如果使用计数为零，控制块会调用管理对象的析构函数。但是控制块只有在`weak_ptr`计数为零时，自身才会析构，以保证`weak_ptr`的正确运行。
 
 ## 常见问题
+
+### 同一个裸指针初始化多个`shared_ptr`
+
+从一个原始指针实例化多个`shared_ptr`是一种严重后果的编程失误.
+
+```CPP
+void bad_run() {
+ auto p{new int(12)};   
+ std::shared_ptr<int> sp1{p};
+ std::shared_ptr<int> sp2{p}; //! 未定义行为
+}
+
+auto sp1 = std::make_shared<int>();
+std::shared_ptr<int> sp2{sp1.get()}; // ! 未定义行为
+```
+
+有些情况下，`shared_ptr`托管的对象需要获得一个指向自己的`shared_ptr`。但首先，像下面这样尝试使用`this`指针创建`shared_ptr`不会起作用
+
+```CPP
+struct Foo {
+ std::shared_ptr<Foo> getSelfPtr() {
+  return std::shared_ptr<Foo>(this); 
+ }
+ //...
+};
+ 
+void run() {
+ auto sp1 = std::make_shared<Foo>();
+ auto sp2 = sp1->getSelfPtr(); //!! 未定义行为
+ /*sp1 和 sp2 有两个不同的控制块 管理相同的 Foo*/
+}
+```
+
+此时可以使用标准库中的`std::enable_shared_from_this`.
+
+### `shared_ptr`不能出现在被管理对象内
+
+`shared_ptr`不能出现在被管理对象内，对象内的`shared_ptr`不能指向其自身。
+
+```CPP
+class Foo {
+ std::shared_ptr<Foo> Fp;
+ //other members
+ }
+```
+
+按照`C++`析构函数流程，先进行`Fp`的析构，而`Fp`的析构又会引起分配给`Foo`的内存释放，当时此时`Foo`其余成员的析构还没有结束，这就带来了严重的程序错误。
 
 ### 线程安全
 

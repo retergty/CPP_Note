@@ -30,6 +30,18 @@ template< class T > class weak_ptr;
 
 * [weak_ptr](https://en.cppreference.com/w/cpp/memory/weak_ptr/weak_ptr)
 
+  ```CPP
+  constexpr weak_ptr() noexcept;
+  weak_ptr( const weak_ptr& r ) noexcept;
+  template< class Y >
+  weak_ptr( const weak_ptr<Y>& r ) noexcept;
+  template< class Y >
+  weak_ptr( const std::shared_ptr<Y>& r ) noexcept;
+  weak_ptr( weak_ptr&& r ) noexcept;
+  template< class Y >
+  weak_ptr( weak_ptr<Y>&& r ) noexcept;
+  ```
+
 * [operator=](https://en.cppreference.com/w/cpp/memory/weak_ptr/operator%3D)
 
   ```CPP
