@@ -108,3 +108,22 @@ foreach(test_target IN LISTS test_targets)
   add_dependencies(${test_target} clear_${test_target}_gcda)
 endforeach()
 ```
+
+## 在VSCODE中配置CMake工程
+
+在`c_cpp_properties.json`中添加
+
+```json
+{
+    "configurations": [
+        {
+            "name": "CMake",
+            "compileCommands": "${config:cmake.buildDirectory}/compile_commands.json",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
+```

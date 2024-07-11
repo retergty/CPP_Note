@@ -364,6 +364,225 @@ workspace_folder/
 
 这是与构建工具挂钩的辅助函数，以提高开发人员的体验。`ROS 2`软件包通常依赖于`ament`系列软件包来实现此目的.
 
-#### Meta-build tool
+### Meta-build tool
 
 这是一个软件，它知道如何对一组包进行拓扑排序，并以正确的依赖顺序构建或测试。在`ROS2`中使用`colcon`作为构建工具。
+
+### 节点名称空间
+
+节点名称空间不是`C++`名称空间，是为了防止各个包的节点名称产生冲突而引入的概念，通过设置节点名称空间，
+
+### Quality of Service settings
+
+参考文档
+
+* [Quality of Service settings](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Quality-of-Service-Settings.html)
+
+`ROS2`提供了丰富的服务质量`QoS`策略用于调整节点间的通信。通过正确地设置服务质量策略，`ROS2`可以如同`TCP`连接一样可靠或者是如同`UDP`连接一样尽力而为，在这两种状态间还有很多中间状态取舍。不同于`ROS1`只提供`TCP`连接，`ROS2`利用灵活的底层`DDS`传输性，在特定环境下，使用尽力而为的传输。
+
+一系列的`QoS`策略(policies)构成了一个`QoS`配置文件(profile),考虑到为给定场景选择正确的`QoS`策略的复杂性，`ROS2`为常见用例（例如传感器数据）提供了一组预定义的`QoS`配置文件。同时，开发人员也可以灵活地控制`QoS`配置文件。
+
+`QoS`配置文件可以用于发布者(publishers),订阅(subscriptions),服务的服务端(servers)与用户端(clients).`QoS`配置文件可以独自应用在上述实体的每个实例中，但是不同的配置文件可能不兼容，从而阻止消息的传播。
+
+#### QoS policies
+
+一个基础的QoS配置文件包含以下内容
+
+* `History`
+  * `Keep last`:只保留至多`N`个历史记录，可通过队列深度进行配置.
+  * `Keep all`:保留所有历史记录，最大值取决于中间件的实现。
+* `Depth`
+  * `Queue size`:队列大小，只有在选择了`Keep last`时才有效。
+* `Reliability`
+  * `Best effort`:尽力而为，尝试交付消息，但如果网络不稳定，可能会丢失消息。
+  * `Reliable`:保证消息的交付，可能会重复发送数次，直至成功。
+* `Durability`是否要将历史资料提供给`late-joiner`
+  * `Transient local`:本地保持，发布者负责保存晚加入(late-joining)的订阅者的消息。
+  * `Volatile`:发布者不会尝试保存消息。
+* `Deadline`
+  * `Duration`:预计的两个消息发送到主题的最大时间间隔
+* `Lifespan`
+  * `Duration`:消息发布和接收之间的最长时间（消息不被视为陈旧或过期）.过期的消息会被悄悄丢弃，并且实际上永远不会被接收。
+* `Liveliness`
+  * `Automatic`:当任何一个发布者发布消息时，系统将认为该节点的所有发布者在另一个“租赁期限”(lease duration)内都处于活动状态。
+  * `Manual by topic`:如果系统手动断言`publisher`仍处于活动`active`状态（通过调用`publisher`的API），则系统将认为发布者在另一个“租赁期限”内处于活动状态。
+* `Lease Duration`
+  * `Duration`:发布者须在这个最大的时间间隔内指明它为`active`，否则系统认为这个发布者已经失去了活力`Liveliness`.失去活力可能意味着失败.
+
+#### 预定义的一系列QoS profiles
+
+`QoS`配置文件允许开发者专注于应用而不是担心每个`QoS`设置是否生效。从而提供了一个一系列预定义的配置文件。
+
+* 用于发布者与订阅的默认设置
+  默认设置下，`ROS2`的发布者与订阅`Keep last`10个历史记录，`Reliable`,`Volatile`,对于`Liveliness`,`Deadline`,`lifespan`,`lease durations`是系统默认值，
+* 用于`Services`的设置
+  和发布者与订阅的默认设置一样，是`Reliable`的。服务使用`volatile`是合理的，否则重启的服务端可能会受到过时的信息。虽然客户端可以避免收到多个响应，但服务器无法避免收到过时请求的副作用。
+* 用于传感器数据`Sensor data`的设置。
+  对于传感器，发送的速度很关键。也就是说，开发者通常是需要最新的消息，并可以容忍丢失一些数据。所有使用`best effort`与小的队列大小。
+* 用于`Parameters`的设置
+  `Parameters`在`ROS2`中是基于服务的，和服务具有相似的配置。不同的是它有更深的队列深度，所以当客户端某时刻无法访问服务端时，它的`request`更难丢失。
+* 系统默认设置
+  对所有策略使用`RMW`实现的默认值。
+
+* [默认配置文件](https://github.com/ros2/rmw/blob/jazzy/rmw/include/rmw/qos_profiles.h)
+
+#### QoS兼容性
+
+本节涉及发布者和订阅者，但内容以相同的方式适用于服务服务器和客户端。
+
+`QoS`可以独立地给发布者和订阅者配置。仅当发布者和订阅者具有兼容的`QoS`配置文件时，才会在发布者和订阅者之间建立连接。
+
+`QoS`的兼容性通过`Request vs Offered`请求与提供的模型描述。订阅请求的`QoS`配置文件是其愿意接受的“最低质量”，而发布者提供的`QoS`配置文件是其能够提供的“最高质量”。只有在请求的每个策略都不比提供的相应策略要更严格时才能建立连接。多个订阅可以同时连接到单个发布者，即使它们请求的`QoS`配置文件不同。一对发布者与订阅者的兼容性不会影响其它部分的兼容性判断。
+
+参考文档显示了各个策略的组合与对应的兼容性与结果。
+
+主要关注的是`durability`这个策略，它决定了新加入到这个主题的节点是否会获取到这个主题的旧信息。
+
+#### QoS事件
+
+一些`QoS`策略会提供可能的事件。开发者可以给每个发布者与订阅者设置这些事件发生时的回调函数，并以他们认为合适的方式处理它们，类似于处理在主题上收到的消息的方式。
+
+开发者可以收到有关发布者的`QoS`事件如下:
+
+* `Offered deadline missed`
+  提供方的`Deadline`超时，发布者尚未在`QoS Deadline`策略规定的预期持续时间内发布消息。
+* `Liveliness lost`
+  失去活力，发布者未能在`lease durations`时间内表明其活跃度。
+* `Offered incompatible QoS`
+  提供的`QoS`不兼容，发布者在相同的主题上遇到了一个需求的`QoS`等级比其要高的订阅者，导致无法在两者间建立连接。
+
+开发者可以收到有关订阅者的`QoS`事件如下:
+
+* `Requested deadline missed`
+  需求方的`Deadline`超时，订阅在`QoS Deadline`策略规定的预期持续时间内未收到消息。
+* `Liveliness changed`
+  活力改变，订阅注意到所订阅主题的一个或多个发布者未能在`lease durations`期限内表明其活跃度。
+* `Requested incompatible QoS`
+  需求的`QoS`不兼容，订阅者在相同的主题上遇到了一个提供`QoS`等级比起要低的发布者，导致无法在两者间建立连接。
+
+#### 匹配事件
+
+除了上述提到的事件以外，当任何发布者和订阅者间建立连接或者断开连接时，也会产生匹配事件(Matched events).开发者可以提供回调函数，在事件发生时运行并以合适方式处理，类似于处理在主题上收到的消息的方式。
+
+开发者可以收到有关发布者的事件如下：
+
+* `publisher`
+  这个事件发生在当发布者发现了同一主题内的订阅者且具有兼容的`QoS`配置，或者是与已经建立连接的订阅者断开连接。
+
+开发者可以收到有关订阅者的事件如下：
+
+* `subscription`
+  这个事件发生在当订阅者发现了同一主题内的发布者且具有兼容的`QoS`配置，或者是与已经建立连接的发布者断开连接。
+
+* [事件实例](https://github.com/ros2/demos/blob/jazzy/demo_nodes_cpp/src/events/matched_event_detect.cpp)
+
+### Executors
+
+参考文档
+
+* [Executors](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Executors.html)
+
+`ROS 2`中的执行管理由`Executors`处理.一个执行器使用一个或者多个线程，在传入的消息和事件上调用订阅、计时器、服务的服务端，动作的服务端的回调函数。执行器由一个`Executor`类实现，提供了对执行过程更多的控制，可以显式创建这个类，`ROS2`也提供了简便的函数来隐式创建这个类。
+
+#### 简单用法
+
+最简单地使用执行器的方法便是调用公有函数`rclcpp::spin(..)`.
+
+```CPP
+int main(int argc, char* argv[])
+{
+   // Some initialization.
+   rclcpp::init(argc, argv);
+   ...
+
+   // Instantiate a node.
+   rclcpp::Node::SharedPtr node = ...
+
+   // Run the executor.
+   rclcpp::spin(node);
+
+   // Shutdown and exit.
+   ...
+   return 0;
+}
+```
+
+`rclcpp::spin(node);`隐式地创建一个单线程执行器并自旋。
+
+```CPP
+rclcpp::executors::SingleThreadedExecutor executor;
+executor.add_node(node);
+executor.spin();
+```
+
+通过调用`executor.spin();`,当前线程开始查询`rcl`和中间件层以获取传入消息和其他事件，直到节点关闭。为了不影响中间件的`QoS`设置，传入消息的不会存储在客户端库层的队列中，而是保留在中间件中，直到由回调函数进行处理.一个等待队列(wait set)用于通知执行器中间件层上的可用消息，具体实现是一个标志集合。等待队列还可以用来判断超时情况。
+
+![executor](Picture/executors_basic_principle.png)
+
+#### 执行器类型
+
+目前有三种执行器类型。
+
+![executor_type](Picture/executor_type.png)
+
+多线程执行器(Multi-Threaded Executor)会创建可配置的数量的多个线程，允许多个消息或者事件并行处理。静态单线程执行器(Static Single-Threaded Executor)优化了执行器扫描订阅，定时器，服务的服务端，动作的服务端的节点结构的运行时时间开销，它只会在`add_node`时扫描一次这些内容，其它的两个执行器类型都会周期性的搜索这些结构。也就是说静态单线程执行器无法在加入节点后发现新设置的订阅，定时器这些结构，必须在加入节点前设置好所有的结构。
+
+三种执行器类型都可以添加复数节点，只需要多次调用`add_node(..)`即可。
+
+```CPP
+rclcpp::Node::SharedPtr node1 = ...
+rclcpp::Node::SharedPtr node2 = ...
+rclcpp::Node::SharedPtr node3 = ...
+
+rclcpp::executors::StaticSingleThreadedExecutor executor;
+executor.add_node(node1);
+executor.add_node(node2);
+executor.add_node(node3);
+executor.spin();
+```
+
+在上述的代码中，一个静态单线程执行器用于三个节点。而在多线程执行器中，实际的并行化取决于回调函数组(Callback groups)。
+
+#### 回调函数组Callback groups
+
+`ROS2`把节点的回调函数整合成一个组。在`rclcpp`中，回调函数组可以通过`create_callback_group`创建，回调函数组必须在节点的整个执行过程中存储（例如作为类成员），否则执行器将无法触发回调。然后，可以在创建订阅、计时器等时指定此回调组。
+
+```CPP
+my_callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+rclcpp::SubscriptionOptions options;
+options.callback_group = my_callback_group;
+
+my_subscription = create_subscription<Int32>("/topic", rclcpp::SensorDataQoS(),
+                                             callback, options);
+```
+
+上面的代码片段生成了一个回调函数组，并把订阅的回调函数放在了这个回调函数组中。
+
+所有的订阅者，定时器等，如果在创建时没有指定所在的回调函数组，则会分配到默认回调函数组(default callback group).默认回调函数组可以通过`NodeBaseInterface::get_default_callback_group()`查询。
+
+有两种类型的回调组，必须在实例化时指定类型：
+
+* 互斥(Mutually exclusive):这个组的回调函数不能并行执行。
+* 可重入(Reentrant):这个组的回调函数可以并行执行。
+
+不同回调函数组的回调函数可能会并行执行。多线程执行器使用线程池尽可能多的并行执行回调函数。
+
+`Executor`类也有成员函数`add_callback_group(..)`,将回调函数组添加给这个类。通过使用底层的操作系统调度器可以配置线程，使得特定线程优先执行。比如控制回路的订阅与定时器可以优先于其它订阅或定时器执行。
+
+#### 调用语义Scheduling semantics
+
+如果回调的处理时间短于消息和事件发生的时间，`Executor`基本上按照`FIFO`顺序处理它们。但是，如果某些回调的处理时间较长，消息和事件将在堆栈的较低层排队.等待队列只会给执行器提供极为有限的有关这些排队信息。具体来说，它仅报告特定的主题是否有消息。执行器使用此信息以循环方式处理消息（包括服务和操作），但不是按照 `FIFO`顺序。
+
+![Scheduling semantics](Picture/executors_scheduling_semantics.png)
+
+#### 缺陷
+
+这个执行器具有一定的缺陷，使其可能无法在实时应用中使用。
+
+* 复杂且混杂的调用语义。无法进行确切的时间分析
+* 回调函数可能遇到优先级反转事件，高的优先级的回调函数会被低优先级的回调函数阻塞。
+* 无法直接控制回调函数处理顺序
+* 没有内置的用于特定主题的控制
+
+此外，执行器在`CPU`和内存使用方面的开销相当大.使用静态单线程执行器可以显著降低这方面的开销，但是也可能还是不足以用于特定应用。

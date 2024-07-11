@@ -12,6 +12,16 @@
 
 ```CMake
 find_package(rclcpp REQUIRED)
+
+ament_target_dependencies(targetName rclcpp)
+```
+
+注意需要把可执行文件或库文件安装到`install`
+
+```CMake
+install(TARGETS
+  targetName
+  DESTINATION lib/${PROJECT_NAME})
 ```
 
 在`package.xml`中添加
@@ -25,6 +35,3 @@ find_package(rclcpp REQUIRED)
 ```CPP
 #include <rclcpp/rclcpp.hpp>
 ```
-
-## Node
-
