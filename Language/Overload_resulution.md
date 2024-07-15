@@ -2,6 +2,11 @@
 
 函数重载决议的关键就是寻找最匹配的函数，也就是最具体的函数，如果两个函数都不比对方更具体，则重载决议失败。
 
+参考文档
+
+* [Overload resolution](https://en.cppreference.com/w/cpp/language/overload_resolution)
+* [洞悉C++函数重载决议](https://zhuanlan.zhihu.com/p/561977606)
+
 ## 例子
 
 ### 匹配左值和右值
