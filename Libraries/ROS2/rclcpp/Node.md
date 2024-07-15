@@ -83,7 +83,7 @@ std::shared_ptr<rclcpp::GenericPublisher> create_generic_publisher(const std::st
 
 ```CPP
 template<typename MessageT, typename CallbackT, typename AllocatorT = std::allocator<void>, typename SubscriptionT = rclcpp::Subscription<MessageT, AllocatorT>, typename MessageMemoryStrategyT = typename SubscriptionT::MessageMemoryStrategyType>
-std::shared_ptr<SubscriptionT> create_subscription(const std::string &topic_name, const rclcpp::QoS &qos, CallbackT &&callback, const SubscriptionOptionsWithAllocator<AllocatorT> &options = SubscriptionOptionsWithAllocator<AllocatorT>(), typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (MessageMemoryStrategyT::create_default()))
+std::shared_ptr<SubscriptionT> create_subscription(const std::string &topic_name, const rclcpp::QoS &qos, CallbackT &&callback, const SubscriptionOptionsWithAllocator<AllocatorT> &options = SubscriptionOptionsWithAllocator<AllocatorT>(), typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (MessageMemoryStrategyT::create_default()))
 ```
 
 创建并返回订阅
@@ -619,3 +619,18 @@ callback_shared_ptr.reset()
 
 ### 子节点
 
+```CPP
+RCLCPP_PUBLIC 
+rclcpp::Node::SharedPtr create_sub_node (const std::string &sub_namespace)
+```
+
+创建子节点(sub-node)，在子节点上创建的结构会扩展名称空间
+
+子节点（从属节点的缩写）是此类的一个实例，它使用此类的现有实例创建，具有附加的子命名空间.
+
+默认情况下，当节点被创建时，它没有与之关联的子节点于子名称空间。可以使用该函数创建子节点。
+
+子节点也可以创建子节点，这种情况下，新的子节点名称空间在原有的子名称空间上继续拓展。
+
+* `sub_namespace`子节点的子名称空间，必须是相对的，以`/`的绝对名称空间会抛出异常。
+* 返回值`rclcpp::Node::SharedPtr`指向子节点的共享指针。
