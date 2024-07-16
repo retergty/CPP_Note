@@ -251,3 +251,5 @@ colcon info [PKG_NAME]
 由于软件包可以直接使用`CMake`构建，只需要构建前`source`底层工作区，这意味着在CMake中发现依赖包后，便已经足以构建这个软件包了。CMake发现的软件包大致分为两种，一种是提供了方便的CMake函数，另一种是链接的库文件。
 
 但是，随着软件包的数量变多，软件包之间的依赖变得复杂，便需要一个自动化构建软件包，读取`package.xml`自动解决依赖的工具，这个便是`colcon`.
+
+对于`colcon`的包会自动生成`<packageName>Config.cmake`用于发现包。如果使用`colcon`构建，会自动寻找到`install`安装的头文件，之后如果使用`CMake`构建，也会自动寻找到这个`<packageName>Config.cmake`从而自动寻找到`install`安装的头文件。
