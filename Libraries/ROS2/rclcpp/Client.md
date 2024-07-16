@@ -115,3 +115,23 @@ using CallbackWithRequestType = std::function<void(SharedFutureWithRequest)>
 ```
 
 接受`shared_future`的回调函数。自动处理接收到服务端应答时的操作。
+
+### 检查服务器是否可用
+
+```CPP
+bool service_is_ready() const
+```
+
+服务是否准备完成。
+
+* 返回值`bool`如果为`true`意味着服务准备就绪，否则为`false`
+
+```CPP
+template<typename RepT = int64_t, typename RatioT = std::milli>
+inline bool wait_for_service(std::chrono::duration<RepT, RatioT> timeout = std::chrono::duration<RepT, RatioT>(-1))
+```
+
+等待服务准备完成
+
+* `timeout`等待时间，`-1`意味着一直等待
+* 返回值`bool`如果为`true`意味着服务准备就绪，为`false`意味着等待超时。

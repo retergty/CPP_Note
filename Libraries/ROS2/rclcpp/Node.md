@@ -46,6 +46,14 @@ const char *get_fully_qualified_name() const // 获取节点的完全名称，�
 RCLCPP_PUBLIC std::vector< std::string > get_node_names () const //获取所有可用节点的完全名称，包括其所在的所有名称空间。
 ```
 
+#### 获取节点信息
+
+```CPP
+rclcpp::Logger get_logger() const
+```
+
+获取节点`logger`
+
 ### 主题
 
 #### 创建发布者
