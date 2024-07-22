@@ -4,7 +4,7 @@
 
 参考文档
 
-* [find_package]([void](https://cmake.org/cmake/help/latest/command/find_package.html#id5))
+* [find_package](https://cmake.org/cmake/help/latest/command/find_package.html#id5)
 
 ## 命令格式
 

@@ -117,6 +117,12 @@ cd ~/ros2_jazzy/
 colcon build --symlink-install
 ```
 
+```shell
+colcon build --symlink-install --cmake-args ' -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON' ' -DCMAKE_BUILD_TYPE:STRING=Release'
+```
+
+或者使用`-O3`编译。
+
 ## 设置环境
 
 为了能够使用ROS2的命令，我们必须读取设置文件，或者加入到系统环境变量中。

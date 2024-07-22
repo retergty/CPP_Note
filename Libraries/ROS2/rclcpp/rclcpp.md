@@ -94,7 +94,7 @@ string phone_number
 uint8 phone_type
 ```
 
-在`CMakeLists.txt`中添加,寻找生成包的包,按照`msg`文件生成对应的`hpp`或`h`头文件，同时生成了和包名一样的目标。同时导出了包依赖`rosidl_default_runtime`使得使用这个消息的包不用`find_package(rosidl_default_runtime)`
+在`CMakeLists.txt`中添加,寻找生成包的包,按照`msg`文件生成对应的`hpp`或`h`头文件，同时生成了和包名一样的目标，声明消息中的依赖，同时导出了包依赖`rosidl_default_runtime`使得使用这个消息的包不用`find_package(rosidl_default_runtime)`.
 
 ```CMake
 find_package(rosidl_default_generators REQUIRED)
@@ -103,6 +103,7 @@ set(msg_files
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
+  DEPENDENCIES geometry_msgs 
 )
 ament_export_dependencies(rosidl_default_runtime)
 ```

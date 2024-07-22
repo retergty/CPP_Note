@@ -587,6 +587,39 @@ my_subscription = create_subscription<Int32>("/topic", rclcpp::SensorDataQoS(),
 
 此外，执行器在`CPU`和内存使用方面的开销相当大.使用静态单线程执行器可以显著降低这方面的开销，但是也可能还是不足以用于特定应用。
 
+### LifecycleNode
+
+参考文档
+
+* [lifecycle](https://index.ros.org/p/lifecycle/github-ros2-demos/)
+
+具有生命周期的节点(LifecycleNode)是由`ROS lifecycle`包提供的，这种类型的节点具有一组预定义的状态，表示当前节点的状态，用来指示其它节点此时节点工作是否正常。
+
+主要有两类状态,主要状态`Primary States`与过渡状态`Transition State`.主要状态是持续的(steady),节点可以执行相关任务。过渡状态是短暂的，是主要状态过渡的中间态，中间状态的结果用于指示两个主要状态之间的转换是否被视为成功
+
+主要状态又分为
+
+* 未配置`unconfigured`
+* 不活跃`inactive`
+* 活跃`active`
+* 关闭`shutdown`
+
+过渡状态又可分为
+
+* 配置中`configuring`
+* 启动活跃中`activating`
+* 解除活跃中`deactivating`
+* 清理中`cleaningup`
+* 关闭中`shuttingdown`
+
+转换状态的动作可以是
+
+* 配置`configure`
+* 启动`activate`
+* 停用`deactivate`
+* 清理`cleanup`
+* 关闭`shutdown`
+
 ## 设计哲学
 
 * 所有创建节点新的结构（比如发布者，订阅者）的函数都会返回一个共享指针，这些新的结构只有在这些共享指针有效时才有效。如果离开了共享指针的作用域，则这些结构自动被删除。

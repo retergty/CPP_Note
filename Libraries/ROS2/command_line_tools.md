@@ -38,7 +38,18 @@ ros2 sub-commands
 
 ### launch
 
+```shell
+ros2 launch [-h] [-n] [-d] [-p | -s] [-a]
+                   [--launch-prefix LAUNCH_PREFIX]
+                   [--launch-prefix-filter LAUNCH_PREFIX_FILTER]
+                   package_name [launch_file_name] [launch_arguments ...]
+```
+
 运行或探测启动文件。
+
+* `package_name`包含启动文件的包名
+* `launch_file_name`启动文件名
+* `launch_arguments`传递给启动文件的参数，格式为`<name>:=<value>`重复的参数以最后一个为准。
 
 ### lifecycle
 

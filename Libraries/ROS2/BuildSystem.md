@@ -209,7 +209,13 @@ colcon build [--args]
 常用选项如下。
 
 * `--symlink-install`尽可能使用符号链接，而不是从源目录和构建目录中复制文件。
-* `--cmake-args [* [* …]]`给CMake传递参数。与其他选项匹配的参数必须以空格为前缀，例如`--cmake-args " --help"`.
+* `--cmake-args [* [* …]]`给CMake传递参数。与其他选项匹配的参数必须以空格为前缀，例如`--cmake-args ' --help'`.
+  
+  ```shell
+  colcon build --symlink-install --cmake-args ' -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON' ' -DCMAKE_BUILD_TYPE:STRING=Release'
+  ```
+
+  上述给`CMake`传递了两个参数，输出编译命令与设置构建类型。注意都需要空一格且使用`''`包括传入的参数。
 
 #### list
 
