@@ -153,6 +153,18 @@ string EXAMPLE='bar'
 
 整个过程是匿名性的，这意味着当订阅者从主题接受数据时，它通常不会知道或在意发送数据的具体发布者，这种架构的好处是发布者和订阅者可以随意交换，而不影响系统的其余部分。
 
+#### 主题命名
+
+主题包含两个部分，一个部分是路径,另一个部分名称标记。
+
+一个主题可以是相对路径也可以是绝对路径，相对路径相对于创建它的节点的名称空间，也就是把创建它的节点的名称空间附加相对路径的节点名称上。比如`foo/bar`主题，如果是在`/ping/pong`节点名称空间创建的，那么就会扩展为`/ping/pong/foo/bar`.如果是`/foo/bar`则表示绝对路径，与创建它的节点名称空间无关。
+
+也就是说，对于节点`API`，`create_publisher`传递了相对路径，那么就会使用在它前面扩展节点名称空间，传递了绝对路径，则不会。
+
+如果相对路径以`~`开头，就会使用在它前面扩展节点名称空间与节点名。
+
+在底层通信中间件中，还会在前面加上前缀，以轻松区分ROS主题。比如，一个主题`/foo`，会在`DDS`中翻译为`rt/foo`.
+
 ### Service
 
 服务(Topic)是ROS2抽象通信概念，实现类似于网络服务器般的功能,用于在节点中交换信息。
@@ -377,6 +389,7 @@ workspace_folder/
 参考文档
 
 * [Quality of Service settings](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Quality-of-Service-Settings.html)
+* [Manage Quality of Service Policies in ROS 2](https://www.mathworks.com/help/ros/ug/manage-quality-of-service-policies-in-ros2.html)
 
 `ROS2`提供了丰富的服务质量`QoS`策略用于调整节点间的通信。通过正确地设置服务质量策略，`ROS2`可以如同`TCP`连接一样可靠或者是如同`UDP`连接一样尽力而为，在这两种状态间还有很多中间状态取舍。不同于`ROS1`只提供`TCP`连接，`ROS2`利用灵活的底层`DDS`传输性，在特定环境下，使用尽力而为的传输。
 
@@ -397,8 +410,8 @@ workspace_folder/
   * `Best effort`:尽力而为，尝试交付消息，但如果网络不稳定，可能会丢失消息。
   * `Reliable`:保证消息的交付，可能会重复发送数次，直至成功。
 * `Durability`是否要将历史资料提供给`late-joiner`
-  * `Transient local`:本地保持，发布者负责保存晚加入(late-joining)的订阅者的消息。
-  * `Volatile`:发布者不会尝试保存消息。
+  * `Transient local`:本地保持，对于发布者来说，已经发送的消息会被保持，当晚加入的订阅者(`late-joining`)加入到这个主题时，发布者将保存的消息发送给订阅者（自动发送，由通信中间件保证）。
+  * `Volatile`:发布者不会保存消息。
 * `Deadline`
   * `Duration`:预计的两个消息发送到主题的最大时间间隔
 * `Lifespan`

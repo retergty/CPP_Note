@@ -68,7 +68,7 @@ template< class T > class shared_ptr;
 
   ```CPP
   template< class Y >
-  shared_ptr( const shared_ptr<Y>& r, element_type* ptr ) noexcept;	
+  shared_ptr( const shared_ptr<Y>& r, element_type* ptr ) noexcept;
   template< class Y >
   shared_ptr( shared_ptr<Y>&& r, element_type* ptr ) noexcept;
   ```

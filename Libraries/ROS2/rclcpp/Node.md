@@ -63,7 +63,7 @@ template<typename MessageT, typename AllocatorT = std::allocator<void>, typename
 std::shared_ptr<PublisherT> create_publisher(const std::string &topic_name, const rclcpp::QoS &qos, const PublisherOptionsWithAllocator<AllocatorT> &options = PublisherOptionsWithAllocator<AllocatorT>())
 ```
 
-创建并返回`Publisher`.
+创建并返回`Publisher`.如果`topic_name`是相对路径名，那么给它附上当前节点的名称空间。如果`topic_name`以`~`开头，附上当前节点的名称空间与当前节点名。
 
 * `MessageT`是发布的消息类型
 * `AllocatorT`是分配内存的分配器
@@ -639,6 +639,8 @@ rclcpp::Node::SharedPtr create_sub_node (const std::string &sub_namespace)
 默认情况下，当节点被创建时，它没有与之关联的子节点于子名称空间。可以使用该函数创建子节点。
 
 子节点也可以创建子节点，这种情况下，新的子节点名称空间在原有的子名称空间上继续拓展。
+
+创建子节点其实更像是创建了一个名称空间，子节点的名字和源节点名字相同，只不过在子节点上创造的结构名（如果指定了相对路径）则会附加上额外的子节点名称空间。
 
 * `sub_namespace`子节点的子名称空间，必须是相对的，以`/`的绝对名称空间会抛出异常。
 * 返回值`rclcpp::Node::SharedPtr`指向子节点的共享指针。

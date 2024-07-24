@@ -152,6 +152,57 @@ ros2 run [-h] [--prefix PREFIX] package_name executable_name ...
 
 探测或发布ROS2主题
 
+#### `ros2 topic info`
+
+```shell
+ros2 topic info [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
+                       [--verbose]
+                       topic_name
+
+```
+
+打印特定主题的信息
+
+* `topic_name`是主题名，包含名称空间，比如`/chatter`.
+* `--verbose, -v`打印具体的信息，比如节点名，节点名称空间，主题类型，连接到主题的发布者与接收者的QoS配置。
+
+#### `ros2 topic list`
+
+```shell
+ros2 topic list [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
+                       [-t] [-c] [--include-hidden-topics] [-v]
+
+```
+
+列出可用的主题
+
+* `-c, --count-topics`只显示主题的个数
+* `--include-hidden-topics`考虑隐藏的主题
+* `-v, --verbose`列出具体信息
+
+#### `ros2 topic echo`
+
+```shell
+ros2 topic echo [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
+                       [--qos-profile {unknown,system_default,sensor_data,services_default,parameters,parameter_events,action_status_default}]
+                       [--qos-depth N]
+                       [--qos-history {system_default,keep_last,keep_all,unknown}]
+                       [--qos-reliability {system_default,reliable,best_effort,unknown}]
+                       [--qos-durability {system_default,transient_local,volatile,unknown}]
+                       [--csv] [--field FIELD] [--full-length]
+                       [--truncate-length TRUNCATE_LENGTH] [--no-arr]
+                       [--no-str] [--flow-style] [--lost-messages]
+                       [--no-lost-messages] [--raw] [--filter FILTER_EXPR]
+                       [--once]
+                       topic_name [message_type]
+```
+
+输出主题里的消息
+
+* `topic_name`是主题名，包含名称空间
+* `message_type`是`ROS`消息类型，比如`std_msgs/msg/String`
+* 
+
 ### trace
 
 用于获取 ROS 节点执行信息的跟踪工具（仅在 Linux 上可用）。

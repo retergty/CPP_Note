@@ -63,3 +63,10 @@ inline std::enable_if_t<rclcpp::TypeAdapter<MessageT>::is_specialized::value && 
 inline void publish(const rcl_serialized_message_t &serialized_msg)
 inline void publish(const SerializedMessage &serialized_msg)
 ```
+
+### 获取信息
+
+```CPP
+const char *get_topic_name() const; //返回主题名
+size_t get_queue_size() const； //返回发布者队列大小
+```
