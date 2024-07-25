@@ -200,8 +200,7 @@ ros2 topic echo [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
 输出主题里的消息
 
 * `topic_name`是主题名，包含名称空间
-* `message_type`是`ROS`消息类型，比如`std_msgs/msg/String`
-* 
+* `message_type`是`ROS`消息类型，比如`std_msgs/msg/String
 
 ### trace
 
