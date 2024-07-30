@@ -144,6 +144,44 @@ ros2 run [-h] [--prefix PREFIX] package_name executable_name ...
 
 配置或调用ROS2服务
 
+#### `ros2 service call`
+
+```shell
+ros2 service call [-h] [-r N] service_name service_type [values]
+```
+
+调用`ROS2`服务
+
+* `service_name`服务名，包含名称空间,比如`/add_two_ints`.
+* `service_type`服务类型，比如`std_srvs/srv/Empty`
+* `values`服务的请求中包含的值，以`YAML`格式。
+* `-r N, --rate N`以`N Hz`重复这个命令
+
+#### `ros2 service find`
+
+```shell
+ros2 service find [-h] [-c] [--include-hidden-services] service_type
+```
+
+寻找指定类型的`ROS2`服务
+
+* `service_type`服务的类型,比如`rcl_interfaces/srv/ListParameters`
+* `-c, --count-services`只显示发现服务的数量
+* `--include-hidden-services`考虑隐藏的服务
+
+#### `ros2 service list`
+
+```shell
+ros2 service list [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon] [-t]
+                         [-c] [--include-hidden-services]
+```
+
+输出所有可行的服务
+
+* `-t, --show-types`同时显示服务类型
+* `-c, --count-services`只显示发现的服务数量
+* `--include-hidden-services`考虑隐藏的服务
+
 ### test
 
 运行ROS2启动测试

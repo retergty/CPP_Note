@@ -49,10 +49,16 @@ RCLCPP_PUBLIC std::vector< std::string > get_node_names () const //获取所有�
 #### 获取节点信息
 
 ```CPP
-rclcpp::Logger get_logger() const
+rclcpp::Logger get_logger() const; //获取节点`logger`
+RCLCPP_PUBLIC rclcpp::Clock::SharedPtr get_clock (); //获取指向由节点管理的一个时钟的共享指针
 ```
 
-获取节点`logger`
+#### 获取节点共享指针
+
+```CPP
+RCLCPP_PUBLIC rclcpp::node_interfaces::NodeBaseInterface::SharedPtr get_node_base_interface (); //获取节点基类的共享指针，可以用于传递节点。
+RCLCPP_PUBLIC rclcpp::node_interfaces::NodeTimersInterface::SharedPtr get_node_timers_interface ()； //获取节点时钟的共享指针，用于传递节点时间。
+```
 
 ### 主题
 
