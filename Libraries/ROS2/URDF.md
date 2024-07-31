@@ -234,7 +234,7 @@ URDF（统一机器人描述格式）是一种用于指定`ROS`中机器人的�
 表示`<link>`的碰撞体坐标系的姿态`pose`,相对于`link`源坐标系.
 
 * `xyz`可选项，默认为零，相对坐标`xyz`.
-* `rpy`可选项，默认为零，滚动角`roll angle`，俯仰角`pitch angle`，偏航角`yaw`.按照欧拉角转序`xyz`.
+* `rpy`可选项，默认为零，滚动角`roll angle`，俯仰角`pitch angle`，偏航角`yaw`.使用`extrinsic`旋转，欧拉角转序`xyz`.
 
 #### `<geometry>`
 
@@ -266,7 +266,7 @@ URDF（统一机器人描述格式）是一种用于指定`ROS`中机器人的�
 表示`joint`的本地坐标系的姿态，相对于父`link`的源坐标系。该坐标系也会作为子`link`的源坐标系。
 
 * `xyz`可选项，默认为零，相对坐标`xyz`.
-* `rpy`可选项，默认为零，滚动角`roll angle`，俯仰角`pitch angle`，偏航角`yaw`.按照欧拉角转序`xyz`.
+* `rpy`可选项，默认为零，滚动角`roll angle`，俯仰角`pitch angle`，偏航角`yaw`.使用`extrinsic`旋转，欧拉角转序`xyz`.
 
 ### `<parent>`
 
@@ -472,3 +472,6 @@ URDF（统一机器人描述格式）是一种用于指定`ROS`中机器人的�
 * 使用`name`参数声明两个相似的`link`.
 * 使用`reflect`参数表示坐标系方向。
 * 使用数学计算坐标系偏移。
+
+## xmlns
+

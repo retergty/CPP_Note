@@ -131,7 +131,7 @@ S<int>::N x{2.0, 1};
 显式指定的推导指南的语法就是类名加上尾置返回类型。
 
 ```Text
-explicit-specifier(optional) template-name ( parameter-declaration-clause ) -> simple-template-id ;		
+explicit-specifier(optional) template-name ( parameter-declaration-clause ) -> simple-template-id ;	
 ```
 
 ### 用法
