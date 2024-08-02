@@ -41,7 +41,7 @@ explicit Node(const std::string &node_name, const std::string &namespace_, const
 const char *get_name() const //获取节点名，不包括名称空间
 const char *get_namespace() const  //获取节点主名称空间，不包括子名称空间
 RCLCPP_PUBLIC const std::string & get_sub_namespace () const //获取节点子名称空间，不包括主名称空间
-RCLCPP_PUBLIC const std::string & get_effective_namespace () const //获取节点名称空间，包括主名称空间和子名称空间。
+RCLCPP_PUBLIC const std::string & get_effective_namespace () const //获取节点名称空间，包括主名称空间和子名称空间，相对路径的结构都会在名字前附加这个
 const char *get_fully_qualified_name() const // 获取节点的完全名称，包括其所在的所有名称空间。
 RCLCPP_PUBLIC std::vector< std::string > get_node_names () const //获取所有可用节点的完全名称，包括其所在的所有名称空间。
 ```

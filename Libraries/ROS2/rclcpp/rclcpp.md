@@ -155,7 +155,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target
 target_link_libraries(publish_address_book "${cpp_typesupport_target}")
 ```
 
-## 导出库文件头文件
+## 导出库文件
 
 `ROS2`会把所有的包安装在`install/<packageName>`中。这也是`CMake`安装目标的路径，为了导出库的公共库文件，必须要设置目标导出头文件目录，并把这些安装到对应位置。
 
@@ -191,9 +191,108 @@ install(
 )
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_libraries(my_library)
 ament_export_dependencies(some_dependency)
 ```
 
 会生成对应的`config`文件，位置相对于`CMAKE_INSTALL_PREFIX`，这是由`colcon`正确设置的。通常是`install/<packageName>/share/<packageName>/cmake`
 
-注意，对于`colcon`的包会自动生成`<packageName>Config.cmake`用于发现包。
+注意，`ament_cmake`会自动生成顶层`<packageName>Config.cmake`用于发现包，并`include`所有的导出配置文件。
+
+* `ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)`便是进行`install(EXPORT)`
+* `ament_export_libraries(my_library)`导出了库，使用这个目标时需要链接的库。
+* `ament_export_dependencies`导出了依赖，使用这个目标时传递的依赖。
+
+## 组合节点
+
+### 修改构建信息
+
+在`package.xml`中添加`rclcpp_components`的依赖。
+
+```xml
+<depend>rclcpp_components</depend>
+```
+
+在`CMakeLists.txt`中查找`rclcpp_components`包。
+
+```CMake
+find_package(rclcpp_components REQUIRED)
+```
+
+把`add_executable`更改为`add_library`，假设原目标为`vincent_driver`,新的组合节点目标为`vincent_driver_component`
+
+```CMake
+add_library(vincent_driver_component src/vincent_driver.cpp)
+```
+
+注意在代码其余部分更新目标名。
+
+```CMake
+rclcpp_components_register_node(
+    vincent_driver_component
+    PLUGIN "palomino::VincentDriver"
+    EXECUTABLE vincent_driver
+)
+```
+
+声明组合节点。`PLUGIN`指的是把节点设置为组件，`palomino`是我们`CPP`代码里这个类所在的名称空间,`VincentDriver`表示要注册为组件的类，必须是`Node`的子类。
+
+```CMake
+ament_export_targets(export_vincent_driver_component)
+install(TARGETS vincent_driver_component
+        EXPORT export_vincent_driver_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+)
+```
+
+同时按照库文件的安装方法，把`install`修改为
+
+```CMake
+ament_export_targets(export_vincent_driver_component)
+install(TARGETS vincent_driver_component
+        EXPORT export_vincent_driver_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+)
+```
+
+### 修改代码
+
+原先的代码为
+
+```CPP
+namespace palomino
+{
+    class VincentDriver : public rclcpp::Node
+    {
+        // ...
+    };
+}
+
+int main(int argc, char * argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<palomino::VincentDriver>());
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+把继承于`Node`的类修改为接受`NodeOptions`参数
+
+```CPP
+VincentDriver(const rclcpp::NodeOptions & options) : Node("vincent_driver", options)
+{
+  // ...
+}
+```
+
+同时，不再有`main`函数了,并使用`RCLCPP_COMPONENTS_REGISTER_NODE`注册组件。
+
+```CPP
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(palomino::VincentDriver)
+```

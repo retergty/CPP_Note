@@ -633,6 +633,12 @@ my_subscription = create_subscription<Int32>("/topic", rclcpp::SensorDataQoS(),
 * 清理`cleanup`
 * 关闭`shutdown`
 
+### Composable Node
+
+普通的节点都是设计用于单独一个进程的，节点间使用进程间通信方法。组合节点(composable node)指的是一组运行在同一进程下的节点，从而可以使用更高效率的进程内通信。
+
+创建组合节点需要特殊的设置方法。
+
 ## 设计哲学
 
 * 所有创建节点新的结构（比如发布者，订阅者）的函数都会返回一个共享指针，这些新的结构只有在这些共享指针有效时才有效。如果离开了共享指针的作用域，则这些结构自动被删除。

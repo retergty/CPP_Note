@@ -28,7 +28,7 @@
 
 `tf2`给管理的坐标系构建了树形结构，且不允许闭环的树。
 
-![tf2 tree](../Picture/turtlesim_frames.png)
+![tf2 tree](Picture/turtlesim_frames.png)
 
 `tf2`树使得`tf2`可以很方便地管理许多坐标系，并在需要获取某一坐标系的时候沿着树回溯，最终获取到当前某一坐标系相对于其它任何坐标系的姿态。
 
@@ -210,7 +210,7 @@ StaticTransformBroadcaster(
 
 定义在`tf2_ros/buffer.h`中
 
-![buffer](../Picture/classtf2__ros_1_1Buffer__inherit__graph.png)
+![buffer](Picture/classtf2__ros_1_1Buffer__inherit__graph.png)
 
 存储已知的坐标系，并提供`ROS`服务，`tf_frames`,它使用包含表示已知坐标系关系的`tf2_msgs::FrameGraph`的响应来响应客户端请求。
 

@@ -148,3 +148,58 @@ install(TARGETS <target>... [EXPORT <export-name>]
   ```
 
   可以方便地指定版本号，如果未指定，则默认是`COMPONENT`.
+
+* `[EXPORT <export-name>]`
+  创建一个名为`<export-name>`的导出目标，这个导出目标`IMPORTED targets`会正确地设置它的使用需求，比如`INTERFACE_INCLUDE_DIRECTORIES`,`INTERFACE_COMPILE_DEFINITIONS`等。
+
+  此时，`CMake`还没有实际`install`这个导出目标，之后需要使用`install(EXPORT)`到处这个目标，比如
+
+  ```CMake
+  install(EXPORT <export-name>
+        FILE <export-name>.cmake
+        NAMESPACE MathFunctions::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/MathFunctions
+  )
+  ```
+
+  就会生成一个`<export-name>.cmake`，包含所有导出目标。
+
+### `install(EXPORT <export-name> [...])`
+
+生成配置文件。
+
+```CMake
+install(EXPORT <export-name> DESTINATION <dir>
+        [NAMESPACE <namespace>] [FILE <name>.cmake]
+        [PERMISSIONS <permission>...]
+        [CONFIGURATIONS <config>...]
+        [CXX_MODULES_DIRECTORY <directory>]
+        [EXPORT_LINK_INTERFACE_LIBRARIES]
+        [COMPONENT <component>]
+        [EXCLUDE_FROM_ALL]
+        [EXPORT_PACKAGE_DEPENDENCIES])
+install(EXPORT_ANDROID_MK <export-name> DESTINATION <dir> [...])
+```
+
+这个命令生成一个`.cmake`文件并安装到对应位置.之后可以通过`find_package`找到这个配置文件并导入，从而导入指定的库文件。
+
+* `EXPORT <export-name>`导出的目标，`<export-name>`就是之前的`install(TARGETS <target> EXPROT <export-name>)`指定的`<export-name>`.
+* `NAMESPACE`表示使用库文件时需要附加的名称空间。
+* `FILE`表示生成的`.cmake`的名字，默认是`<export-name>.cmake`.
+
+生成的文件类似
+
+```CMake
+# Create imported target MathFunctions::MathFunctions
+add_library(MathFunctions::MathFunctions STATIC IMPORTED)
+
+set_target_properties(MathFunctions::MathFunctions PROPERTIES
+  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
+)
+```
+
+我们在使用时便需要
+
+```CMake
+target_link_libraries(myexe PRIVATE MathFunctions::MathFunctions)
+```

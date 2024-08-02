@@ -50,6 +50,7 @@ ros2 launch [-h] [-n] [-d] [-p | -s] [-a]
 * `package_name`包含启动文件的包名
 * `launch_file_name`启动文件名
 * `launch_arguments`传递给启动文件的参数，格式为`<name>:=<value>`重复的参数以最后一个为准。
+* `-s`,`--show-args`,`--show-arguments`显示启动文件的参数。
 
 ### lifecycle
 
