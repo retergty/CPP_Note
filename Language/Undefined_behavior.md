@@ -241,3 +241,32 @@ int bar( unsigned char *p, size_t len ) {
 ### 关闭`strict aliasing rule`
 
 如果程序严重依赖类型双关，可以直接关闭严格别名规则，使用选项`-fno-strict-aliasing`
+
+## 线程终止约定
+
+`C++`假设所有线程最终必须满足其中一项
+
+* 终止(`terminates`)
+* 调用标准库IO函数
+* 进行`volatile`访问
+* 同步操作
+* 原子操作
+
+如果一个线程并不满足如下的选项，那么代码行为未定义。
+
+比如
+
+```CPP
+#include <iostream>
+
+int main() {
+    while (1)
+        ;
+}
+
+void unreachable() {
+    std::cout << "Hello World!" << std::endl;
+}
+```
+
+在有的编译器上会输出`Hello World`.

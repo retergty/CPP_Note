@@ -217,4 +217,4 @@ PARAM_DEFINE_INT32(MPC_POS_MODE, 4);
   }
 ```
 
-这样，把
+这样，当飞机起飞时，我们切换为`POSITION MODE`，无人机便会进行我们定义的飞行任务。
