@@ -656,7 +656,7 @@ my_subscription = create_subscription<Int32>("/topic", rclcpp::SensorDataQoS(),
 ros2 run rclcpp_components component_container
 ```
 
-这个命令启动了一个组件容器，可以使用以下的命令检测
+这个命令启动了一个`component_container`的组件容器(如果想使用多线程，可以使用`component_container_mt`)，可以使用以下的命令检测
 
 ```shell
 ros2 component list
@@ -686,6 +686,10 @@ ros2 component load /ComponentManager composition composition::Listener
 ```
 
 意味着这个组件容器目前管理着两个节点,这两个节点在同一个进程下运行.
+
+#### 使用`launch`文件自动启动
+
+参考[launch笔记](./launch.md)
 
 ## 设计哲学
 

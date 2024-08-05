@@ -343,7 +343,7 @@
 </link>
 ```
 
-## 创建世界
+## 创建世界`<world>`
 
 参考文档
 
@@ -353,6 +353,18 @@
 世界`World`就是一个仿真环境，模型可以在这里实例化并使用物理模型仿真。使用`<world>`创建仿真世界。
 
 最重要的属性就是，`world`定义了世界坐标系，这是一个惯性坐标系，当模型作为直接子类插入到`world`中时，它的位姿便是相对于世界坐标系而定义的。
+
+### 指定物理引擎属性`<physics>`
+
+```xml
+<physics name="1ms" type="ignored">
+  <max_step_size>0.001</max_step_size>
+  <real_time_factor>1.0</real_time_factor>
+</physics>
+```
+
+* `<max_step_size>`仿真器的最大步长
+* `<real_time_factor>`仿真时间与实际时间的比值，大于一则加速，小于一则减速。
 
 ### 内联定义模型
 

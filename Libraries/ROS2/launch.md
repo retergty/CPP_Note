@@ -584,6 +584,34 @@ def generate_launch_description():
 * `remappings`修改主题名。
 * `arguments`修改传入的参数。
 
+### ComposableNodeContainer
+
+* `name='my_container'`节点容器重命名
+* `namespace=''`节点容器名称空间重新设置
+* `package='rclcpp_components'`节点容器所在的包
+* `executable='component_container'`节点容器所在的可执行文件。
+* `output='screen'`表示把输出定位到屏幕里。
+* `composable_node_descriptions`接受组合节点描述符
+  * `package`组合节点所在的包名
+  * `plugin`组合节点，也是组件名，之前在`CMakeLists.txt`中注册的组件名
+  * `name`组合节点重命名为。
+
+   ```python
+   composable_node_descriptions=[
+      ComposableNode(
+         package='composition',
+         plugin='composition::Talker',
+         name='talker'),
+      ComposableNode(
+         package='composition',
+         plugin='composition::Listener',
+         name='listener')
+   ],
+   ```
+
 ### LaunchDescription
 
 `LaunchDescription`接受一个列表，这个列表的每个元素都是`launch_ros.actions`.
+
+* `Node`最常用的动作，启动一个节点。
+* `ComposableNodeContainer`启动一个节点容器
