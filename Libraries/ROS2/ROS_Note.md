@@ -633,11 +633,59 @@ my_subscription = create_subscription<Int32>("/topic", rclcpp::SensorDataQoS(),
 * 清理`cleanup`
 * 关闭`shutdown`
 
-### Composable Node
+### Composition
 
 普通的节点都是设计用于单独一个进程的，节点间使用进程间通信方法。组合节点(composable node)指的是一组运行在同一进程下的节点，从而可以使用更高效率的进程内通信。
 
-创建组合节点需要特殊的设置方法。
+可以直接在一个文件里创建多个节点，每个线程分别调用一个节点，但是`ROS`提供了一个运行时决定是否这些节点要在统一进程下调用。它有如下好处
+
+* 在单独的进程中运行多个节点，具有进程/故障隔离的优点以及更容易调试各个节点
+* 在单个进程中运行多个节点，具有较低的开销和可选的更高效的通信
+
+此外，`ros2 launch`可用于通过专门的启动操作来自动执行这些操作。
+
+组合节点实际上是一个共享库,通常是一个继承了`Node`的类作为一个组合节点,由于它不控制线程，因此它不应该在其构造函数中执行任何长时间运行或阻塞的任务。但是,它可以使用计时器来获取定期通知.此外，它还可以创建发布者、订阅、服务器和客户端。
+
+组合节点应该放置在组件容器中(component container).组件容器是一个特殊的节点，它可以加载组合节点.
+
+#### 在运行时启动组合节点
+
+首先需要启动一个组件容器
+
+```shell
+ros2 run rclcpp_components component_container
+```
+
+这个命令启动了一个组件容器，可以使用以下的命令检测
+
+```shell
+ros2 component list
+```
+
+显示
+
+```shell
+/ComponentManager
+```
+
+可以在另一个`shell`中使用以下命令加载节点
+
+```shell
+ros2 component load /ComponentManager composition composition::Talker
+ros2 component load /ComponentManager composition composition::Listener
+```
+
+这个命令运行完毕后不会阻塞当前的`shell`.所有的信息由组件容器所在的`shell`中输出.
+
+此时使用`ros2 component list`会输出
+
+```shell
+/ComponentManager
+   1  /talker
+   2  /listener
+```
+
+意味着这个组件容器目前管理着两个节点,这两个节点在同一个进程下运行.
 
 ## 设计哲学
 

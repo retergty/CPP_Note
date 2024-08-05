@@ -4,7 +4,7 @@
 
 ## Executor类
 
-定义在头文件`rclcpp/executors.hpp`的`rclcpp`名称空间中。
+定义在头文件`rclcpp/executors.hpp`的`rclcpp::executors`名称空间中。
 
 参考文档
 
@@ -43,7 +43,7 @@ virtual void add_node(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node
 virtual void add_node(std::shared_ptr<rclcpp::Node> node_ptr, bool notify = true)
 ```
 
-将节点加入到`Executor`中。
+将节点加入到`Executor`中。它不会保存节点的共享指针.
 
 节点有与之关联的回调函数组，这个函数会把使用`automatically_add_to_executor_with_node`参数为真的关联`CallbackGroup`加入到`Executor`.该节点也会与执行器关联，以便将来在节点上创建且将`automatic_add_to_executor_with_node`参数设置为`true`的回调组也会自动与该执行器关联。
 
@@ -215,7 +215,7 @@ bool is_spinning()
 
 ## SingleThreadedExecutor类
 
-定义在头文件`rclcpp/executors.hpp`的`rclcpp`名称空间中。
+定义在头文件`rclcpp/executors.hpp`的`rclcpp::executors`名称空间中。
 
 参考文档
 
@@ -252,7 +252,7 @@ virtual void spin() override
 
 ## StaticSingleThreadedExecutor类
 
-定义在头文件`rclcpp/executors.hpp`的`rclcpp`名称空间中。
+定义在头文件`rclcpp/executors.hpp`的`rclcpp::executors`名称空间中。
 
 参考文档
 
@@ -301,7 +301,7 @@ virtual void spin_all(std::chrono::nanoseconds max_duration) override
 
 ## MultiThreadedExecutor类
 
-定义在头文件`rclcpp/executors.hpp`的`rclcpp`名称空间中。
+定义在头文件`rclcpp/executors.hpp`的`rclcpp::executors`名称空间中。
 
 参考文档
 

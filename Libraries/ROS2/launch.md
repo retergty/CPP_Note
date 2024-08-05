@@ -583,3 +583,7 @@ def generate_launch_description():
 * `namespace='turtlesim2'`把节点的名称空间修改为`turtlesim2`,如果可执行文件里有多个节点，会修改所有节点的名称空间。
 * `remappings`修改主题名。
 * `arguments`修改传入的参数。
+
+### LaunchDescription
+
+`LaunchDescription`接受一个列表，这个列表的每个元素都是`launch_ros.actions`.

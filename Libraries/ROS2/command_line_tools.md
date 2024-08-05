@@ -24,6 +24,48 @@ ros2 sub-commands
 
 管理组件容器.
 
+#### `ros2 component list`
+
+```shell
+ros2 component list [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon] [--containers-only] [container_node_name]
+```
+
+显示现在正在运行的容器与组件,以及它们的`UID`.
+
+* `--containers-only`只显示容器
+
+* `container_node_name`组件容器的节点名
+
+#### `ros2 component load`
+
+```shell
+ros2 component load [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
+                           [-n NODE_NAME] [--node-namespace NODE_NAMESPACE]
+                           [--log-level LOG_LEVEL] [-r REMAP_RULES]
+                           [-p PARAMETERS] [-e EXTRA_ARGUMENTS] [-q]
+                           container_node_name package_name plugin_name
+```
+
+加载一个组件
+
+* `container_node_name`组件容器的节点名
+* `package_name`包名
+* `plugin_name`包内的插件名,通常是一个继承了`Node`的类.
+
+#### `ros2 component unload`
+
+```shell
+ros2 component unload [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
+                             [-q]
+                             container_node_name component_uid
+                             [component_uid ...]
+```
+
+取消加载一个组件
+
+* `container_node_name`组件容器的节点名.
+* `component_uid`容器的UID.
+
 ### daemon
 
 探测或配置`ROS2`守护进程。
@@ -37,6 +79,8 @@ ros2 sub-commands
 显示有关`ROS2`接口的信息.
 
 ### launch
+
+#### `ros2 launch`
 
 ```shell
 ros2 launch [-h] [-n] [-d] [-p | -s] [-a]
