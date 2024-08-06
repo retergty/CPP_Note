@@ -17,7 +17,7 @@ template< class R, class F, class... Args >
 
 * `f`是可调用对象，比如函数对象，函数指针，函数引用，指向成员函数的指针，指向成员的指针。
 * `args`是绑定的参数，注意，不需要绑定`f`的所有参数,但是需要使用`std::placeholders`占位
-* 返回值`g`可以用`std::function`接受的参数就是`f`未绑定的参数。
+* 返回值`g`可以用`std::function`接受，参数就是`f`未绑定的参数。
 
 ## 描述
 

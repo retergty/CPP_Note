@@ -67,5 +67,7 @@ inline Service(std::shared_ptr<rcl_node_t> node_handle, std::shared_ptr<rcl_serv
     )>;
 ```
 
+只需要相同的参数即可，不需要相同的返回值。
+
 * `std::shared_ptr<typename ServiceT::Request>`是收到的请求
 * `std::shared_ptr<typename ServiceT::Response>`是发送的应答

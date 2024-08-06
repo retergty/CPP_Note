@@ -136,7 +136,7 @@ ros2 pkg xml [-h] [-t TAG] package_name
 
 显示指定包的`package.xml`.
 
-#### `ros2 pkg creat`
+#### `ros2 pkg create`
 
 ```shell
 ros2 pkg create [-h] [--package-format {2,3}] [--description DESCRIPTION]
@@ -179,7 +179,7 @@ ros2 run [-h] [--prefix PREFIX] package_name executable_name ...
 * `package_name`是包名
 * `executable_name`是包中特定可执行文件的名字，也就是节点名。
 * `argv`传递给可执行文件的参数
-* `--prefix PREFIX`运行文件的前缀，会在可执行文件名前添加`PREFIX`,比如想要调试
+* `--prefix PREFIX`运行文件的前缀，会在可执行文件名前添加`PREFIX`,比如想要调试时`gdb -ex run --args`.
 
 ### security
 
