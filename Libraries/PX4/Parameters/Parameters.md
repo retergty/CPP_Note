@@ -44,6 +44,12 @@ PARAM_DEFINE_FLOAT(MPC_VEL_MANUAL, 10.f);
 
 ## 使用参数
 
+要使用参数的类必须公有继承`ModuleParams`类，获得更新参数的方法。
+
+```CPP
+class A : public ModuleParams
+```
+
 以参数`MPC_POS_MODE`为例，在要使用它的类里添加
 
 ```CPP
@@ -54,7 +60,11 @@ PARAM_DEFINE_FLOAT(MPC_VEL_MANUAL, 10.f);
 
 这里定义了一个`MPC_POS_MODE`参数的副本`_param_mpc_pos_mode`,它的类型是`ParamInt<px4::params::MPC_POS_MODE>`.
 
-同时需要订阅`parameter_update`主题.
+这样，使用`_param_mpc_pos_mode.get()`就可以获取参数的当前值。
+
+## 更新参数
+
+订阅`parameter_update`主题.
 
 ```CPP
 uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
@@ -72,4 +82,35 @@ uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
   }
 ```
 
-使用`_param_mpc_pos_mode.get()`来获取参数当前值。
+同时，实现`updateParams()`函数
+
+```CPP
+void FlightModeManager::updateParams()
+{
+  ModuleParams::updateParams();
+
+  if (isAnyTaskActive()) {
+    _current_task.task->handleParameterUpdate();
+  }
+}
+```
+
+通常，只需要调用基类的`ModuleParams::updateParams()`就可以了。也可以在参数改变时添加自己的逻辑。
+
+## 使用外部参数
+
+可以使用一个参数引用外部的变量，保持了参数的API
+
+在`DEFINE_PARAMETERS`里添加新的一行
+
+```CPP
+(ParamExtFloat<px4::params::EKF2_DELAY_MAX>) _param_ekf2_delay_max,
+```
+
+注意，此时参数的类型是`ParamExtFloat`,它是一个`float`变量的引用。
+
+需要在构造函数处初始化这个参数
+
+```CPP
+_param_ekf2_delay_max(_params->delay_max_ms),
+```

@@ -16,4 +16,3 @@ class TemplateModule : public ModuleBase<TemplateModule>, public ModuleParams
 
 * 继承`ModuleBase<TemplateModule>`获得模块必须的架构
 * 继承`ModuleParams`获得定义与使用参数的功能
-
