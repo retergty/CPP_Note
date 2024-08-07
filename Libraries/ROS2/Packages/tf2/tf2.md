@@ -64,7 +64,7 @@ is at time 1629873136.338804, when looking up transform from frame [turtle1] to 
 
 ### 分布存储与集中存储
 
-`tf2`坐标系信息可以是分布存储也可以是集中存储，本质上是监听`tf2`消息的节点自动订阅发布坐标系的主题，并把它存储在`Buffer`中，同时还有一个与之对应的服务。
+`tf2`坐标系信息可以是分布存储也可以是集中存储，本质上是监听`tf2`消息的节点自动订阅发布坐标系的主题，并把它存储在`Buffer`中，用户可以给每个节点都单独开一个`Buffer`它们独立地监听广播信息。也可以专门用一个节点的开`Buffer`，同时设计一个服务，来获取坐标转换等信息。
 
 ## tf2_ros
 
@@ -227,7 +227,18 @@ TF2_ROS_PUBLIC Buffer(
 
 * `clock`这个对象所参考的时钟。
 * `cache_time`保留转换历史记录的最长时间
-* `node`如果传递，则这个节点发布`view_frames`服务，这个服务用于发布`Buffer`的调试信息。
+* `node`如果传递，则这个节点发布`tf_frames`服务，提供了一个服务来获取当前`Buffer`已知的坐标图。
+
+请求的类型是`tf2_msgs::srv::FrameGraph::Request`是一个空的请求。
+
+响应的类型是`tf2_msgs::srv::FrameGraph::Response`是一个`yaml`格式的坐标图。
+
+`FrameGraph.srv`如下
+
+```srv
+---
+string frame_yaml
+```
 
 #### 查找转换
 
