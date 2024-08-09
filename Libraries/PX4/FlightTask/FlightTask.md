@@ -41,6 +41,8 @@
 
 如果多于一种`setpoint`类型被设置，那么就会按照`position`,`velocity`,`acceleration`,`thrust`顺序控制。
 
+只会在`FlightTask::activate()`函数内被清空为`NAN`.
+
 ### 当前状态
 
 ```CPP
@@ -50,6 +52,16 @@
 ```
 
 这两个保护成员变量存储的当前的无人机状态信息，`FlightTask`类自动地订阅当前无人机状态信息。保证每次`update`调用时，无人机状态信息都是最新的。
+
+### constraints
+
+```CPP
+vehicle_constraints_s _constraints{};
+```
+
+`FlightTask`的保护成员变量，控制器接受这些`constraint`并满足。
+
+只会在`FlightTask::activate()`函数内被设置为默认值.
 
 ## 实例
 

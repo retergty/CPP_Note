@@ -14,7 +14,7 @@
 
 #### 同一个`WorkQueue`
 
-同一个`WorkQueue`的任务`WorkItem`
+同一个`WorkQueue`的任务`WorkItem`是独占运行的，不会产生彼此间不会产生竞争问题，这些模块间的变量通信不需要使用额外的同步操作(`Synchronization`)。
 
 ### 时间开销
 
@@ -40,3 +40,13 @@
 ```
 
 每次都需要重复判断`valid()`带来了时间开销
+
+#### 实例化模块时需要使用`new`
+
+`task_spawn`函数中，实例化模块时需要
+
+```CPP
+FlightModeManager *instance = new FlightModeManager();
+```
+
+但这个带来了时间开销，并且堆内存的分配带来了内存碎片，还无法利用芯片上的高速`SRAM`.

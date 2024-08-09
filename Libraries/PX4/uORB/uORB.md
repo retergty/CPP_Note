@@ -41,6 +41,10 @@ _trajectory_setpoint_sub.update(&_setpoint);
 
 把更新的消息复制到本地`_setpoint`中。
 
+## 发布主题
+
+如同上文订阅主题的内容，包含要发布消息的头文件。
+
 ## 添加一个新的主题
 
 只需要在`msg`文件夹里面添加`.msg`文件，文件名就是主题名。并在`msg`文件夹的顶层`CMakeLists.txt`中加入对应的主题名即可。
@@ -172,7 +176,7 @@ bool copy(void *dst);
 
 ### SubscriptionData类
 
-和`PublicationData`类类似。
+和`PublicationData`类类似。`update()`函数会直接更新到内部储存的结构体中。
 
 ### SubscriptionInterval类
 
@@ -222,7 +226,7 @@ virtual void call() = 0;
 class SubscriptionCallbackWorkItem : public SubscriptionCallback
 ```
 
-* 在订阅发生时，把这个订阅与特定的`WorkItem`连接。
+* 把这个订阅与特定的`WorkItem`连接，在订阅发生时，自动调用回调函数，回调函数可以把`WorkItem`置于`WorkQueue`运行队列中。
 
 #### 重要成员变量
 
@@ -249,8 +253,9 @@ void call() override
 }
 ```
 
+* 订阅发生时的回调函数。
 * 检查是否需要更新，已有的更新大于设置且更新间隔大于设置值。
-* 若需要更新，则**调度**当前的`WorkItem`,注意，这个函数是在中断上下文中，由`uORB`调用的。
+* 若需要更新，则**调度**当前的`WorkItem`,也就是把`WorkItem`加入到对应的`WorkQueue`的运行队列中。注意，这个函数是在中断上下文中，**由`uORB`调用的**。
 
 ```CPP
 SubscriptionCallbackWorkItem(px4::WorkItem *work_item, const orb_metadata *meta, uint8_t instance = 0) :

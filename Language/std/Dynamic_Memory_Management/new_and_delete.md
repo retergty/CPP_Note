@@ -96,7 +96,7 @@ new int * 1; // error: parsed as (new int*) (1)
 
 ```CPP
 ::(optional) delete   expression
-::(optional) delete[] expression	
+::(optional) delete[] expression
 ```
 
 `expression`是可以转换为指针的类型，或者是`prvalue`的指针，指向要销毁的对象。
