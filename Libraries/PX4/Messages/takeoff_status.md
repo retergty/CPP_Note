@@ -22,4 +22,5 @@ static constexpr uint8_t TAKEOFF_STATE_RAMPUP = 4;
 static constexpr uint8_t TAKEOFF_STATE_FLIGHT = 5;
 ```
 
+* 由`mc_pos_control`模块发布，表示无人机起飞状态。
 * 由`flight_mode_manager`模块使用，只有在飞机真正起飞后，才执行飞行任务，否则总是`reactive`飞行任务.
