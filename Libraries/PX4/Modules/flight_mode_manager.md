@@ -20,6 +20,10 @@
 
 表示当前无人机的起飞状态，只有无人机真正起飞时才会运行飞行任务。
 
+#### `manual_control_setpoint`
+
+表示无人机的手柄操作的输入`setpoint`，由`manual_control`发布，在辅助飞行模式下使用。也就是在`FlightTaskManualAltitude`类下。
+
 ### 发布
 
 #### `trajectory_setpoint`

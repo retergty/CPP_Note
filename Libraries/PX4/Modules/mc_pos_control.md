@@ -2,12 +2,12 @@
 
 `mc_pos_control`模块是多旋翼无人机位置环，速度环`PID`控制器。它实现的功能如下
 
-1. 控制无人机起飞，与降落。
-2. 进行位置环的`P`控制，期望位置转化为期望速度。
-3. 进行速度环的`PID`控制，把期望速度转化为期望加速度。
-4. 同时加上用户设置的`setpoint`,也就是前馈控制。
-5. 把期望加速度按照多旋翼模型假设，转化为期望三轴推力。
-6. 把期望三轴推力，转化为期望四元数，同时抑制偏航。
+* 控制无人机起飞，与降落。
+* 进行位置环的`P`控制，期望位置转化为期望速度。
+* 进行速度环的`PID`控制，把期望速度转化为期望加速度。
+* 同时加上用户设置的`setpoint`,也就是前馈控制。
+* 把期望加速度按照多旋翼模型假设，转化为期望三轴推力。
+* 把期望三轴推力，转化为期望四元数。
 
 控制器的每一个环节都存在着限幅，防止无人机产生过度的控制信号。
 
@@ -66,7 +66,7 @@ class MulticopterPositionControl : public ModuleBase<MulticopterPositionControl>
 
 #### `_setpoint`
 
-控制器实际使用的`setpoint`.
+控制器实际使用的`setpoint`.这可能与订阅的不同，因为模块自身可能修改这个变量。
 
 #### `_takeoff`
 
@@ -83,6 +83,31 @@ PositionControl _control;
 ```
 
 包含核心的`PID`控制环节。
+
+### 关键参数
+
+#### `COM_SPOOLUP_TIME`
+
+在`commander_params.c`中定义，决定了在`arm`后必须要等待的时间，之后才能起飞。
+
+#### `MPC_USE_HTE`
+
+在`multicopter_position_control_params.c`中定义，决定是否使用悬停推力估计。
+
+#### 控制器`PID`参数
+
+```CPP
+(ParamFloat<px4::params::MPC_XY_P>)         _param_mpc_xy_p,
+ (ParamFloat<px4::params::MPC_Z_P>)          _param_mpc_z_p,
+ (ParamFloat<px4::params::MPC_XY_VEL_P_ACC>) _param_mpc_xy_vel_p_acc,
+ (ParamFloat<px4::params::MPC_XY_VEL_I_ACC>) _param_mpc_xy_vel_i_acc,
+ (ParamFloat<px4::params::MPC_XY_VEL_D_ACC>) _param_mpc_xy_vel_d_acc,
+ (ParamFloat<px4::params::MPC_Z_VEL_P_ACC>)  _param_mpc_z_vel_p_acc,
+ (ParamFloat<px4::params::MPC_Z_VEL_I_ACC>)  _param_mpc_z_vel_i_acc,
+ (ParamFloat<px4::params::MPC_Z_VEL_D_ACC>)  _param_mpc_z_vel_d_acc,
+```
+
+在`multicopter_position_control_gain_params.c`中定义，是控制器的`PID`参数。
 
 ## 代码分析
 

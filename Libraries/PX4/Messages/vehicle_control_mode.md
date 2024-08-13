@@ -24,5 +24,6 @@ struct vehicle_control_mode_s {
 };
 ```
 
-* 由`commander`模块使用，用来决定当前使能的控制器,它使用消息`vehicle_status`中的`nva_status`字段来决定当前使能的控制器。
+* 由`commander`模块发布，用来决定当前使能的控制器,它使用消息`vehicle_status`中的`nva_status`字段来决定当前使能的控制器。
 * 对于多旋翼无人机来说，只要`flag_control_position_enabled`,`flag_control_velocity_enabled`,`flag_control_altitude_enabled`,`flag_control_climb_rate_enabled`,`flag_control_acceleration_enabled`.作用是相同的，都是使能`flag_multicopter_position_control_enabled`.
+* 对于旋翼无人机来说，`flag_control_attitude_enabled`,`flag_control_rates_enabled`,`flag_control_allocation_enabled`总是使能的。
