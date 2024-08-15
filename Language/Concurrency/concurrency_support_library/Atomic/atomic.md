@@ -321,4 +321,3 @@ struct atomic<std::weak_ptr<U>>;
   * `operator&=`等价于`return fetch_and(arg) & arg`
   * `operator|=`等价于`return fetch_or(arg) | arg`
   * `operator^=`等价于`return fetch_xor(arg) ^ arg`
-
