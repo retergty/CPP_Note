@@ -286,3 +286,19 @@ if (_autotune_attitude_control_status_sub.copy(&pid_autotune)) {
   }
 }
 ```
+
+### 发布`vehicle_rates_setpoint`
+
+```CPP
+// publish rate setpoint
+vehicle_rates_setpoint_s rates_setpoint{};
+rates_setpoint.roll = rates_sp(0);
+rates_setpoint.pitch = rates_sp(1);
+rates_setpoint.yaw = rates_sp(2);
+_thrust_setpoint_body.copyTo(rates_setpoint.thrust_body);
+rates_setpoint.timestamp = hrt_absolute_time();
+
+_vehicle_rates_setpoint_pub.publish(rates_setpoint);
+```
+
+发布`vehicle_rates_setpoint`,其中`roll`,`pitch`,`yaw`表示三个欧拉角设定的角速度，`thrust_body`则来自`mc_pos_control`或者是手动输入的，这个模块不会修改这个推力值，因为这个只会影响无人机上升或者下降，姿态变化是电机转速差决定的。
