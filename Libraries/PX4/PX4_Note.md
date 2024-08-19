@@ -20,6 +20,10 @@
 
 `mc_att_control`中存在`vtol`的代码。
 
+#### `control_allocator`中存在冗余机型代码
+
+`control_allocator`中存在冗余机型代码。
+
 ### 时间开销
 
 #### 主题消息必须要复制出来

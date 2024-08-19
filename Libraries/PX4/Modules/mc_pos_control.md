@@ -501,6 +501,8 @@ bool PositionControl::update(const float dt)
 
 直接设置偏航角期望，因为这不是`pos`控制器需要关心的内容。
 
+注意，`_pos_sp`,`_vel_sp`,`_acc_sp`都是`NED`坐标系下表示的。
+
 #### 位置控制器
 
 ```CPP
@@ -607,9 +609,37 @@ $$
 \mathbb{A}_{sp} = \mathbb{V}_{err}\mathbb{K}_{p} + \mathbb{V}_{dot}\mathbb{K}_{d} + \mathbb{V}_{int}\mathbb{K}_{i}
 $$
 
-计算得出由位置`setpoint`产生的加速度`setpoint`，加到设置的加速度`setpoint`上去，如果是`NAN`则覆盖。
+```CPP
+void PositionControl::_accelerationControl()
+{
+  // Assume standard acceleration due to gravity in vertical direction for attitude generation
+  float z_specific_force = -CONSTANTS_ONE_G;
+
+  if (!_decouple_horizontal_and_vertical_acceleration) {
+    // Include vertical acceleration setpoint for better horizontal acceleration tracking
+    z_specific_force += _acc_sp(2);
+  }
+
+  Vector3f body_z = Vector3f(-_acc_sp(0), -_acc_sp(1), -z_specific_force).normalized();
+  ControlMath::limitTilt(body_z, Vector3f(0, 0, 1), _lim_tilt);
+  // Convert to thrust assuming hover thrust produces standard gravity
+  const float thrust_ned_z = _acc_sp(2) * (_hover_thrust / CONSTANTS_ONE_G) - _hover_thrust;
+  // Project thrust to planned body attitude
+  const float cos_ned_body = (Vector3f(0, 0, 1).dot(body_z));
+  const float collective_thrust = math::min(thrust_ned_z / cos_ned_body, -_lim_thr_min);
+  _thr_sp = body_z * collective_thrust;
+}
+```
 
 `_accelerationControl`函数按照旋翼无人机结构假设，把三轴加速度转换为三轴推力期望
+
+同时把之前实际单位的`_acc_sp`通过估计出的悬停推力转为标准化的`[0,1]`的推力。转化公式为
+
+$$
+F_{normalized} = \frac{F_{real}F_{hover}}{mg}
+$$
+
+计算得出由位置`setpoint`产生的加速度`setpoint`，加到设置的加速度`setpoint`上去，如果是`NAN`则覆盖。
 
 ### 将三轴推力转化为姿态角
 
@@ -622,3 +652,5 @@ void PositionControl::getAttitudeSetpoint(vehicle_attitude_setpoint_s &attitude_
 ```
 
 按照旋翼无人机假设，三轴推力的反方向就是期望机体z轴方向，再根据偏航角期望计算得出期望机体x轴方向，最后得出三个姿态角。
+
+注意，此时计算得出的姿态角是具有单位的，单位是`rad`,还没有进行标准化。

@@ -60,7 +60,7 @@
 class MulticopterRateControl : public ModuleBase<MulticopterRateControl>, public ModuleParams, public px4::WorkItem
 ```
 
-`MulticopterRateControl`类是在`nav_and_controllers`的工作队列中的模块。
+`MulticopterRateControl`类是在`rate_ctrl`的工作队列中的模块。
 
 ### 关键成员变量
 
@@ -179,7 +179,13 @@ Vector3f RateControl::update(const Vector3f &rate, const Vector3f &rate_sp, cons
 }
 ```
 
-大致过程是经典的`PID`控制过程，但是在无人机降落时，不会更新积分器，防止饱和。
+大致过程是经典的`PID`控制过程，但是在无人机降落时，不会更新积分器，防止饱和。注意，此时`rate_sp`具有单位`rad/s`,但是`torque`则变为标准化的`[-1,1]`的量。
+
+$$
+M_{normalize} = \frac{KM_{real}F_{hover}}{mg}
+$$
+
+其中，$K$是一个系数，如果想要加大力矩的控制量，可以增大，反之可以缩小，但是注意不要超过`[-1,1]`的区间。此外$M_{noramlize}$是有单位的，单位为$m$.
 
 最终返回机体坐标系三轴力矩`setpoint`.
 
