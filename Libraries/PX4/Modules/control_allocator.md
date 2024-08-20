@@ -557,3 +557,488 @@ ActuatorEffectivenessRotors::computeEffectivenessMatrix(const Geometry &geometry
 
 利用电机参数计算效用矩阵，效用矩阵是一个`6`行`num_rotors`列的矩阵。
 
+`PX4`假设电机模型为
+
+$$
+F_T = C_Tu^2\\
+M_P = C_TK_Mu^2
+$$
+
+其中， $F_T$ 是电机产生的推力，$C_T$ 是比例常数， $u$ 是电机的转速， $M_P$ 是由于桨叶旋转而加之在旋转轴上的力矩, $K_m$ 为比例常数，有正有负。
+
+注意， $u^2$ 是标准化的量，大小为`[0,1]`, $F_T$ , $M_P$ 也是经过标准化的量,方法和在控制器里的处理一样
+
+$$
+F_{Tnormalize} = \frac{F_{Treal}F_{hover}}{mg}\\
+M_{Pnormalize} = \frac{M_{Preal}F_{hover}}{mg}\\
+$$
+
+通过修改 $C_T$ 就可以解决,为方便，以下均使用 $F_T$ 与 $M_P$ .
+
+根据电机位置，电机轴向
+
+$$
+\mathbf{P} = \begin{pmatrix}
+  P_x & P_y & P_z
+\end{pmatrix}^T\\
+\mathbf{A} = \begin{pmatrix}
+  A_x & A_y & A_z
+\end{pmatrix}^T
+$$
+
+该电机产生的力矩与推力
+
+$$
+\begin{align}
+  \mathbf{M} &= P \times F_T - M_P\\
+  &= (C_T\mathbf{P}\times\mathbf{A} - C_TK_M)u^2\\
+  \mathbf{F} &= C_T\mathbf{A}u^2
+\end{align}
+$$
+
+假设无人机构型为四旋翼无人机，最终的电机效用矩阵就是
+
+$$
+\begin{bmatrix}
+  \mathbf{M} \\
+  \mathbf{F}
+\end{bmatrix}
+= \mathbf{G}
+\begin{bmatrix}
+  u_1^2 \\ u_2^2 \\ u_3^2 \\ u_4^2
+\end{bmatrix}
+$$
+
+计算得出电机效用矩阵，返回`num_actuators`也就是电机效用矩阵中电机的数量。
+
+```CPP
+void ActuatorEffectiveness::Configuration::actuatorsAdded(ActuatorType type, int count)
+{
+  int total_count = totalNumActuators();
+
+  for (int i = 0; i < count; ++i) {
+    matrix_selection_indexes[i + total_count] = selected_matrix;
+  }
+
+  num_actuators[(int)type] += count;
+  num_actuators_matrix[selected_matrix] += count;
+}
+```
+
+把电机的类型与电机的数量记录在`configuration`里。
+
+```CPP
+void
+ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReason reason)
+{
+  ActuatorEffectiveness::Configuration config{};
+
+  if (reason == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE
+      && hrt_elapsed_time(&_last_effectiveness_update) < 100_ms) { // rate-limit updates
+    return;
+  }
+
+  if (_actuator_effectiveness->getEffectivenessMatrix(config, reason)) {
+    _last_effectiveness_update = hrt_absolute_time();
+
+    memcpy(_control_allocation_selection_indexes, config.matrix_selection_indexes,
+           sizeof(_control_allocation_selection_indexes));
+
+    // Get the minimum and maximum depending on type and configuration
+    ActuatorEffectiveness::ActuatorVector minimum[ActuatorEffectiveness::MAX_NUM_MATRICES];
+    ActuatorEffectiveness::ActuatorVector maximum[ActuatorEffectiveness::MAX_NUM_MATRICES];
+    ActuatorEffectiveness::ActuatorVector slew_rate[ActuatorEffectiveness::MAX_NUM_MATRICES];
+    int actuator_idx = 0;
+    int actuator_idx_matrix[ActuatorEffectiveness::MAX_NUM_MATRICES] {};
+
+    actuator_servos_trim_s trims{};
+    static_assert(actuator_servos_trim_s::NUM_CONTROLS == actuator_servos_s::NUM_CONTROLS, "size mismatch");
+
+    for (int actuator_type = 0; actuator_type < (int)ActuatorType::COUNT; ++actuator_type) {
+      _num_actuators[actuator_type] = config.num_actuators[actuator_type];
+
+      for (int actuator_type_idx = 0; actuator_type_idx < config.num_actuators[actuator_type]; ++actuator_type_idx) {
+        if (actuator_idx >= NUM_ACTUATORS) {
+          _num_actuators[actuator_type] = 0;
+          PX4_ERR("Too many actuators");
+          break;
+        }
+
+        int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
+
+        if ((ActuatorType)actuator_type == ActuatorType::MOTORS) {
+          if (actuator_type_idx >= MAX_NUM_MOTORS) {
+            PX4_ERR("Too many motors");
+            _num_actuators[actuator_type] = 0;
+            break;
+          }
+
+          if (_param_r_rev.get() & (1u << actuator_type_idx)) {
+            minimum[selected_matrix](actuator_idx_matrix[selected_matrix]) = -1.f;
+
+          } else {
+            minimum[selected_matrix](actuator_idx_matrix[selected_matrix]) = 0.f;
+          }
+
+          slew_rate[selected_matrix](actuator_idx_matrix[selected_matrix]) = _params.slew_rate_motors[actuator_type_idx];
+
+        } else if ((ActuatorType)actuator_type == ActuatorType::SERVOS) {
+          if (actuator_type_idx >= MAX_NUM_SERVOS) {
+            PX4_ERR("Too many servos");
+            _num_actuators[actuator_type] = 0;
+            break;
+          }
+
+          minimum[selected_matrix](actuator_idx_matrix[selected_matrix]) = -1.f;
+          slew_rate[selected_matrix](actuator_idx_matrix[selected_matrix]) = _params.slew_rate_servos[actuator_type_idx];
+          trims.trim[actuator_type_idx] = config.trim[selected_matrix](actuator_idx_matrix[selected_matrix]);
+
+        } else {
+          minimum[selected_matrix](actuator_idx_matrix[selected_matrix]) = -1.f;
+        }
+
+        maximum[selected_matrix](actuator_idx_matrix[selected_matrix]) = 1.f;
+
+        ++actuator_idx_matrix[selected_matrix];
+        ++actuator_idx;
+      }
+    }
+
+    // Handle failed actuators
+    if (_handled_motor_failure_bitmask) {
+      actuator_idx = 0;
+      memset(&actuator_idx_matrix, 0, sizeof(actuator_idx_matrix));
+
+      for (int motors_idx = 0; motors_idx < _num_actuators[0] && motors_idx < actuator_motors_s::NUM_CONTROLS; motors_idx++) {
+        int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
+
+        if (_handled_motor_failure_bitmask & (1 << motors_idx)) {
+          ActuatorEffectiveness::EffectivenessMatrix &matrix = config.effectiveness_matrices[selected_matrix];
+
+          for (int i = 0; i < NUM_AXES; i++) {
+            matrix(i, actuator_idx_matrix[selected_matrix]) = 0.0f;
+          }
+        }
+
+        ++actuator_idx_matrix[selected_matrix];
+        ++actuator_idx;
+      }
+    }
+
+    for (int i = 0; i < _num_control_allocation; ++i) {
+      _control_allocation[i]->setActuatorMin(minimum[i]);
+      _control_allocation[i]->setActuatorMax(maximum[i]);
+      _control_allocation[i]->setSlewRateLimit(slew_rate[i]);
+
+      // Set all the elements of a row to 0 if that row has weak authority.
+      // That ensures that the algorithm doesn't try to control axes with only marginal control authority,
+      // which in turn would degrade the control of the main axes that actually should and can be controlled.
+
+      ActuatorEffectiveness::EffectivenessMatrix &matrix = config.effectiveness_matrices[i];
+
+      for (int n = 0; n < NUM_AXES; n++) {
+        bool all_entries_small = true;
+
+        for (int m = 0; m < config.num_actuators_matrix[i]; m++) {
+          if (fabsf(matrix(n, m)) > 0.05f) {
+            all_entries_small = false;
+          }
+        }
+
+        if (all_entries_small) {
+          matrix.row(n) = 0.f;
+        }
+      }
+
+      // Assign control effectiveness matrix
+      int total_num_actuators = config.num_actuators_matrix[i];
+      _control_allocation[i]->setEffectivenessMatrix(config.effectiveness_matrices[i], config.trim[i],
+          config.linearization_point[i], total_num_actuators, reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE);
+    }
+
+    trims.timestamp = hrt_absolute_time();
+    _actuator_servos_trim_pub.publish(trims);
+  }
+}
+```
+
+接收参数`reason`表示调用这个函数时的原因。
+
+这个函数主要是设置各个电机的最大值，最小值，斜率，最大值都是`1`，最小值取决于电机是否支持反转，如果支持，则为`-1`,否则为`1`，斜率则是接收参数。
+
+这个函数假设了所有电机都是有一个顺序排列的，每个电机都有属于的`selected_matrix`也就是控制分配矩阵,这些循环的任务就是把电机顺序取出，按照之前设定的`selected_matrix`添加到对应的`minimum`，`maximum`,`slew_rate`中。
+
+之后按照电机的故障信息，清空了效用矩阵中故障电机的对应行。
+
+`_control_allocation[i]->setEffectivenessMatrix(config.effectiveness_matrices[i], config.trim[i],config.linearization_point[i], total_num_actuators, reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE);`函数设置了对应的控制分配的电机效用矩阵。
+
+### 控制分配
+
+```CPP
+_control_allocation[i]->allocate();
+```
+
+通常选用的控制分配方法为`ControlAllocationSequentialDesaturation`
+
+```CPP
+void
+ControlAllocationSequentialDesaturation::allocate()
+{
+  //Compute new gains if needed
+  updatePseudoInverse();
+
+  _prev_actuator_sp = _actuator_sp;
+
+  switch (_param_mc_airmode.get()) {
+  case 1:
+    mixAirmodeRP();
+    break;
+
+  case 2:
+    mixAirmodeRPY();
+    break;
+
+  default:
+    mixAirmodeDisabled();
+    break;
+  }
+}
+```
+
+#### 计算伪逆
+
+```CPP
+void
+ControlAllocationPseudoInverse::updatePseudoInverse()
+{
+  if (_mix_update_needed) {
+    matrix::geninv(_effectiveness, _mix);
+
+    if (_normalization_needs_update && !_had_actuator_failure) {
+      updateControlAllocationMatrixScale();
+      _normalization_needs_update = false;
+    }
+
+    normalizeControlAllocationMatrix();
+    _mix_update_needed = false;
+  }
+}
+```
+
+计算伪逆，并计算系数。
+
+```CPP
+void
+ControlAllocationPseudoInverse::updateControlAllocationMatrixScale()
+{
+  // Same scale on roll and pitch
+  if (_normalize_rpy) {
+
+    int num_non_zero_roll_torque = 0;
+    int num_non_zero_pitch_torque = 0;
+
+    for (int i = 0; i < _num_actuators; i++) {
+
+      if (fabsf(_mix(i, 0)) > 1e-3f) {
+        ++num_non_zero_roll_torque;
+      }
+
+      if (fabsf(_mix(i, 1)) > 1e-3f) {
+        ++num_non_zero_pitch_torque;
+      }
+    }
+
+    float roll_norm_scale = 1.f;
+
+    if (num_non_zero_roll_torque > 0) {
+      roll_norm_scale = sqrtf(_mix.col(0).norm_squared() / (num_non_zero_roll_torque / 2.f));
+    }
+
+    float pitch_norm_scale = 1.f;
+
+    if (num_non_zero_pitch_torque > 0) {
+      pitch_norm_scale = sqrtf(_mix.col(1).norm_squared() / (num_non_zero_pitch_torque / 2.f));
+    }
+
+    _control_allocation_scale(0) = fmaxf(roll_norm_scale, pitch_norm_scale);
+    _control_allocation_scale(1) = _control_allocation_scale(0);
+
+    // Scale yaw separately
+    _control_allocation_scale(2) = _mix.col(2).max();
+
+  } else {
+    _control_allocation_scale(0) = 1.f;
+    _control_allocation_scale(1) = 1.f;
+    _control_allocation_scale(2) = 1.f;
+  }
+
+  // Scale thrust by the sum of the individual thrust axes, and use the scaling for the Z axis if there's no actuators
+  // (for tilted actuators)
+  _control_allocation_scale(THRUST_Z) = 1.f;
+
+  for (int axis_idx = 2; axis_idx >= 0; --axis_idx) {
+    int num_non_zero_thrust = 0;
+    float norm_sum = 0.f;
+
+    for (int i = 0; i < _num_actuators; i++) {
+      float norm = fabsf(_mix(i, 3 + axis_idx));
+      norm_sum += norm;
+
+      if (norm > FLT_EPSILON) {
+        ++num_non_zero_thrust;
+      }
+    }
+
+    if (num_non_zero_thrust > 0) {
+      _control_allocation_scale(3 + axis_idx) = norm_sum / num_non_zero_thrust;
+
+    } else {
+      _control_allocation_scale(3 + axis_idx) = _control_allocation_scale(THRUST_Z);
+    }
+  }
+}
+```
+
+计算系数的目标就是，对于四旋翼无人机来说，得到的伪逆矩阵接近
+
+$$
+\begin{bmatrix}
+  \sqrt{2} & \sqrt{2} & \sqrt{2} & 0 & 0 &1 \\
+  -\sqrt{2} & -\sqrt{2} & \sqrt{2} & 0 & 0 &1 \\
+  -\sqrt{2} & \sqrt{2} & -\sqrt{2} & 0 & 0 &1 \\
+  \sqrt{2} & -\sqrt{2} & -\sqrt{2} & 0 & 0 &1
+\end{bmatrix}
+$$
+
+也就是标准化伪逆矩阵，但是加大姿态角的控制信息。
+
+#### 降饱和
+
+```CPP
+void
+ControlAllocationSequentialDesaturation::mixAirmodeRP()
+{
+  // Airmode for roll and pitch, but not yaw
+
+  // Mix without yaw
+  ActuatorVector thrust_z;
+
+  for (int i = 0; i < _num_actuators; i++) {
+    _actuator_sp(i) = _actuator_trim(i) +
+          _mix(i, ControlAxis::ROLL) * (_control_sp(ControlAxis::ROLL) - _control_trim(ControlAxis::ROLL)) +
+          _mix(i, ControlAxis::PITCH) * (_control_sp(ControlAxis::PITCH) - _control_trim(ControlAxis::PITCH)) +
+          _mix(i, ControlAxis::THRUST_X) * (_control_sp(ControlAxis::THRUST_X) - _control_trim(ControlAxis::THRUST_X)) +
+          _mix(i, ControlAxis::THRUST_Y) * (_control_sp(ControlAxis::THRUST_Y) - _control_trim(ControlAxis::THRUST_Y)) +
+          _mix(i, ControlAxis::THRUST_Z) * (_control_sp(ControlAxis::THRUST_Z) - _control_trim(ControlAxis::THRUST_Z));
+    thrust_z(i) = _mix(i, ControlAxis::THRUST_Z);
+  }
+
+  desaturateActuators(_actuator_sp, thrust_z);
+
+  // Mix yaw independently
+  mixYaw();
+}
+```
+
+降饱和流程，是为了防止执行器饱和从而引起控制失真的过程，当计算的期望执行器输出超过了最大值，要对执行器降饱和，由于四个电机的耦合，一个电机饱和时不能单独降低该电机，否则姿态角控制量会发生大的变化，造成无人机失稳。而且，不同的控制量控制的优先级不同，比如滚转偏航角的控制就要优于推力的控制，也要优于偏航角的控制。这样启发我们可以使用具有优先级的降饱和策略，优先保持高优先级的状态的控制量，削减低优先级的控制量来降低饱和。
+
+伪逆的每一列就代表着不同电机对于相同期望控制量的转速输出，这样，使用低优先级的控制量，降低一个电机的饱和时，应该利用矩阵的这一列，同时修改别的所有电机转速，这样就可以保证电机的其余控制量没有发生大的改变。当然，这个操作假设了电机是线性的，同时整个无人机也工作在线性区间（悬停状态）。
+
+![降饱和](./Picture/desaturateActuators.png)
+
+### 应用电机斜率
+
+```CPP
+_control_allocation[i]->applySlewRateLimit(dt);
+```
+
+```CPP
+void ControlAllocation::applySlewRateLimit(float dt)
+{
+  for (int i = 0; i < _num_actuators; i++) {
+    if (_actuator_slew_rate_limit(i) > FLT_EPSILON) {
+      float delta_sp_max = dt * (_actuator_max(i) - _actuator_min(i)) / _actuator_slew_rate_limit(i);
+      float delta_sp = _actuator_sp(i) - _prev_actuator_sp(i);
+
+      if (delta_sp > delta_sp_max) {
+        _actuator_sp(i) = _prev_actuator_sp(i) + delta_sp_max;
+
+      } else if (delta_sp < -delta_sp_max) {
+        _actuator_sp(i) = _prev_actuator_sp(i) - delta_sp_max;
+      }
+    }
+  }
+}
+```
+
+如果电机存在最大斜率限制，那么应用电机斜率。
+
+### 发布电机`setpoint`
+
+```CPP
+void
+ControlAllocator::publish_actuator_controls()
+{
+  if (!_publish_controls) {
+    return;
+  }
+
+  actuator_motors_s actuator_motors;
+  actuator_motors.timestamp = hrt_absolute_time();
+  actuator_motors.timestamp_sample = _timestamp_sample;
+
+  actuator_servos_s actuator_servos;
+  actuator_servos.timestamp = actuator_motors.timestamp;
+  actuator_servos.timestamp_sample = _timestamp_sample;
+
+  actuator_motors.reversible_flags = _param_r_rev.get();
+
+  int actuator_idx = 0;
+  int actuator_idx_matrix[ActuatorEffectiveness::MAX_NUM_MATRICES] {};
+
+  uint32_t stopped_motors = _actuator_effectiveness->getStoppedMotors() | _handled_motor_failure_bitmask;
+
+  // motors
+  int motors_idx;
+
+  for (motors_idx = 0; motors_idx < _num_actuators[0] && motors_idx < actuator_motors_s::NUM_CONTROLS; motors_idx++) {
+    int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
+    float actuator_sp = _control_allocation[selected_matrix]->getActuatorSetpoint()(actuator_idx_matrix[selected_matrix]);
+    actuator_motors.control[motors_idx] = PX4_ISFINITE(actuator_sp) ? actuator_sp : NAN;
+
+    if (stopped_motors & (1u << motors_idx)) {
+      actuator_motors.control[motors_idx] = NAN;
+    }
+
+    ++actuator_idx_matrix[selected_matrix];
+    ++actuator_idx;
+  }
+
+  for (int i = motors_idx; i < actuator_motors_s::NUM_CONTROLS; i++) {
+    actuator_motors.control[i] = NAN;
+  }
+
+  _actuator_motors_pub.publish(actuator_motors);
+
+  // servos
+  if (_num_actuators[1] > 0) {
+    int servos_idx;
+
+    for (servos_idx = 0; servos_idx < _num_actuators[1] && servos_idx < actuator_servos_s::NUM_CONTROLS; servos_idx++) {
+      int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
+      float actuator_sp = _control_allocation[selected_matrix]->getActuatorSetpoint()(actuator_idx_matrix[selected_matrix]);
+      actuator_servos.control[servos_idx] = PX4_ISFINITE(actuator_sp) ? actuator_sp : NAN;
+      ++actuator_idx_matrix[selected_matrix];
+      ++actuator_idx;
+    }
+
+    for (int i = servos_idx; i < actuator_servos_s::NUM_CONTROLS; i++) {
+      actuator_servos.control[i] = NAN;
+    }
+
+    _actuator_servos_pub.publish(actuator_servos);
+  }
+}
+```
+
+获取并发布`actuator_motors`与`actuator_servos`主题，给`PWM`控制器。
