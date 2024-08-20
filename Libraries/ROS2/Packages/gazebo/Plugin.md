@@ -23,11 +23,16 @@
         filename="gz-sim-physics-system"
         name="gz::sim::systems::Physics">
     </plugin>
+
     <plugin
         filename="gz-sim-scene-broadcaster-system"
         name="gz::sim::systems::SceneBroadcaster">
     </plugin>
-
+    
+    <plugin
+        filename="gz-sim-user-commands-system"
+        name="gz::sim::systems::UserCommands">
+    </plugin>
     <!-- ... -->
 ```
 
