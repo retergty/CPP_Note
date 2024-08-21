@@ -609,9 +609,41 @@ def generate_launch_description():
    ],
    ```
 
+### DeclareLaunchArgument
+
+```python
+turtlesim_ns_launch_arg = DeclareLaunchArgument(
+   'turtlesim_ns',
+   default_value='turtlesim1'
+)
+```
+
+* `'turtlesim_ns'`是启动参数的名字，可以与其它变量同名。
+* `default_value='turtlesim1'`默认值
+
+### ExecuteProcess
+
+```python
+spawn_turtle = ExecuteProcess(
+   cmd=[[
+      'ros2 service call ',
+      turtlesim_ns,
+      '/spawn ',
+      'turtlesim/srv/Spawn ',
+      '"{x: 2, y: 2, theta: 0.2}"'
+   ]],
+   shell=True
+)
+```
+
+* `cmd`接收一个`shell`命令.
+* `shell=True`使用`shell`.
+
 ### LaunchDescription
 
 `LaunchDescription`接受一个列表，这个列表的每个元素都是`launch_ros.actions`.
 
 * `Node`最常用的动作，启动一个节点。
 * `ComposableNodeContainer`启动一个节点容器
+* `DeclareLaunchArgument`声明一个`launch`参数
+* `ExecuteProcess`执行一段`shell`命令
