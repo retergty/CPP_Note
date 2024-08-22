@@ -292,3 +292,52 @@ ros2 topic echo [-h] [--spin-time SPIN_TIME] [-s] [--no-daemon]
 ### wtf
 
 `doctor`的别名。
+
+## 通过命令行将`ROS`参数传递给节点
+
+参考文档
+
+* [ROS Command Line Arguments](https://design.ros2.org/articles/ros_command_line_arguments.html)
+* [Passing ROS arguments to nodes via the command-line](https://docs.ros.org/en/humble/How-To-Guides/Node-arguments.html)
+
+```shell
+ros2 run some_package some_node [<user-defined-arg-0>...<user-defined-arg-N>] \
+  --ros-args [<ros-specific-arg-0>...] -- [<user-defined-arg-N+1>...]
+```
+
+跟随在`--ros-args`后面的参数为传递给`ROS2`节点的参数。此外的参数则为用户定义的参数。
+
+可以重复使用`--ros-args`，参数是叠加的。
+
+### 简短总结
+
+* `--remap from:=to`或`-r from:=to`进行名称重映射.
+* `-param name:=value`或`-p name:=value`设置指定参数的值，`YAML`格式.
+* `--params-file path/to/file.yaml`指定参数文件
+* `-log-level LEVEL_NAME`设置`log`等级
+
+### 重映射
+
+使用`--remap from:=to`或`-r from:=to`进行名称重映射。
+
+```shell
+ros2 run some_package some_ros_executable --ros-args --remap foo:=bar
+```
+
+把`foo`结构重映射为`bar`.`foo`可以是订阅的主题名，发布的主题名等`ROS2`结构。
+
+使用`__node`重映射节点名，`__ns`重映射节点名称空间
+
+```shell
+ros2 run demo_nodes_cpp talker --ros-args -r __ns:=/demo -r __node:=my_talker -r chatter:=my_topic
+```
+
+默认情况下，重映射影响`some_ros_executable`里的所有节点，为了指定特定的节点,比如`some_node`，可以使用
+
+```shell
+ros2 run some_package some_ros_executable --ros-args -r some_node:foo:=bar
+```
+
+```shell
+ros2 run composition manual_composition --ros-args -r talker:__node:=my_talker -r listener:__node:=my_listener
+```
