@@ -74,3 +74,5 @@
   <param name="joint_to_actuator">${1024/PI}</param>
 </transmission>
 ```
+
+`<transmission>`声明了一个传动器，`name`是之前在`UDRF`其它位置出现过的`<transmission>`的名字。
