@@ -76,3 +76,19 @@
 ```
 
 `<transmission>`声明了一个传动器，`name`是之前在`UDRF`其它位置出现过的`<transmission>`的名字。
+
+### 声明GPIO
+
+```xml
+<gpio name="flange_digital_IOs">
+  <command_interface name="digital_output1"/>
+  <state_interface name="digital_output1"/>    <!-- Needed to know current state of the output -->
+  <command_interface name="digital_output2"/>
+  <state_interface name="digital_output2"/>
+  <state_interface name="digital_input1"/>
+  <state_interface name="digital_input2"/>
+</gpio>
+```
+
+`<gpio>`声明了一个GPIO，`name`是GPIO的名字。
+

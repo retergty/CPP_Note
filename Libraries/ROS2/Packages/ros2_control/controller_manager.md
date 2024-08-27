@@ -34,3 +34,19 @@ hardware_components_initial_state:
 ### <controller_name>.type
 
 指明控制器的类型，是一个`plugin`.
+
+### 例子
+
+```yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 100 # Hz
+
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+```
