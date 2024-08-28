@@ -92,3 +92,27 @@
 
 `<gpio>`声明了一个GPIO，`name`是GPIO的名字。
 
+## 例子
+
+```xml
+<ros2_control name="RRBotForceTorqueSensor2D" type="sensor">
+  <hardware>
+    <plugin>ros2_control_demo_hardware/ForceTorqueSensor2DHardware</plugin>
+    <param name="example_param_read_for_sec">0.43</param>
+  </hardware>
+  <sensor name="tcp_fts_sensor">
+    <state_interface name="fx"/>
+    <state_interface name="tz"/>
+    <param name="frame_id">kuka_tcp</param>
+    <param name="fx_range">100</param>
+    <param name="tz_range">100</param>
+  </sensor>
+  <sensor name="temp_feedback">
+    <state_interface name="temperature"/>
+  </sensor>
+  <gpio name="calibration">
+    <command_interface name="calibration_matrix_nr"/>
+    <state_interface name="calibration_matrix_nr"/>
+  </gpio>
+</ros2_control>
+```

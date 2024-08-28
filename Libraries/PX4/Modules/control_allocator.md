@@ -23,7 +23,7 @@
 
 #### `vehicle_status`
 
-表示当前无人机的状态，该模块主要使用`vehicle_status.arming_state`字段，与``vehicle_status.vehicle_type`。
+表示当前无人机的状态，该模块主要使用`vehicle_status.arming_state`字段，与`vehicle_status.vehicle_type`。
 
 #### `vehicle_control_mode`
 

@@ -691,10 +691,19 @@ ros2 component load /ComponentManager composition composition::Listener
 
 参考[launch笔记](./launch.md)
 
-## 设计哲学
-
-* 所有创建节点新的结构（比如发布者，订阅者）的函数都会返回一个共享指针，这些新的结构只有在这些共享指针有效时才有效。如果离开了共享指针的作用域，则这些结构自动被删除。
-
 ### 名称重映射
 
 `ROS2`里的节点名，节点名称空间，以及节点内的结构都可以在节点启动时被重映射，重映射的方法可以是命令行或者是`rclcpp`里直接传递`--ros-args`，或者通过`launch`文件来修改。
+
+### 插件plugin
+
+参考文档
+
+* [pluginlib](https://wiki.ros.org/pluginlib)
+* [Creating and using plugins (C++)](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Pluginlib.html)
+
+插件`plugin`是可以动态加载的类，可以在运行时加载。`ROS2`使用`pluginlib`包来提供创建，加载，卸载插件的功能。通过使用`pluginlib`，用户不需要显式地链接动态加载地共享库，`pluginlib`会自动管理这这些共享库。
+
+## 设计哲学
+
+* 所有创建节点新的结构（比如发布者，订阅者）的函数都会返回一个共享指针，这些新的结构只有在这些共享指针有效时才有效。如果离开了共享指针的作用域，则这些结构自动被删除。
