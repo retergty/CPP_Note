@@ -107,6 +107,19 @@ CustomMessageDefinedInThisPackage value
 
 域名由小写字母和下划线组成，且下划线不能出现在域名头部与尾部，也不能有两个连续的下划线。
 
+```msg
+int32[] unbounded_integer_array
+int32[5] five_integers_array
+int32[<=5] up_to_five_integers_array
+
+string string_of_unbounded_size
+string<=10 up_to_ten_characters_string
+
+string[<=5] up_to_five_unbounded_strings
+string<=10[] unbounded_array_of_strings_up_to_ten_characters_each
+string<=10[<=5] up_to_five_strings_up_to_ten_characters_each
+```
+
 #### 域默认值
 
 可以给域设置默认值，但目前不支持字符串数组与复合类型的域默认值。
