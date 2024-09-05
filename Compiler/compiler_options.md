@@ -112,6 +112,10 @@ gcc -shared add.o div.o mult.o sub.o -o libMyTest.so
 
 ## 提供编译器优化的选项
 
+参考文档
+
+* [Options That Control Optimization](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html)
+
 这一类的选项控制不同种类的优化行为。
 
 如果没有指定任何优化，编译器的目标就是尽可能缩短编译时间并使得debug产生正确的结果。
@@ -146,6 +150,10 @@ gcc -shared add.o div.o mult.o sub.o -o libMyTest.so
 
 无视严格的标准合规性，使能所有的`-O3`优化，还会使能那么可能不是对于任何符合标准的程序都是正确的优化。
 
+### `-Og`
+
+优化`Debug`体验,通常使用在频繁的编译，调试过程中使用，它保证了编译的快速性与`Debug`信息的完整性。与`-O0`一样，`-Og`完全禁用许多优化过程,通常使能`-O1`,除了那些影响`Debug`信息的优化。
+
 ### `-fno-rtti`
 
 关闭`RTTI`.
@@ -153,6 +161,10 @@ gcc -shared add.o div.o mult.o sub.o -o libMyTest.so
 ### `-fno-exceptions`
 
 关闭异常.
+
+### `-ffunction-sections,-fdata-sections`
+
+把每个函数与数据都放到单独的段中，如果在链接时使用了`--gc-sections`垃圾回收，这个选项会极大地减小生成文件的大小。
 
 ### `-flto`
 
@@ -397,6 +409,10 @@ gcc允许使用`-g`加上`-O`，但是优化后的代码执行的情况可能会
 `-g1`表示生成最小限度的`debug`信息
 
 `-g3`表示生成额外的`debug`信息，比如程序中所有的宏定义。
+
+### `-ggdb`
+
+生成供`gdb`使用的调试信息，通常不使用这个选项也是可以的。
 
 ## 传递给汇编器的选项
 

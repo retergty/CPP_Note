@@ -25,6 +25,10 @@ GDB支持多种语言，但是我们通常用它来调试`C`或`C++`程序。
 
 为了能够使用`GDB`进行调试，我们在编译可执行文件时需要指定`-g`生成调试信息，通常不指定`-O`，因为会带来麻烦的调试，但是`GCC`允许指定`-g`加上`-O`.
 
+## 目标target
+
+目标就是Debug程序占用的执行环境。
+
 ## 启动GDB
 
 ```shell
@@ -114,6 +118,29 @@ GDB具有强大的指令补全功能，补全方法和`shell`一样，在想要�
 func<int>()    func<float>()
 (gdb) p 'func<
 ```
+
+## 指定Debug可执行文件
+
+有时，需要在`GDB`命令行里指定可执行文件。
+
+* `file filename`
+
+  指定要`debug`的可执行文件名，`GDB`会读取它的符号表，之后可以通过`run`执行这个可执行文件。如果指定的可执行文件没有在`GDB`当前工作目录被找到，那么`GDB`会使用环境变量`PATH`指定的目录查找。
+
+  如果不指定参数，`GDB`会丢弃当前存储的符号表与可执行文件信息。
+
+* `exec-file [ filename ]`
+
+  指定要执行的可执行文件名，但不读取它的符号表。
+
+* `symbol-file [ filename [ -o offset ]]`
+
+  读取`filename`指定文件的符号表信息
+
+* `info files`
+* `info taget`
+
+  显示当前`debug`的目标或者是文件信息。
 
 ## 运行程序
 
@@ -1451,3 +1478,57 @@ register_libstdcxx_printers(None)
   #0  some_function (ignore=0x0) at example.c:8
   8     printf ("hello\n");
   ```
+
+## 指定调试目标
+
+通常，目标通过`file`，`core`命令的自动指明，但是，当使用`GDB`远程调试，或者是通过`TCP/IP`调试一个嵌入式设备，就需要指明目标。
+
+### 远程调试类型
+
+`GDB`支持两种远程调试类型，`target remote`模式和`target extended-remote`模式，通常后者比前者要强大，比如`target remote`模式下，`GDB`不支持`run`命令，但`target extended-remote`支持。但是许多远程目标只能使用`target remote`模式.
+
+通常使用情况是使用`arm-none-eabi-gdb`调试单片机上的嵌入式程序.
+
+* `target remote serial-device`
+* `target extended-remote serial-device`
+  
+  通过串口连接远程程序到`GDB`.比如
+
+  ```gdb
+  target remote /dev/ttyb
+  ```
+
+* `target remote local-socket`
+* `target extended-remote local-socket`
+
+  通过本地套接字连接远程程序到`GDB`.
+
+* `target remote host:port`
+* `target remote [host]:port`
+* `target remote tcp:host:port`
+* `target remote tcp:[host]:port`
+* `target remote tcp4:host:port`
+* `target remote tcp6:host:port`
+* `target remote tcp6:[host]:port`
+* `target extended-remote host:port`
+* `target extended-remote [host]:port`
+* `target extended-remote tcp:host:port`
+* `target extended-remote tcp:[host]:port`
+* `target extended-remote tcp4:host:port`
+* `target extended-remote tcp6:host:port`
+* `target extended-remote tcp6:[host]:port`
+
+  通过`TCP`连接远程程序到`GDB`.
+
+* `target remote udp:host:port`
+* `target remote udp:[host]:port`
+* `target remote udp4:host:port`
+* `target remote udp6:[host]:port`
+* `target extended-remote udp:host:port`
+* `target extended-remote udp:host:port`
+* `target extended-remote udp:[host]:port`
+* `target extended-remote udp4:host:port`
+* `target extended-remote udp6:host:port`
+* `target extended-remote udp6:[host]:port`
+
+  通过`UDP`连接远程程序到`GDB`.
