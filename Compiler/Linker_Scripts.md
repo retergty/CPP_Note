@@ -1,0 +1,150 @@
+# Linker Scripts
+
+`Linker Scripts`是一个`.ld`文件，控制了链接器进行链接的整个过程。
+
+参考文档
+
+* [GNU 官方文档Command Language](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html#SEC5)
+
+## 表达式
+
+`Linker Scripts`中表达式的语法与C表达式的语法相同，具有以下特点
+
+* 所有表达式均计算为整数，且均为`long`或`unsigned long`类型。
+* 所有常量都是整数.
+* 提供了所有C风格算术运算符.
+* 可以引用、定义和创建全局变量.
+* 可以调用特殊用途的内置函数.
+
+### 整数
+
+```linkerscript
+_as_octal = 0157255; /* 八进制整数 */
+_as_decimal = 57005; /* 十进制整数 */
+_as_hex = 0xdead; /* 十六进制整数 */
+_as_neg = -57005; /* 十进制负整数 */
+```
+
+还可以使用`K`,`M`后缀.
+
+```linkerscript
+_fourk_1 = 4K;
+_fourk_2 = 4096;
+_fourk_3 = 0x1000;
+```
+
+### 符号名称
+
+除非加引号，否则符号名称以字母、下划线或点开头，并且可以包含任何字母、下划线、数字、点和连字符。不加引号的符号名称不能包含空格,且不能与任何关键字冲突.
+
+```linkerscript
+"SECTION" = 9;
+"with a space" = "also with a space" + 10;
+```
+
+### 地址计数器
+
+地址计数器`Location Counter`是链接文件预定义的一个特殊的变量，它是一个`.`,包含了当前输出位置的地址值。它必须出现在`SECTIONS`命令里，地址计数器可以出现在任何合法的表达式位置，但是给它赋值具有副作用。为`.`赋值将导致地址计数器移动，从而在输出位置创建空洞，地址计数器永远不会向后移动。
+
+```linkerscript
+SECTIONS
+{
+  output :
+  {
+  file1(.text)
+  . = . + 1000;
+  file2(.text)
+  . += 1000;
+  file3(.text)
+  } = 0x1234;
+}
+```
+
+上述的例子中，`file1`中的`.text`段被放置在`output`节的开始位置，之后存在`1000`个字节的空洞，随后放置`file2`中的`.text`段，以此类推。`= 0x1234`描述了空洞应该存放的值。
+
+### 表达式求值
+
+链接器使用表达式延迟求值，只在必须求值的上下文中对表达式进行求值。链接器需要知道起始地址的值和内存区域的长度，以便进行任何链接；所以，当链接器读入链接文件时，会尽快计算这些值。然而，其他值（例如符号值）直到存储分配之后才知道或需要。
+
+### 定义符号
+
+可以创建全局符号，全局符号可以给源文件使用，并给它附上相应的地址值
+
+```linkerscript
+symbol = expression ;
+symbol &= expression ;
+symbol += expression ;
+symbol -= expression ;
+symbol *= expression ;
+symbol /= expression ;
+```
+
+注意，定义符号后面的`;`是必须的。
+
+当创建变量时，链接器会给它绝对或者是相对类型，绝对类型指的就是符号原样值，相对类型就是符号被表达为相对于`SECTIONS`基地址的偏移。
+
+变量的类型取决于它定义的位置，在一个`section`中定义的变量就是相对的，其余都是绝对的，但是可以使用`ABSOLUTE`函数.
+
+```linkerscript
+SECTIONS{ ...
+  .data : 
+    {
+      *(.data)
+      _edata = ABSOLUTE(.) ;
+    } 
+... }
+```
+
+### 算术函数
+
+链接文件包含许多内置函数.
+
+* `ABSOLUTE(exp)`
+
+  返回表达式`exp`的绝对值.
+
+* `ADDR(section)`
+
+  返回段`section`的绝对地址，链接脚本必须已定义该段的位置。
+
+  ```linkerscript
+  SECTIONS{ ...
+    .output1 :
+      { 
+      start_of_output_1 = ABSOLUTE(.);
+      ...
+      }
+    .output :
+      {
+      symbol_1 = ADDR(.output1);
+      symbol_2 = start_of_output_1;
+      }
+  ... }
+  ```
+
+  `symbol_1`和`symbol_2`的值相同。
+
+* `LOADADDR(section)`
+
+  返回段`section`的绝对加载地址，通常和`ADDR(section)`一致，除非使用了`AT`指定了不同的加载地址，比如把初始化的数据加载到`FLASH`,但是运行时是在`RAM`上.
+
+* `ALIGN(exp)`
+
+  返回与当前地址计数器与`exp`对齐的值。和`(. + exp - 1) & ~(exp - 1)`相同.
+
+## 内存布局
+
+链接器的默认配置允许分配所有可用内存。可以使`MEMORY`命令覆盖此配置.`MEMORY`命令描述目标中内存块的位置和大小。描述了链接器可以使用哪些内存区域，以及必须避免哪些内存区域。链接器不会打乱段以适合可用区域，但会将请求的部分移动到正确的区域，并在区域超出可用时发出错误。
+
+`MEMORY`格式如下
+
+```linkerscript
+MEMORY 
+  {
+    name (attr) : ORIGIN = origin, LENGTH = len
+    ...
+  }
+```
+
+* `name`该内存区域的名字，链接脚本的其它位置可以使用这个名字指定该内存区域.内存区域名称存储在单独的名称空间中，不会与符号、文件名或段名冲突。
+* `(attr)`描述了该内存区域的功能

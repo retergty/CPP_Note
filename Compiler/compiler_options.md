@@ -60,6 +60,18 @@ gcc -shared add.o div.o mult.o sub.o -o libMyTest.so
 
 比如`-Wl,-rpath=.`指定程序运行时优先查找的库路径，这个的优先级高于`LD_LIBRARY_PATH`.比如这个`.`就表示优先查找当前目录的库路径。
 
+### `-Wl,--gc-sections`
+
+让链接器进行垃圾回收，删除未使用的代码，减小最终生成的可执行文件大小。
+
+### `-Wl,-Map=${PROJECT_NAME}.map`
+
+生成`.map`文件，包含所有的符号等信息。
+
+### `-T${LINKER_SCRIPT}`
+
+使用链接文件`${LINKER_SCRIPT}`指导链接。
+
 ## 在代码中插入额外指令的选项
 
 参考文章
