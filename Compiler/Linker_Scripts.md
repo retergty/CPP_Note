@@ -6,6 +6,27 @@
 
 * [GNU 官方文档Command Language](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html#SEC5)
 
+## object文件预定义的输入段
+
+哪怕没有在代码中定义输入段，编译器也会创建预定义的输入段，并把相对应的符号放在输入段中.
+
+* `.text`,`.text*`段用于放置可执行的代码.
+* `.data`,`.data*`段用于放置已初始化的静态变量，比如`int a = 10;`.
+* `.rodata`,`.rodata*`段用于放置只读变量，比如`const string str = "Hello World\r\n";`.
+* `.bss`，`.bss*`段用于放置未初始化的静态变量，比如`int a[255];`.
+
+用户可以使用`gcc/g++`扩展来指定对象所在的输入段
+
+```CPP
+__attribute__((section("section_name")))
+```
+
+```CPP
+void foo() __attribute__((section(".text_foo")));
+....
+void foo() {}
+```
+
 ## 表达式
 
 `Linker Scripts`中表达式的语法与C表达式的语法相同，具有以下特点
@@ -222,5 +243,63 @@ SECTIONS { ...
   把`filename`文件中的对应输入段`section`放置在当前输出段中.
 
 * `* (section)`
-* (section, section, ...)
-* (section section ...)
+* `(section, section, ...)`
+* `(section section ...)`
+
+  把所有输入文件中的`section`段放置在这个输出段中，直接指定`filename`文件的优先级高于这个.也就是说`*`指的是所有剩余的文件。
+
+* `filename( COMMON )`
+* `*( COMMON )`
+
+  `COMMON`指的是所有的未初始化的变量。链接器允许通过`COMMON`指定所有未初始化的数据，就好像它们都是在输入段`COMMON`中的.
+
+指定文件名时可以使用通配符，但是链接脚本里的通配符不会匹配`/`，因为这个是`Unix`里的目录分隔符。单独使用的`*`是一个例外.
+
+指定`section`时也可以使用通配符，不同于文件名，它会匹配`/`.
+
+```linkerscript
+SECTIONS { 
+  .text : { *(.text) }
+  .data : { *(.data) } 
+  .bss :  { *(.bss)  *(COMMON) } 
+} 
+```
+
+### 可选输出段属性
+
+输出段完全定义如下
+
+```linkerscript
+SECTIONS {
+...
+secname start BLOCK(align) (NOLOAD) : AT ( ldadr )
+  { contents } >region :phdr =fill
+...
+}
+```
+
+* `start`
+
+  强制指定输出段加载到的内存地址，可以是任何表达式.
+
+  ```linkerscript
+  SECTIONS {
+    ...
+    output 0x40000000: {
+      ...
+      }
+    ...
+  }
+  ```
+
+* `BLOCK(align)`
+
+  增加地址计数器，达到`align`指定的对齐内存.
+
+* `AT ( ldadr )`，`AT>region`
+
+  指定输出段的加载地址，和执行地址不同，在C语言运行前的Startup文件会把输出段从加载地址复制到执行地址，之后代码在执行地址允许。`ldadr`表示具体地址，`region`表示内存区域.
+
+* `>region`
+
+  指定输出段的执行地址，`region`表示内存区域.
