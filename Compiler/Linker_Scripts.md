@@ -4,7 +4,12 @@
 
 参考文档
 
-* [GNU 官方文档Command Language](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html#SEC5)
+* [旧版GNU 官方文档Command Language](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html#SEC5)
+* [新版GNU 官方文档](https://sourceware.org/binutils/docs/ld/)
+
+## 入口点
+
+入口点是`ELF`格式可执行文件执行的第一个指令，它只是链接器提供给`ELF`加载器的信息，是否被使用取决于具体的操作系统实现，如果是`.bin`文件，这个信息会被删除.
 
 ## object文件预定义的输入段
 
@@ -65,7 +70,7 @@ _fourk_3 = 0x1000;
 
 ### 地址计数器
 
-地址计数器`Location Counter`是链接文件预定义的一个特殊的变量，它是一个`.`,包含了当前输出位置的地址值。它必须出现在`SECTIONS`命令里，地址计数器可以出现在任何合法的表达式位置，但是给它赋值具有副作用。为`.`赋值将导致地址计数器移动，从而在输出位置创建空洞，地址计数器永远不会向后移动。
+地址计数器`Location Counter`是链接文件预定义的一个特殊的变量，它是一个`.`,包含了当前输出位置的地址值。它必须出现在`SECTIONS`命令里，地址计数器可以出现在任何合法的表达式位置，但是给它赋值具有副作用。为`.`赋值将导致地址计数器移动，从而在输出位置创建空洞，在一个输出段内，地址计数器永远不会向后移动。
 
 ```linkerscript
 SECTIONS
@@ -78,6 +83,24 @@ SECTIONS
   . += 1000;
   file3(.text)
   } = 0x1234;
+}
+```
+
+如果`.`出现在一个输出段里，它指的是相对于当前段的相对地址，如果没有出现在一个输出段里，它指的是绝对地址.
+
+```linkerscript
+SECTIONS
+{
+    . = 0x100
+    .text: {
+      *(.text)
+      . = 0x200
+    }
+    . = 0x500
+    .data: {
+      *(.data)
+      . += 0x600
+    }
 }
 ```
 
@@ -303,3 +326,17 @@ secname start BLOCK(align) (NOLOAD) : AT ( ldadr )
 * `>region`
 
   指定输出段的执行地址，`region`表示内存区域.
+
+### 防止段被垃圾回收
+
+当使用链接选项`--gc-sections`时，有些段不应被链接器删除，哪怕代码里没有显式指明，比如中断向量表等，可以使用`KEEP()`.
+
+```linkerscript
+/* The startup code goes first into FLASH */
+.isr_vector :
+{
+  . = ALIGN(4);
+  KEEP(*(.isr_vector)) /* Startup code */
+  . = ALIGN(4);
+} >FLASH
+```
