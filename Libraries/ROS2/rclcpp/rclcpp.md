@@ -137,6 +137,17 @@ more_interfaces::msg::AddressBook
 
 在编译时会自动加上`-Iinstall/more_interfaces/include/more_interfaces`的选项。
 
+### 在相同的包内使用自定义消息
+
+由于在相同的包内时，当前包还没有被创建，所以使用自定义消息需要在`CMakeLists.txt`中加入
+
+```CMake
+rosidl_target_interfaces(publish_address_book
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+```
+
+假设`publish_address_book`为要使用这个消息的目标。
+
 ### 给自定义消息添加测试
 
 以`example`中的`more_interfaces`中的`AddressBook.msg`为例
