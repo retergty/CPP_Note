@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "main.h": "c",
+    "stm32f4xx_hal.h": "c",
+    "stm32f4xx_hal_conf.h": "c",
+    "stdio.h": "c",
+    "helloworld.h": "c",
+    "uxr_transport.h": "c",
+    "transport.h": "c",
+    "custom_transport.h": "c",
+    "config.h": "c",
+    "stream_framing_protocol.h": "c"
+  }
+}
