@@ -32,9 +32,41 @@ static px4::atomic<T *> _object;
 
 ```CPP
 static int main(int argc, char *argv[])
+{
+  if (argc <= 1 ||
+      strcmp(argv[1], "-h")    == 0 ||
+      strcmp(argv[1], "help")  == 0 ||
+      strcmp(argv[1], "info")  == 0 ||
+      strcmp(argv[1], "usage") == 0) {
+    return T::print_usage();
+  }
+
+  if (strcmp(argv[1], "start") == 0) {
+    // Pass the 'start' argument too, because later on px4_getopt() will ignore the first argument.
+    return start_command_base(argc - 1, argv + 1);
+  }
+
+  if (strcmp(argv[1], "status") == 0) {
+    return status_command();
+  }
+
+  if (strcmp(argv[1], "stop") == 0) {
+    return stop_command();
+  }
+
+  lock_module(); // Lock here, as the method could access _object.
+  int ret = T::custom_command(argc - 1, argv + 1);
+  unlock_module();
+
+  return ret;
+}
 ```
 
 * 是所有模块的入口点，必须在模块的`main`方法里调用，通常是`<module_name>_main`函数.
+* `start`命令表示启动这个模块，检查当前模块是否已经运行，如果运行，报错。否则实例化一个模块并运行.
+* `status`命令打印模块当前状态.
+* `stop`命令停止模块运行.
+* `custom_command`处理模块独有的命令，比如`commander takeoff`,注意，哪怕是在当前模块已经运行了，`custom_command`也会运行。
 
 ### 独占一个线程的类
 
@@ -280,7 +312,7 @@ FakeImu::FakeImu() :
 ```
 
 * 指定`ScheduledWorkItem`所在的`WorkQueue`.
-* 此时便会关联`WorkItem`与`WorkQueue`，如果`WorkQueue`还未存在，还会创建它，但不会把`WorkItem`插入到`WorkQueue`中。
+* 此时便会关联`WorkItem`与`WorkQueue`，如果`WorkQueue`还未存在，还会创建它，但不会立即把`WorkItem`插入到`WorkQueue`的运行队列中。
 
 #### task_spawn函数
 
@@ -352,7 +384,7 @@ void Run() override;
 ```
 
 * 在`WorkQueue`线程中运行，是模块运行的主函数。
-* 当函数运行完毕后，会把对应的`WorkItem`的`WorkQueue`中移除。
+* 当函数运行完毕后，对应的`WorkItem`便已从`WorkQueue`的运行队列中移除。
 
 #### `<module_name>_main`
 

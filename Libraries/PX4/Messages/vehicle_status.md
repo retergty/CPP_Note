@@ -87,4 +87,4 @@ static constexpr uint8_t NAVIGATION_STATE_MAX = 31;
 ```
 
 * 由`flight_mode_manager`模块使用，用来决定当前的飞行任务。
-* 由`commander`模块使用，用来决定当前使能的控制器，`vehicle_control_mode_s`
+* 由`commander`模块发布，决定当前使能的控制器，`vehicle_control_mode_s`
