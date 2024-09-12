@@ -1,6 +1,6 @@
 # mc_rate_control
 
-`mc_att_control`是多旋翼无人机的角加速度环控制器，它总是使能的，实现的功能如下
+`mc_rate_control`是多旋翼无人机的角加速度环控制器，它总是使能的，实现的功能如下
 
 * 接收从`mc_att_control`发送来的`vehicle_rates_setpoint`
 * 收到的`vehicle_rates_setpoint`进行`PID`控制，转化为期望机体坐标系三轴力矩`vehicle_torque_setpoint`与三轴推力`vehicle_thrust_setpoint`.
@@ -26,7 +26,7 @@
 
 #### `control_allocator_status`
 
-表示无人机控制分配的状态，这个模块使用这个信息决定是否执行器饱和，由`control_allocator`.
+表示无人机控制分配的状态，这个模块使用这个信息决定是否执行器饱和，由`control_allocator`发布.
 
 #### `vehicle_land_detected`
 
@@ -34,7 +34,7 @@
 
 #### `battery_status`
 
-表示无人机电池当前的状态，如果电量过低，需要减少控制量，由底层驱动发布。
+表示无人机电池当前的状态，如果电量过低，需要减少控制量，由电池管理模块发布。
 
 ### 发布
 

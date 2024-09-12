@@ -44,13 +44,13 @@
 
 ### 发布
 
-#### `takeoff_status`
-
-表示无人机现在的起飞状态与起飞阶段，是否起飞的信息。`flight_mode_manager`会使用。
-
 #### `vehicle_attitude_setpoint`
 
 表示无人机的期望姿态角，传递给姿态控制器。
+
+#### `takeoff_status`
+
+表示无人机现在的起飞状态与起飞阶段，是否起飞的信息。`flight_mode_manager`会使用。
 
 #### `vehicle_local_position_setpoint`
 

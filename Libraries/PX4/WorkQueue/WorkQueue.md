@@ -6,10 +6,10 @@
 * 这些模块必须实现`WorkItem`的纯虚函数`WorkItem::Run()`,这就是会在`WorkQueue`运行的主函数。
 * 这些模块的主函数都是`<module_name>_main`,操作系统会分配一个线程，并调用这个函数，这个函数通常完成初始化模块，初始化订阅与发布的任务。
 * `WorkItem`与对应的`WorkQueue`相关联，并在特定时候(通常是`SubscriptionCallbackWorkItem`的回调函数内)把`WorkItem`插入到对应的`WorkQueue`的运行队列里去。
-* 一个`WorkQueue`便是一个线程，具有优先级，由`wq_config_t`类配置，由`WorkQueueManager`线程在适当情况(`lazy initalise`)下创建。
+* 一个`WorkQueue`便是一个线程，具有优先级，由`wq_config_t`类配置，由`WorkQueueManager`线程在适当情况(`lazy initialization`)下创建。
 * 同一个`WorkQueue`的`WorkItem`是顺序运行的，不会发生抢占，所以不需要额外的同步。
 
-总的来说，工作队列就像是软件定时器任务，实现了软中断的功能。
+总的来说，工作队列就像是软件定时器任务，实现了软中断的功能，也可以说是简单版的协程.
 
 ## WorkItem类
 

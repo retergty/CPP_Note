@@ -2,7 +2,15 @@
 
 `flight_mode_manager`模块管理飞行任务，它按照当前的飞行模式以及参数设置，来决定选择的飞行任务与发布的`setpoint`.
 
-这个模块只会在无人机真正起飞时才会运行飞行任务，起飞操作不是由这个模块维护的。
+这个模块只会在无人机真正起飞时才会运行飞行任务，起飞状态不是由这个模块维护的，但是自动起飞`trajectory_setpoint`是有这个模块生成的.
+
+它实现的功能如下
+
+* 在自动飞行模式下，执行`AUTO`类型飞行任务，生成`trajectory_setpoint`与`vehicle_constraints`管理自动飞行.
+* 在辅助飞行模式下，接收手柄`manual_control_setpoint`，执行`Manual`类型飞行任务，生成`trajectory_setpoint`与`vehicle_constraints`管理辅助飞行.
+* 在发生紧急情况或者任务失败时，执行安全类型飞行任务，生成`trajectory_setpoint`与`vehicle_constraints`管理安全保护.
+* 发布`trajectory_setpoint`给`mc_pos_control`控制器模块作为期望输入.
+* 发布`vehicle_constraints`给`mc_pos_control`控制器模块管理飞行限制与是否起飞.
 
 ## 关键数据流
 
@@ -10,7 +18,7 @@
 
 #### `vehicle_local_position`
 
-这也是这个模块的驱动订阅，表示当前无人机的三维位置，速度，加速度等信息，由`EKF`模块发布。
+这是这个模块的驱动订阅，表示当前无人机的三维位置，速度，加速度等信息，由`EKF`模块发布。
 
 #### `vehicle_status`
 
@@ -22,7 +30,7 @@
 
 #### `manual_control_setpoint`
 
-表示无人机的手柄操作的输入`setpoint`，由`manual_control`发布，在辅助飞行模式下使用。也就是在`FlightTaskManualAltitude`类下。
+表示无人机的手柄操作的输入`setpoint`，由`manual_control`发布，在辅助飞行模式下使用。具体是在`FlightTaskManualAltitude`类下的`Sticks`成员变量里订阅的。
 
 #### `vehicle_control_mode_s`
 
