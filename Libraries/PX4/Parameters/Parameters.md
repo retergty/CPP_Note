@@ -16,7 +16,7 @@
 
 ## 定义参数
 
-参数都是在各个模块中的`*_params.c`文件中定义的，比如`mc_pos_control`模块下的`MPC_VEL_MANUAL`参数
+参数都是在各个模块中的`*_params.c`文件或者`module.yaml`中定义的，比如`mc_pos_control`模块下的`MPC_VEL_MANUAL`参数
 
 ```C
 /**
@@ -41,6 +41,22 @@ PARAM_DEFINE_FLOAT(MPC_VEL_MANUAL, 10.f);
 * 通常有注释，描述这个参数的功能与必要的信息。
 
 `px4`会自动地生成一个文件`px4_parameters.hpp`包含所有定义的参数，所有的参数都在一个枚举类`params`里，所有参数名以及初始值会放在一个`constexpr`的`param_info_s`的类里，顺序和枚举类里的顺序一致。
+
+在`module.yaml`中定义的参数可以使用通配符，可以一次性定义一类参数,比如`control_allocator`模块下的电机参数.
+
+```yaml
+CA_ROTOR${i}_PX:
+    description:
+        short: Position of rotor ${i} along X body axis relative to center of gravity
+    type: float
+    decimal: 2
+    increment: 0.1
+    unit: m
+    num_instances: *max_num_mc_motors
+    min: -100
+    max: 100
+    default: 0.0
+```
 
 ## 使用参数
 
