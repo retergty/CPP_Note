@@ -143,7 +143,7 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new)
 }
 ```
 
-更新了悬停推力后，为了缓慢地变化期望推力，修改积分器，减小改变悬停推理的影响。
+更新了悬停推力后，为了缓慢地变化期望推力，修改积分器，减小改变悬停推力的影响。
 
 根据牛顿运动定律，无人机的期望推力公式如下
 
@@ -648,6 +648,68 @@ void PositionControl::getAttitudeSetpoint(vehicle_attitude_setpoint_s &attitude_
 {
   ControlMath::thrustToAttitude(_thr_sp, _yaw_sp, attitude_setpoint);
   attitude_setpoint.yaw_sp_move_rate = _yawspeed_sp;
+}
+```
+
+```CPP
+void thrustToAttitude(const Vector3f &thr_sp, const float yaw_sp, vehicle_attitude_setpoint_s &att_sp)
+{
+  bodyzToAttitude(-thr_sp, yaw_sp, att_sp);
+  att_sp.thrust_body[2] = -thr_sp.length();
+}
+```
+
+```CPP
+void bodyzToAttitude(Vector3f body_z, const float yaw_sp, vehicle_attitude_setpoint_s &att_sp)
+{
+  // zero vector, no direction, set safe level value
+  if (body_z.norm_squared() < FLT_EPSILON) {
+    body_z(2) = 1.f;
+  }
+
+  body_z.normalize();
+
+  // vector of desired yaw direction in XY plane, rotated by PI/2
+  const Vector3f y_C{-sinf(yaw_sp), cosf(yaw_sp), 0.f};
+
+  // desired body_x axis, orthogonal to body_z
+  Vector3f body_x = y_C % body_z;
+
+  // keep nose to front while inverted upside down
+  if (body_z(2) < 0.f) {
+    body_x = -body_x;
+  }
+
+  if (fabsf(body_z(2)) < 0.000001f) {
+    // desired thrust is in XY plane, set X downside to construct correct matrix,
+    // but yaw component will not be used actually
+    body_x.zero();
+    body_x(2) = 1.f;
+  }
+
+  body_x.normalize();
+
+  // desired body_y axis
+  const Vector3f body_y = body_z % body_x;
+
+  Dcmf R_sp;
+
+  // fill rotation matrix
+  for (int i = 0; i < 3; i++) {
+    R_sp(i, 0) = body_x(i);
+    R_sp(i, 1) = body_y(i);
+    R_sp(i, 2) = body_z(i);
+  }
+
+  // copy quaternion setpoint to attitude setpoint topic
+  const Quatf q_sp{R_sp};
+  q_sp.copyTo(att_sp.q_d);
+
+  // calculate euler angles, for logging only, must not be used for control
+  const Eulerf euler{R_sp};
+  att_sp.roll_body = euler.phi();
+  att_sp.pitch_body = euler.theta();
+  att_sp.yaw_body = euler.psi();
 }
 ```
 

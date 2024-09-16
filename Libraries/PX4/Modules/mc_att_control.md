@@ -200,7 +200,7 @@ MulticopterAttitudeControl::generate_attitude_setpoint(const Quatf &q, float dt,
 
 在滚转与俯仰通道上进行低通滤波，同时保证不会超过最大倾斜角。
 
-### 进行姿态角控制
+### 进行非线性姿态角控制
 
 ```CPP
 Vector3f rates_sp = _attitude_control.update(q);
@@ -267,7 +267,7 @@ matrix::Vector3f AttitudeControl::update(const Quatf &q) const
 }
 ```
 
-大致逻辑就是进行倾转分离，抑制偏航，得到误差轴角，误差轴角进一步角加速度`setpoint`.
+大致逻辑就是进行倾转分离，抑制偏航，得到误差轴角，误差轴角进一步获得角加速度`setpoint`.
 
 这一个控制器是非线性的原因就是，每当无人机旋转了一个角度后，转动轴就变为了新的机体坐标系下的表示，与之前的就不同了。
 

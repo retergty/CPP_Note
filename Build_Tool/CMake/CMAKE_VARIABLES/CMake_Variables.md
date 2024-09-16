@@ -42,6 +42,8 @@ CMake 变量大全
 
 #### [`CMAKE_GENERATOR`](CMAKE_GENERATOR.md)
 
+#### [`CMAKE_TOOLCHAIN_FILE`](CMAKE_TOOLCHAIN_FILE.md)
+
 ### 用于不同语言的变量
 
 #### [`CMAKE_<LANG>_FLAGS`](CMAKE_LANG_FLAGS.md)

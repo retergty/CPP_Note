@@ -128,7 +128,7 @@ if (_control_allocator_saturation_negative(i)) {
 }
 ```
 
-在`updateIntegral`中，会检测是否饱和，如果饱和就会降低避免积分器过度饱和。
+在`updateIntegral`中，会检测是否饱和，如果执行器饱和就会避免积分器过度饱和。
 
 ### 根据电池状态降低`setpoint`
 

@@ -20,6 +20,6 @@ target_compile_options(<target> [BEFORE]
 
 按照参数`<INTERFACE|PUBLIC|PRIVATE>`的使用，给目标的`COMPILE_OPTIONS`、`INTERFACE_COMPILE_OPTIONS`属性添加新的表项，这三个参数表述了使用这个`target`的别的目标的使用要求。
 
-`BEFORE`表示添加到目标对应属性的前面，要是没有使用这个参数，则默认添加到后面。
+`BEFORE`表示添加到目标对应属性的前面，要是没有使用这个参数，则默认添加到后面。添加的位置是比`CMAKE_CXX_FLAGS`要后面，也就是说覆盖了它的冲突选项。
 
 这个命令支持生成期表达式。

@@ -287,7 +287,10 @@ px4_add_module(
 由`WorkQueue`管理的模块类的声明如下
 
 ```CPP
-class FakeImu : public ModuleBase<FakeImu>, public ModuleParams, public px4::ScheduledWorkItem
+class ControlAllocator : 
+public ModuleBase<ControlAllocator>, 
+public ModuleParams, 
+public px4::ScheduledWorkItem
 ```
 
 * 继承`ModuleBase<TemplateModule>`获得模块必须的架构
@@ -301,11 +304,10 @@ class FakeImu : public ModuleBase<FakeImu>, public ModuleParams, public px4::Sch
 在构造函数的初始化内，初始化`ScheduledWorkItem`
 
 ```CPP
-FakeImu::FakeImu() :
+ControlAllocator::ControlAllocator() :
   ModuleParams(nullptr),
-  ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::hp_default),
-  _px4_accel(1310988), // 1310988: DRV_IMU_DEVTYPE_SIM, BUS: 1, ADDR: 1, TYPE: SIMULATION
-  _px4_gyro(1310988)   // 1310988: DRV_IMU_DEVTYPE_SIM, BUS: 1, ADDR: 1, TYPE: SIMULATION
+  ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
+  _loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
 {
   //...
 }

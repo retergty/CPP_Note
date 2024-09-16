@@ -68,6 +68,8 @@ ExternalProject_Add(<name> [<option>...])
 
 `CONFIGURE_COMMAND <cmd>...`默认情况下外部工程会运行`CMake`.我们可以通过这个选项，自定义配置命令。
 
+`CMAKE_ARGS <arg>...`传递给这个工程的CMake参数,比如`-D`等.
+
 #### 构建步骤选项
 
 当配置完成后，就会开始构建，默认情况下，外部工程被认为是CMake工程，运行CMake。
