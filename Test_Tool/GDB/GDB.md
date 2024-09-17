@@ -358,7 +358,9 @@ GDB提供了一系列方便的变量提供断点的信息，`$bpnum`记录了最
 
 我们可以给特定断点设置一系列的命令，这些命令会在程序由于这个断点**停止**时运行。比如我们可以在停止时打印数据，或者使能另一个断点。
 
-* ```text
+*
+
+  ```text
   command [list]
   ... command-list ...
   end
@@ -586,7 +588,7 @@ bar(boring());
 
 比如,`sleep`系统调用
 
-```C++
+```CPP
 int unslept = 10;
 while (unslept > 0)
   unslept = sleep (unslept);

@@ -107,11 +107,13 @@ class condition_variable;
   ```CPP
   while (!pred())
     wait(lock);
-  ``
+  ```
 
   `pred()`不需要是原子的，因为此时互斥锁还保持锁定。
 
-  所有等待同一个条件变量地线程都要使用同一个`mutex`.
+  所有等待同一个条件变量的线程都要使用同一个`mutex`.
+
+  原子性指的是解锁`mutex`与阻塞操作是原子的，不会说解锁完毕后不会阻塞线程，哪怕是马上有一个线程通知了条件变量.
 
 * [wait_for](https://en.cppreference.com/w/cpp/thread/condition_variable/wait_for)
 
