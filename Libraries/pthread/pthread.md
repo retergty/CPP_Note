@@ -77,6 +77,8 @@
 
 ## 常见函数
 
+如没有特殊指定，函数都在`<pthread.h>`中
+
 ### 线程操纵函数
 
 * [pthread_create()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_create.html)
@@ -193,7 +195,35 @@
       int *policy);
   ```
 
-  获取或者设置`attr`的`schedpolicy`属性，用于设置线程调度属性.
+  获取或者设置`attr`的`schedpolicy`属性，用于设置线程调度属性.可以是`SCHED_FIFO`,`SCHED_RR`,`SCHED_OTHER`.
+
+### 线程帮助函数
+
+* [pthread_equal()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_equal.html)
+
+  ```C
+  int pthread_equal(pthread_t t1, pthread_t t2);
+  ```
+
+  比较两个线程是否相等.
+
+* [pthread_self()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_self.html)
+
+  ```C
+  pthread_t pthread_self(void);
+  ```
+
+  获得当前线程的标识号.
+
+* [pthread_once()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_once.html)
+
+  ```C
+  int pthread_once(pthread_once_t *once_control, 
+    void (*init_routine)(void));
+  pthread_once_t once_control = PTHREAD_ONCE_INIT;
+  ```
+
+  只调用一次函数，无论是多少次或者多少个线程调用。
 
 ### 互斥锁函数
 
@@ -224,6 +254,15 @@
 
 `pthread_mutexattr_*`类型的函数表示互斥锁的属性
 
+* [pthread_mutexattr_init(),pthread_mutexattr_destroy()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_init.html)
+
+  ```C
+  int pthread_mutexattr_init(pthread_mutexattr_t *attr);
+  int pthread_mutexattr_destroy(pthread_mutexattr_t *attr);
+  ```
+
+  初始化或者是销毁`attr`
+
 * [pthread_mutexattr_gettype(),pthread_mutexattr_settype()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_gettype.html)
 
   ```C
@@ -240,3 +279,240 @@
   `PTHREAD_MUTEX_RECURSIVE`
 
   `PTHREAD_MUTEX_DEFAULT`
+
+* [pthread_mutexattr_getpshared(),pthread_mutexattr_setpshared()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_getpshared.html)
+
+  ```C
+  int pthread_mutexattr_getpshared(const pthread_mutexattr_t *attr,
+      int *pshared);
+  int pthread_mutexattr_setpshared(pthread_mutexattr_t *attr,
+      int pshared);
+  ```
+
+  设置或者是获取`attr`的`process-shared`属性，如果是`PTHREAD_PROCESS_SHARED`,意味着`mutex`可以被多个进程操作，只要这些进程有权访问分配了`mutex`的内存.如果是`PTHREAD_PROCESS_PRIVATE`，只有创建了`mutex`的进程才能操作`mutex`.
+
+* [pthread_mutexattr_setprioceiling(),pthread_mutexattr_getprioceiling()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_setprioceiling.html)
+
+  ```C
+  int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *attr,
+      int prioceiling);
+  int pthread_mutexattr_getprioceiling(const pthread_mutexattr_t *attr,
+      int *prioceiling);
+  ```
+
+  设置或者是获取`attr`的`prioceiling`属性。这个属性是非负整数，最大值是`SCHED_FIFO`定义的.
+
+  `prioceiling`属性定义了`mutex`的优先级上限，为了避免优先级翻转，它应该不小于所有要使用它的线程优先级值。另一个属性`protocol`决定了它的使用.
+
+* [pthread_mutexattr_setprotocol(),pthread_mutexattr_getprotocol()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_setprotocol.html)
+
+  ```C
+  int pthread_mutexattr_setprotocol(pthread_mutexattr_t *attr,
+    int protocol);
+  int pthread_mutexattr_getprotocol(const pthread_mutexattr_t *attr,
+      int *protocol);
+  ```
+
+  设置或者是获取`attr`的`protocol`属性。这个属性可以是`PTHREAD_PRIO_NONE`,`PTHREAD_PRIO_INHERIT`,`PTHREAD_PRIO_PROTECT`.
+
+  当线程锁定`PTHREAD_PRIO_NONE`的`mutex`时，它的优先级与调度策略不会有影响.
+
+  当线程锁定`PTHREAD_PRIO_INHERIT`的`mutex`,同时这个其它高优先级的线程因为这个`mutex`而阻塞时，锁定`mutex`的线程会以更高优先级或阻塞线程中最高的优先级运行。
+
+  当线程锁定`PTHREAD_PRIO_PROTECT`的`mutex`时，这个线程总会以更高优先级或者是这些`mutex`的`prioceiling`属性中最高优先级运行。
+
+  如果一个线程同时锁定多个不同`protocol`的`mutex`时，它会以这些`mutex`中最高优先级运行.
+
+### 读写锁
+
+* [pthread_rwlock_init(),pthread_rwlock_destroy()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlock_init.html)
+
+  ```C
+  int pthread_rwlock_init(pthread_rwlock_t *rwlock,
+      const pthread_rwlockattr_t *attr);
+  int pthread_rwlock_destroy(pthread_rwlock_t *rwlock);
+  pthread_rwlock_t rwlock=PTHREAD_RWLOCK_INITIALIZER;
+  ```
+
+  初始化或者是销毁读写锁.
+
+* [pthread_rwlock_rdlock(),pthread_rwlock_tryrdlock()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlock_rdlock.html)
+
+  ```C
+  int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
+  int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
+  ```
+
+  获取读写锁的读锁，如果有别的线程获取了写锁，则会阻塞或失败.
+
+* [pthread_rwlock_wrlock(),pthread_rwlock_trywrlock()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlock_trywrlock.html)
+
+  ```C
+  int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
+  int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock);
+  ```
+
+  获取读写锁的写锁，如果有别的线程获取了写锁或者读锁，则会阻塞或失败.
+
+* [pthread_rwlock_unlock()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlock_unlock.html)
+
+  ```C
+  int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+  ```
+
+  解锁读写锁.
+
+### 读写锁属性函数
+
+* [pthread_rwlockattr_init(),pthread_rwlockattr_destroy()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlockattr_init.html)
+
+  ```C
+  int pthread_rwlockattr_init(pthread_rwlockattr_t *attr);
+  int pthread_rwlockattr_destroy(pthread_rwlockattr_t *attr);
+  ```
+
+  初始化或销毁`attr`
+
+* [pthread_rwlockattr_getpshared(),pthread_rwlockattr_setpshared()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_rwlockattr_setpshared.html)
+
+  ```C
+  int pthread_rwlockattr_getpshared(const pthread_rwlockattr_t *attr,
+      int *pshared);
+  int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *attr,
+      int pshared);
+  ```
+
+  获取或设置`attr`的`process-shared`属性.
+
+### 条件变量函数
+
+* [pthread_cond_init(),pthread_cond_destroy()](https://blog.csdn.net/weixin_43764974/article/details/136723966)
+
+  ```C
+  int pthread_cond_init(pthread_cond_t *cond,
+    const pthread_condattr_t *attr);
+  int pthread_cond_destroy(pthread_cond_t *cond);
+  pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+  ```
+
+  初始化或者销毁条件变量.
+
+  在没有线程因为等待这个条件变量时销毁是安全的，否则会导致未定义行为.
+
+* [pthread_cond_signal(),pthread_cond_broadcast()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_cond_signal.html)
+
+  ```C
+  int pthread_cond_signal(pthread_cond_t *cond);
+  int pthread_cond_broadcast(pthread_cond_t *cond);
+  ```
+
+  发送信号，解锁等待线程.如果没有线程当前正在等待，函数没有效果.
+
+  `pthread_cond_signal()`解锁至少一个线程.
+
+  `pthread_cond_broadcast()`解锁全部线程.
+
+  函数可以在没有拥有与这个条件变量相关联的`mutex`调用.当如果想要可预测的调度行为，最好锁定`mutex`函数调用完毕后再解锁`mutex`.
+
+* [pthread_cond_wait(),pthread_cond_timedwait()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_cond_timedwait.html)
+
+  ```C
+  int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
+  int pthread_cond_timedwait(pthread_cond_t *cond, 
+      pthread_mutex_t *mutex, const struct timespec *abstime);
+  ```
+
+  等待条件变量变得可用。必须在`mutex`锁定时调用.
+
+  这个函数原子性地释放`mutex`并等待条件变量.函数返回前，又获取`mutex`.
+
+### 条件变量属性函数
+
+* [pthread_condattr_init(),pthread_condattr_destroy()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_condattr_init.html)
+
+  ```C
+  int pthread_condattr_init(pthread_condattr_t *attr);
+  int pthread_condattr_destroy(pthread_condattr_t *attr);
+  ```
+
+  初始化或者销毁`attr`.
+
+* [pthread_mutexattr_getpshared(),pthread_mutexattr_setpshared()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/pthread_mutexattr_getpshared.html)
+
+  ```C
+  int pthread_mutexattr_getpshared(const pthread_mutexattr_t *attr,
+    int *pshared);
+  int pthread_mutexattr_setpshared(pthread_mutexattr_t *attr,
+      int pshared);
+  ```
+
+  获取或设置`attr`的`process-shared`属性.
+
+### 内存屏障函数
+
+* [pthread_barrier_init(),pthread_barrier_destroy()](https://linux.die.net/man/3/pthread_barrier_init)
+
+  ```C
+  int pthread_barrier_destroy(pthread_barrier_t *barrier);
+  int pthread_barrier_init(pthread_barrier_t *restrict barrier,
+  const pthread_barrierattr_t *restrict attr, unsigned count);
+  ```
+
+  初始化或者是销毁内存屏障.`count`就是`pthread_barrier_wait`需要调用的次数.
+
+* [pthread_barrier_wait()](https://linux.die.net/man/3/pthread_barrier_wait)
+
+  ```C
+  int pthread_barrier_wait(pthread_barrier_t *barrier);
+  ```
+
+  等待直到指定数量的`pthread_barrier_wait`被调用.
+
+### 信号量函数
+
+信号量函数在`<semaphore.h>`里.
+
+* [sem_init()](https://pubs.opengroup.org/onlinepubs/007908799/xsh/sem_init.html)
+
+  ```C
+  int sem_init(sem_t *sem, int pshared, unsigned int value);
+  ```
+
+  初始化信号量，`pshared`表示是否进程共享.`value`便是`sem`的值.
+
+* [sem_destroy()](https://pubs.opengroup.org/onlinepubs/007908799/xsh/sem_destroy.html)
+
+  ```C
+  int sem_destroy(sem_t *sem);
+  ```
+
+  销毁`sem`指定的信号量，只能销毁通过`sem_init()`函数创建的信号量.
+
+* [sem_post()](https://pubs.opengroup.org/onlinepubs/007908799/xsh/sem_post.html)
+
+  ```C
+  int sem_post(sem_t *sem);
+  ```
+
+  解锁`sem`.
+
+  如果`value`为正值，意味着没有线程正在等待`sem`,函数递增`value`.
+
+  如果`value`为零，意味着由线程正在等待`sem`,函数解锁一个线程，通常是最高优先级的线程.
+
+* [sem_wait(),sem_trywait()](https://pubs.opengroup.org/onlinepubs/007908799/xsh/sem_trywait.html)
+
+  ```C
+  int sem_wait(sem_t *sem);
+  int sem_trywait(sem_t *sem);
+  ```
+
+  阻塞或非阻塞地等待`sem`,如果`value`为零，则等待，如果`value`为正值，递减`value`.
+
+* [sem_getvalue()](https://pubs.opengroup.org/onlinepubs/007908799/xsh/sem_getvalue.html)
+
+  ```C  
+  int sem_getvalue(sem_t *sem, int *sval);
+  ```
+
+  获取`sem`的`value`.
