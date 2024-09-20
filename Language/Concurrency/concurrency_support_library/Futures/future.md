@@ -1,5 +1,7 @@
 # future
 
+定义在`<future>`头文件中.
+
 参考文档
 
 * [future](https://en.cppreference.com/w/cpp/thread/future)
