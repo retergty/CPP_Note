@@ -141,6 +141,40 @@
   void pthread_cleanup_pop(int execute);
   ```
 
+* [sleep()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/sleep.html)
+
+  ```C
+  #include <unistd.h>
+
+  unsigned int sleep(unsigned int seconds);
+  ```
+
+  让当前线程至少挂起`seconds`秒，或者是有信号发生.由于调度器延迟，挂起时间可能长于`seconds`.
+
+  返回未挂起的秒数，通常是`0`.
+
+* [usleep()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/usleep.html)
+
+  ```C
+  #include <unistd.h>
+
+  int usleep(useconds_t useconds);
+  ```
+
+  让当前线程至少挂起`useconds`微秒，或者是有信号发生.`usecond`必须小于`1,000,000`.由于调度器延迟，挂起时间可能长于`useconds`.
+
+  返回未挂起的秒数，通常是`0`.
+
+* [nanosleep()](https://pubs.opengroup.org/onlinepubs/7908799/xsh/nanosleep.html)
+
+  ```C
+  #include <time.h>
+
+  int nanosleep(const struct timespec *rqtp, struct timespec *rmtp);
+  ```
+
+  让当前线程至少挂起纳秒级的时延。是高精度的.
+
 ### 线程属性函数
 
 `pthread_attr_*`类型的函数是操作`pthread_attr_t`线程属性的函数
