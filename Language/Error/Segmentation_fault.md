@@ -76,7 +76,7 @@ char *str = "Foo"; // Compiler marks the constant string as read-only
 
 ### 悬垂指针，悬垂引用
 
-由于开启了`address sanitizer`，所有释放的栈空间会被附上一个特殊的值，这个值不可读写，所以程序停留在解引用指针。
+由于开启了`address sanitizer`，所有释放的栈空间会被附上一个特殊的值，这个值对应的内存区域不可读写，所以程序停留在解引用指针。
 
 ```CPP
 char *p = NULL;
@@ -87,3 +87,14 @@ char *p = NULL;
 *p;
 ```
 
+使用`gdb`查看`sp`指针的值，与产生错误的指针的值进行比较，即可发现`p`的值大于`sp`,指向一个已释放的区域.注意，如果是多级指针，从第一级指针开始比较.
+
+通常发生位置固定，在作用域退出时.
+
+```CPP
+char *p = malloc(sizeof(char));
+free(p);
+*p;
+```
+
+由于开启了`address sanitizer`，释放后使用会停留在解引用指针处.
