@@ -142,8 +142,10 @@ more_interfaces::msg::AddressBook
 由于在相同的包内时，当前包还没有被创建，所以使用自定义消息需要在`CMakeLists.txt`中加入
 
 ```CMake
-rosidl_target_interfaces(publish_address_book
-  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+rosidl_get_typesupport_target(cpp_typesupport_target
+  ${PROJECT_NAME} rosidl_typesupport_cpp)
+
+target_link_libraries(publish_address_book "${cpp_typesupport_target}")
 ```
 
 假设`publish_address_book`为要使用这个消息的目标。
