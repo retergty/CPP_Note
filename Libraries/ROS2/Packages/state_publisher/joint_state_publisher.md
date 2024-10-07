@@ -26,3 +26,6 @@
 * `source_list`,字符串数组，要订阅的主题名.
 * `zeros` 关节名称到关节初始值的字典。默认为空字典，在这种情况下，`0.0`被假定为所有关节的零值.
 
+## joint_state_publisher_gui
+
+`joint_state_publisher_gui`包提供了一个`gui`工具，可以使用`gui`工具发布与获取给定`URDF`的各个关节状态。

@@ -639,6 +639,20 @@ spawn_turtle = ExecuteProcess(
 * `cmd`接收一个`shell`命令.
 * `shell=True`使用`shell`.
 
+### RegisterEventHandler
+
+```python
+delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
+   event_handler=OnProcessExit(
+      target_action=robot_controller_spawner,
+      on_exit=[joint_state_broadcaster_spawner],
+   )
+)
+```
+
+* `target_action`指定特定动作结束。
+* `on_exit`指定要做的回调函数动作.
+
 ### LaunchDescription
 
 `LaunchDescription`接受一个列表，这个列表的每个元素都是`launch_ros.actions`.
@@ -647,3 +661,4 @@ spawn_turtle = ExecuteProcess(
 * `ComposableNodeContainer`启动一个节点容器
 * `DeclareLaunchArgument`声明一个`launch`参数
 * `ExecuteProcess`执行一段`shell`命令
+* `RegisterEventHandler`注册其它`actions`结束或开始阶段时要做的`actions`.
