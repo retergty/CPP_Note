@@ -65,6 +65,7 @@ class reference_wrapper;
 ## 用途
 
 * 用在`thread`构造函数中，用于向新的线程传递引用。
+* 用在`stl`容器里，比如`std::vector`,把引用存储在`std::vector`里。
 
 ## 帮助函数ref与cref
 

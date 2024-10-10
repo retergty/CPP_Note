@@ -95,7 +95,7 @@ control_node = Node(
 
 ### joint_state_broadcaster
 
-`joint_state_broadcaster`会在`CM read`时把所有的`state interfaces`关节状态都发布到`/joint_states`与`/dynamic_joint_states`.可以用来替代`joint_state_publisher`.
+`joint_state_broadcaster`会把所有读取到的的`state interfaces`关节状态都发布到`/joint_states`与`/dynamic_joint_states`.可以用来替代`joint_state_publisher`.
 
 注意，`URDF`里定义的关节名字需要一致，否则`robot_state_publisher`不会发布正确的`tf`信息.
 
@@ -110,3 +110,24 @@ joint_state_broadcaster_spawner = Node(
 #### 常见参数
 
 * `use_local_topics`,是否发布的主题前面加上所在的名称空间，比如`/my_state_broadcaster/joint_states`.默认为`false`.
+
+### fts_broadcaster
+
+`fts_broadcaster`会把所有读取到的`force/torque`发布到`/fts_broadcaster/wrench`主题里，类型为`geometry_msgs/msg/WrenchStamped`.
+
+```python
+# add the spawner node for the fts_broadcaster
+fts_broadcaster_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=["fts_broadcaster", "--controller-manager", "/controller_manager"],
+)
+```
+
+#### 常见参数
+
+* `frame_id`，发布到的坐标系名字.
+* `interface_names`，`state interfaces`名字.
+* `interface_names.force.x`,`interface_names.force.y`,`interface_names.force.z`,`x`,`y`,`z`轴力的`state interfaces`名字.
+* `interface_names.torque.x`,`interface_names.torque.y`,`interface_names.torque.z`,`x`,`y`,`z`轴力矩的`state interfaces`名字.
+
