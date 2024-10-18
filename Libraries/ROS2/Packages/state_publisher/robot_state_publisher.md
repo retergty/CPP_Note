@@ -20,8 +20,8 @@
 
 ## 参数
 
-* `robot_description`，字符串，表示要读取的`URDF`文件.
-* `publish_frequency`,double类型，表示最大发布的频率。
+* `robot_description`，字符串，表示`URDF`格式的机器人描述。
+* `publish_frequency`,double类型,表示最大发布的频率。
 * `ignore_timestamp`,布尔类型，是否无论关节信息的`timestamp`如何，都接受关节信息，或者仅当关节信息比上次`publish_frequency`要新。默认为`false`.
 * `frame_prefix`,字符串，添加到已发布的`tf2`帧的前缀。默认为空字符串。
 
