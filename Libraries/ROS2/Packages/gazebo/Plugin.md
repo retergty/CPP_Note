@@ -248,3 +248,134 @@ target_link_libraries(SampleSystem
 
 ## System类
 
+```CPP
+class System
+{
+    /// \brief Signed integer type used for specifying priority of the
+    /// execution order of PreUpdate and Update phases.
+    public: using PriorityType = int32_t;
+
+    /// \brief Default priority value for execution order of the PreUpdate
+    /// and Update phases.
+    public: constexpr static PriorityType kDefaultPriority = {0};
+
+    /// \brief Name of the XML element from which the priority value will be
+    /// parsed.
+    public: constexpr static std::string_view kPriorityElementName =
+        {"gz:system_priority"};
+
+    /// \brief Constructor
+    public: System() = default;
+
+    /// \brief Destructor
+    public: virtual ~System() = default;
+};
+```
+
+`System`类是所有`plugin`的公共基类，实现了运行时多态.
+
+在系统的仿真`update`中，有以下三个阶段
+
+* `PreUpdate`阶段，在这个阶段中，可以读写组件。可以用于在仿真物理引擎调用前，修改模型的状态，比如应用控制信号，添加推力等.
+* `Update`阶段，在这个阶段中，可以读写组件。可以用于物理仿真步中.
+* `PostUpdate`阶段，在这个阶段中，只可以读取组件。在仿真物理引擎调用后，更新传感器或者是控制器。
+
+`PreUpdate`与`Update`阶段是串行的。执行顺序通过`PriorityType`控制，数值越小，越早执行。相同`PriorityType`的`plugin`则是按照加载顺序执行。`PostUpdate`是并行的.
+
+### ISystemConfigure类
+
+```CPP
+class ISystemConfigure {
+    /// \brief Configure the system
+    /// \param[in] _entity The entity this plugin is attached to.
+    /// \param[in] _sdf The SDF Element associated with this system plugin.
+    /// \param[in] _ecm The EntityComponentManager of the given simulation
+    /// instance.
+    /// \param[in] _eventMgr The EventManager of the given simulation
+    /// instance.
+    public: virtual void Configure(
+                const Entity &_entity,
+                const std::shared_ptr<const sdf::Element> &_sdf,
+                EntityComponentManager &_ecm,
+                EventManager &_eventMgr) = 0;
+};
+```
+
+配置函数，会在系统实例化完成且所有的实体与组件从`sdf`中加载后,仿真实际开始前调用.
+
+* `_entity`表示`plugin`连接到的实体。
+* `_sdf`包含了读取到的实体对应的`sdf`
+* `_ecm`包含了实体所有的组件
+
+### ISystemPreUpdate类,ISystemUpdate类,
+
+```CPP
+/// \class ISystemPreUpdate ISystem.hh gz/sim/System.hh
+/// \brief Interface for a system that uses the PreUpdate phase
+class ISystemPreUpdate {
+    public: virtual void PreUpdate(const UpdateInfo &_info,
+                                    EntityComponentManager &_ecm) = 0;
+};
+```
+
+```CPP
+/// \class ISystemUpdate ISystem.hh gz/sim/System.hh
+/// \brief Interface for a system that uses the Update phase
+class ISystemUpdate {
+    public: virtual void Update(const UpdateInfo &_info,
+                                EntityComponentManager &_ecm) = 0;
+};
+```
+
+```CPP
+/// \class ISystemPostUpdate ISystem.hh gz/sim/System.hh
+/// \brief Interface for a system that uses the PostUpdate phase
+class ISystemPostUpdate{
+    public: virtual void PostUpdate(const UpdateInfo &_info,
+                                    const EntityComponentManager &_ecm) = 0;
+};
+```
+
+* `_info`包含了更新时刻的信息，比如当前时间，`UpdateInfo::simTime`表示仿真引擎运行的时间点，也就是当`PreUpdate`与`Update`运行完毕后会到达的时间.
+
+## UpdateInfo类
+
+```CPP
+/// \brief Information passed to systems on the update callback.
+/// \todo(louise) Update descriptions once reset is supported.
+struct UpdateInfo
+{
+    /// \brief Total time elapsed in simulation. This will not increase while
+    /// paused.
+    std::chrono::steady_clock::duration simTime{0};
+
+    /// \brief Total wall clock time elapsed while simulation is running. This
+    /// will not increase while paused.
+    std::chrono::steady_clock::duration realTime{0};
+
+    /// \brief Simulation time handled during a single update.
+    std::chrono::steady_clock::duration dt{0};
+
+    /// \brief Total number of elapsed simulation iterations.
+    // cppcheck-suppress unusedStructMember
+    uint64_t iterations{0};
+
+    /// \brief True if simulation is paused, which means the simulation
+    /// time is not currently running, but systems are still being updated.
+    /// It is the responsibilty of a system update appropriately based on
+    /// the status of paused. For example, a physics systems should not
+    /// update state when paused is true.
+    // cppcheck-suppress unusedStructMember
+    bool paused{true};
+};
+```
+
+当`*Update`函数调用时会传递给它的结构体.
+
+* `simTime`表示当前仿真时间,也就是当`PreUpdate`与`Update`运行完毕后会到达的时间.
+* `realTime`表示当前实际时间
+* `dt`表示上一次更新与这一次之间的时间间隔.
+* `iterations`表示已经经过了的仿真循环.
+* `paused`表示仿真当前是否暂停，如果暂停，`simTime`与`realTime`不会变化.实际的物理系统不应该更新状态.
+
+## 
