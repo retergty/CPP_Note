@@ -9,7 +9,7 @@
 参考文档
 
 * [Sensors](https://gazebosim.org/docs/harmonic/sensors/)
-* [目前所有的传感器](https://github.com/gazebosim/gz-sensors)
+* [目前所有的传感器](https://github.com/gazebosim/gz-sim/tree/gz-sim9)
 * [udf 传感器定义](http://sdformat.org/spec?elem=sensor&ver=1.10)
 
 ### 前置条件
@@ -153,3 +153,98 @@
 * `<resolution>`该数字乘以样本以确定数据点的数量范围。
 * `<min_angle>`,`<max_angle>`是生成光线的角度范围。
 * `<range>`定义激光雷达最小最大的距离，以及线性精度
+
+## 例子
+
+### 源代码
+
+本文以`gz-sim/examples/system_plugin`为例，讲解`gazebo`插件的写法.
+
+```CPP
+#include <gz/sim/System.hh>
+namespace sample_system
+{
+    class SampleSystem2:
+    // This class is a system.
+    public gz::sim::System,
+    // This class also implements the ISystemPreUpdate, ISystemUpdate,
+    // and ISystemPostUpdate interfaces.
+    public gz::sim::ISystemPreUpdate,
+    public gz::sim::ISystemUpdate,
+    public gz::sim::ISystemPostUpdate,
+    public gz::sim::ISystemReset
+    {
+    public: SampleSystem2();
+
+    public: ~SampleSystem2() override;
+
+    public: void PreUpdate(const gz::sim::UpdateInfo &_info,
+                gz::sim::EntityComponentManager &_ecm) override;
+
+    public: void Update(const gz::sim::UpdateInfo &_info,
+                gz::sim::EntityComponentManager &_ecm) override;
+
+    public: void PostUpdate(const gz::sim::UpdateInfo &_info,
+                const gz::sim::EntityComponentManager &_ecm) override;
+
+    public: void Reset(const gz::sim::UpdateInfo &_info,
+                    gz::sim::EntityComponentManager &_ecm) override;
+    };
+}
+```
+
+* 继承了`gz::sim::System`用以进行多态
+* 继承了`gz::sim::ISystemPreUpdate`获得了`PreUpdate`函数，会在每次状态更新前调用.
+
+```CPP
+//! [registerSampleSystem2]
+#include <gz/plugin/RegisterMore.hh>
+
+GZ_ADD_PLUGIN(
+    sample_system::SampleSystem2,
+    gz::sim::System,
+    sample_system::SampleSystem2::ISystemPreUpdate,
+    sample_system::SampleSystem2::ISystemUpdate,
+    sample_system::SampleSystem2::ISystemPostUpdate,
+    sample_system::SampleSystem2::ISystemReset)
+```
+
+* 使用`GZ_ADD_PLUGIN`注册组件以及它的函数.
+
+### CMake
+
+```CMake
+cmake_minimum_required(VERSION 3.22.1 FATAL_ERROR)
+
+find_package(gz-cmake4 REQUIRED)
+
+project(SampleSystem)
+
+find_package(gz-plugin3 REQUIRED COMPONENTS register)
+set(GZ_PLUGIN_VER ${gz-plugin3_VERSION_MAJOR})
+
+find_package(gz-sim9 REQUIRED)
+add_library(SampleSystem SHARED SampleSystem.cc SampleSystem2.cc)
+set_property(TARGET SampleSystem PROPERTY CXX_STANDARD 17)
+target_link_libraries(SampleSystem
+  PRIVATE gz-plugin${GZ_PLUGIN_VER}::gz-plugin${GZ_PLUGIN_VER}
+  PRIVATE gz-sim9::gz-sim9)
+```
+
+### sdf
+
+```xml
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="default">
+    <plugin filename="SampleSystem"
+            name="sample_system::SampleSystem2">
+    </plugin>
+  </world>
+</sdf>
+```
+
+* 在`sdf`文件中需要指定文件名与文件中的类名，包含名称空间.
+
+## System类
+
