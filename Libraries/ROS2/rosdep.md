@@ -84,4 +84,4 @@ rosdep install -r --from-paths src --ignore-src --rosdistro humble -y
 * `--from-paths src`表示在子目录`src`中查找递归查找`package.xml`解决未出现的依赖
 * `-y`意味着所有的安装讯问默认为`yes`.
 * `--ignore-src`忽略已安装的包，也就是说`rosdep`会忽略通过环境变量`ROS_PACKAGE_PATH`与`AMENT_PREFIX_PATH`与`--from-paths`找到的包关键字，这些包关键字视为已安装。
-* `-r`
+* `-r`忽略没找到的包.
