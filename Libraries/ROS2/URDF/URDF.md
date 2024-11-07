@@ -77,15 +77,15 @@ URDF（统一机器人描述格式）是一种用于指定`ROS`中机器人的�
 
 ```xml
 <robot name = "linkage">
-  <joint name = "joint A >
+  <joint name = "joint A" >
     <parent link = "link A" />
     <child link = "link B" />
   </joint>
-  <joint name = "joint B  >
+  <joint name = "joint B"  >
     <parent link = "link A" />
     <child link = "link C" />
   </joint>
-  <joint name = "joint C >
+  <joint name = "joint C" >
     <parent link = "link C" />
     <child link = "link D" />
   </joint>
