@@ -47,6 +47,15 @@ namespace pmr {
 
 * [set](https://en.cppreference.com/w/cpp/container/set/set)
 
+  ```CPP
+  set() : set(Compare()) {};
+  explicit set( const Compare& comp,const Allocator& alloc = Allocator() );
+  template< class InputIt >
+  set( InputIt first, InputIt last,
+     const Compare& comp = Compare(),
+     const Allocator& alloc = Allocator() );
+  ```
+
 * [operator=](https://en.cppreference.com/w/cpp/container/set/operator%3D)
 
 ### 访问容量
