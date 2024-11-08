@@ -6,7 +6,7 @@
 
 ### 实体Entity
 
-实体指的就是`gazebo`里的一个`model`.定义了`joint`,`link`等组件。
+实体指的就是`gazebo`里的对象，比如`model`,`joint`,`link`等。
 
 ### 组件Components
 
