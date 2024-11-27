@@ -127,3 +127,20 @@ endforeach()
     "version": 4
 }
 ```
+
+```json
+{
+    "configurations": [
+        {
+            "name": "CMake",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
+```
+
+有时`VSCODE`对`C/C++`同时存在的工程有问题，可以把所有`.c`文件改为`.cpp`文件，全部使用`c++`编译器进行编译。
