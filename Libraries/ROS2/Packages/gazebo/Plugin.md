@@ -304,10 +304,10 @@ class ISystemConfigure {
 配置函数，会在系统实例化完成且所有的实体与组件从`sdf`中加载后,仿真实际开始前调用.
 
 * `_entity`表示`plugin`连接到的实体。
-* `_sdf`包含了读取到的实体对应的`sdf`
+* `_sdf`包含了这个实体对应的那一部分的`sdf`
 * `_ecm`包含了实体所有的组件
 
-### ISystemPreUpdate类,ISystemUpdate类,
+### ISystemPreUpdate类,ISystemUpdate类
 
 ```CPP
 /// \class ISystemPreUpdate ISystem.hh gz/sim/System.hh
@@ -378,4 +378,12 @@ struct UpdateInfo
 * `iterations`表示已经经过了的仿真循环.
 * `paused`表示仿真当前是否暂停，如果暂停，`simTime`与`realTime`不会变化.实际的物理系统不应该更新状态.
 
-## 
+## EntityComponentManager类
+
+```CPP
+class GZ_SIM_VISIBLE EntityComponentManager;
+```
+
+`EntityComponentManager`类构建，删除或者返回实体或者组件.
+
+这是最重要的类。
