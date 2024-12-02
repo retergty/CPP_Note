@@ -311,3 +311,60 @@ a.block<2,2>(1,1) = m;
 * `LinSpaced(size, low, high)`返回`[low,high]`的线性插值，个数为`size`，只能用于一维。
 
 除此以外，还有`setZero`等成员函数，把对象设置为这些矩阵。
+
+## 规约运算
+
+参考文档
+
+* [Reductions, visitors and broadcasting](https://eigen.tuxfamily.org/dox/group__TutorialReductionsVisitorsBroadcasting.html)
+
+* `mat.sum()`表示所有元素的和
+* `mat.prod()`表示所有元素的乘积
+* `mat.mean()`表示元素平均值
+* `mat.minCoeff()`表示元素最小值
+* `mat.maxCoeff()`表示元素最大值
+* `mat.trace()`表示矩阵的迹
+
+### 计算范数
+
+* `squaredNorm()`计算二范数的平方,等价于向量的点乘.
+* `norm()`计算二范数
+* `lpNorm<p>()`计算`p`范数，`Eigen::Infinity`用来表示无穷范数.
+
+### 布尔规约运算
+
+* `all()`返回`true`，如果给定的矩阵或数组所有元素都为`true`.
+* `any()`返回`true`,如果给定的矩阵或数组有一个元素为`true`.
+* `count()`返回给定矩阵或数组中为`true`的元素的个数.
+
+```CPP
+(a > 0).all();
+(a > 0).any();
+(a > 0).count();
+```
+
+### 获取位置
+
+* `maxCoeff(&x,&y)`,`minCoeff(&x,&y)`等规约运算可以获取相应元素的位置.
+
+### 部分规约
+
+使用`colwise()`,`rowwise()`函数可以实现按行规约或者是按列规约.
+
+* `mat.colwise().maxCoeff()`返回`mat`每列最大值.
+
+注意，按行规约返回列向量，按列规约返回行向量.
+
+* `mat.colwise().sum().maxCoeff(&maxIndex)`返回和最大的一列
+
+### 广播
+
+* `mat.colwise() += v`,可以实现把向量`v`加到矩阵每一列上.
+* `mat.rowwise() += v.transpose()`,可以实现把向量`v`加到矩阵每一行上.
+
+但是如果希望把向量`v`乘到矩阵每一列上，则需要
+
+```CPP
+mat = mat * v.asDiagonal()
+```
+
