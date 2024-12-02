@@ -368,3 +368,39 @@ a.block<2,2>(1,1) = m;
 mat = mat * v.asDiagonal()
 ```
 
+## 重塑
+
+`Eigen`提供了`DenseBase::reshaped(NRowsType,NColsType)`成员函数，这些函数不会进行就地的重塑，而是返回一个视角`view`.
+
+参考文档
+
+* [Reshape](https://eigen.tuxfamily.org/dox/group__TutorialReshape.html)
+
+```CPP
+Matrix4i m = Matrix4i::Random();
+m.reshaped(2, 8);
+```
+
+```text
+Here is the matrix m:
+ 7  9 -5 -3
+-2 -6  1  0
+ 6 -3  0  9
+ 6  6  3  9
+Here is m.reshaped(2, 8):
+ 7  6  9 -3 -5  0 -3  9
+-2  6 -6  6  1  3  0  9
+```
+
+把`4x4`矩阵变为`2x8`矩阵,`Eigen`对矩阵的默认重塑顺序按列存储，不管底层存储的顺序.但是可以通过`m.reshaped<AutoOrder>(2, 8)`按照底层存储顺序重塑
+
+### 重塑为一维向量
+
+* `DenseBase::reshaped()`不接受任何参数，可以把矩阵重塑为一维向量
+* `m.reshaped<RowMajor>()`可以按行重塑矩阵为一维向量.
+
+### 就地重塑
+
+对于动态矩阵，可以执行就地重塑。
+
+* `PlainObjectBase::resize(Index,Index)`如果可能，会重塑矩阵，会按照底层存储顺序存储。
