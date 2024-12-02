@@ -7,6 +7,14 @@
 * [Using Xacro to clean up your code](https://docs.ros.org/en/humble/Tutorials/Intermediate/URDF/Using-Xacro-to-Clean-Up-a-URDF-File.html)
 * [xacro](http://wiki.ros.org/xacro)
 
+## 格式
+
+使用`xarco`包需要在`urdf`文件内添加
+
+```xml
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="quad">
+```
+
 ## 定义常量
 
 使用如下格式即可定义常量
@@ -173,7 +181,7 @@
 ${namespace.property}
 ```
 
-### 例子
+## 例子
 
 ```xml
 <xacro:macro name="leg" params="prefix reflect">
@@ -191,9 +199,7 @@ ${namespace.property}
             </geometry>
             <origin xyz="0 0 -${leglen/2}" rpy="0 ${pi/2} 0"/>
         </collision>
-        <xacro:default_inertial mass="10"/>
-    </link>
-
+        <xacro:default_inertial mass="10"/>i
     <joint name="base_to_${prefix}_leg" type="fixed">
         <parent link="base_link"/>
         <child link="${prefix}_leg"/>

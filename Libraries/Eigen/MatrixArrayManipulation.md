@@ -216,4 +216,98 @@ a.block<2,2>(1,1) = m;
 * `matrix.bottomLeftCorner(p,q)`,`matrix.bottomLeftCorner<p,q>()`,从左下角开始的`p`行`q`列子块.
 * `matrix.topRightCorner(p,q)`,`matrix.topRightCorner<p,q>()`，从右上角开始的`p`行`q`列子块.
 * `matrix.bottomRightCorner(p,q)`,`matrix.bottomRightCorner<p,q>()`，从右下角开始的`p`行`q`列子块.
-* `
+* `matrix.topRows(q)`,`matrix.topRows<q>()`顶部的`q`行子块.
+* `matrix.bottomRows(q)`,`matrix.bottomRows<q>()`底部的`q`行子块
+* `matrix.leftCols(p)`,`matrix.leftCols<p>()`,左边的`p`列子块
+* `matrix.rightCols(q)`,`matrix.rightCols<q>()`右边的`q`列子块
+* `matrix.middleCols(i,q)`,`matrix.middleCols<q>(i)`中间的`q`列子块，从第`i`列开始.
+* `matrix.middleRows(i,q)`,`matrix.middleRows<q>(i)`中间的`q`行子块，从第`i`行开始
+
+### 用于向量的单维度的操作
+
+* `vector.head(n)`,`vector.head<n>()`向量开头的`n`个元素.
+* `vector.tail(n)`,`vector.tail<n>()`向量末尾的`n`个元素.
+* `vector.segment(i,n)`,`vector.segment<n>(i)`向量从第`i`个元素开始的`n`个元素.
+
+## 矩阵片段`slice`
+
+矩阵`slice`比块操作更加灵活，可以获取任意行或列的组合.
+
+参考文档
+
+* [Slicing and Indexing](https://eigen.tuxfamily.org/dox/group__TutorialSlicingIndexing.html)
+
+### `operator()`
+
+`Eigen`的`operator()`函数可以接受以下几类的参数
+
+* 整数，表示单独的行或列.
+* `Eigen::all`代表所有的行或者所有的列，按照升序排列.
+* `ArithmeticSequence`类，可以通过`Eigen::seq`,`Eigen::seqN`或`Eigen::placeholders::lastN`构建.
+* 一维的`vector`或`array`,包括`Eigen::vector`,`std::array`,`std::vector`或者是标准的C风格的数组`int[N]`.
+
+总而言之，`operator()`可以接受任何导出了如下成员函数的对象.
+
+* `<integral type> operator[](<integral type>) const;`
+* `<integral type> size() const;`
+
+`integral type`是任何可以转换为`Eigen::Index`的类型.
+
+### `Eigen::seq`
+
+利用`Eigen::seq`或`Eigen::seqN`可以获取一组行或者列。
+
+* `seq(firstIdx,lastIdx)`,表示从`firstIdx`到`lastIdx`的封闭整数序列，比如`seq(2,5) <=> {2,3,4,5}`
+* `seq(firstIdx,lastIdx,incr)`,表示从`firstIdx`到`lastIdx`的封闭整数序列，但是步长为`incr`,比如`seq(2,8,2) <=> {2,4,6,8}`.
+* `seqN(firstIdx,size)`,表示从`firstIdx`开始的`size`个整数序列,比如`seqN(2,5) <=> {2,3,4,5,6}`.
+* `seqN(firstIdx,size,incr)`，表示从`firstIdx`开始的`size`个整数序列，步长为`incr`，比如`seqN(2,3,3) <=> {2,5,8}`
+
+`Eigen::last`符号可以用来获取最后的行或者列.
+
+* `A(seq(i,last), seqN(0,n))`,边界是第`i`行第`n`列的左下快.
+* `A(all, seq(0,last,2))`,所有偶数列.
+* `A(all, last-1)`,倒数第二列.
+* `A(last/2,all)`中间的行.
+
+指定最后`n`个元素可以使用`Eigen::placeholders::lastN(size)`,`Eigen::placeholders::lastN(size,incr)`.
+
+* `v(lastN(n))`最后`n`个元素，等价于`v.tail(n)`.
+* `A(all, lastN(n,3))`,最后`n`个元素，但是步长为`3`.
+
+### 编译期指定size与incr
+
+使用`Eigen::fix<val>`可以在编译期指定`size`与`incr`.
+
+* `v(seq(last-fix<7>, last-fix<2>))`
+* `A(all, seq(0,last,fix<2>))`编译期指定偶数列
+
+### 反转行或列
+
+只要指定`incr`为负数，那么便可以反转行或者列，原理就是生成一个递减的整数序列。
+
+* `A(all, seq(20, 10, fix<-2>))`从第`20`列开始到第`10`列，步长为`-2`的矩阵.
+* `A(seqN(last, n, fix<-1>), all)`从最后一行开始的后`n`行。
+
+`ArithmeticSequence::reverse()`也可以用于反转整数序列.
+
+### `array`
+
+`operator()`也可以用来接受`std::array`等来指定任意的整数序列。
+
+* `std::vector<int> ind{4,2,5,5,3};`,`A(Eigen::placeholders::all,ind)`表示`ind`指定的列拼成的矩阵.
+
+## 特殊的矩阵或数组
+
+参考文档
+
+* [Special matrices and arrays](https://eigen.tuxfamily.org/dox/group__TutorialAdvancedInitialization.html)
+
+有以下`static`函数，返回特殊的矩阵或者数组
+
+* `Matrix::Zero()`返回零矩阵
+* `MatrixXd::Constant(rows, cols, value)`，返回所有元素设置为`value`的矩阵
+* `MatrixXd::Random()`,返回随机矩阵
+* `Matrix::Identity()`，返回`I`阵.
+* `LinSpaced(size, low, high)`返回`[low,high]`的线性插值，个数为`size`，只能用于一维。
+
+除此以外，还有`setZero`等成员函数，把对象设置为这些矩阵。
