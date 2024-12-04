@@ -404,3 +404,130 @@ Here is m.reshaped(2, 8):
 对于动态矩阵，可以执行就地重塑。
 
 * `PlainObjectBase::resize(Index,Index)`如果可能，会重塑矩阵，会按照底层存储顺序存储。
+
+## STL迭代器
+
+### 一维向量情况
+
+对于一维向量或数组，导出了`begin()`,`end()`等成员函数，用于获取向量或数组的迭代器.
+
+### 二维矩阵情况
+
+对于矩阵或二维数组，没有`begin()`等成员函数，但是可以通过`reshaped()`变为一维,从而进行迭代.
+
+### 按行或列迭代
+
+使用`rowwise()`,`colwise()`便可以按行或列进行迭代.
+
+```CPP
+for(auto row : A.rowwise())
+  std::sort(row.begin(), row.end());
+```
+
+## Map类
+
+参考文档
+
+* [Interfacing with raw buffers: the Map class](https://eigen.tuxfamily.org/dox/group__TutorialMapClass.html)
+* [Eigen::Map< PlainObjectType, MapOptions, StrideType > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1Map.html)
+
+`Map`类可以是的`Eigen`可以在预定义的`C`风格的数组的内存上获取`Eigen::Matrix`，`Eigen::Array`,而不需要复制数据.
+
+```CPP
+template<typename PlainObjectType, int MapOptions, typename StrideType>
+class Eigen::Map< PlainObjectType, MapOptions, StrideType >
+```
+
+* `PlainObjectType`需要被视为的`Eigen::Matrix`类型.
+* `MapOptions`声明底层内存指针的对齐特性,`Aligned128`,`Aligned64`,`Aligned32`,`Aligned16`,`Aligned8`,`Unaligned`,默认为`Unaligned`.
+* `StrideType`可选的指明内存连续性的选项.
+
+### 构造函数
+
+```CPP
+template<typename PlainObjectType , int MapOptions, typename StrideType >
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
+const StrideType & 	stride = StrideType() 
+)	
+```
+
+构建固定长度的矩阵或数组。
+
+```CPP
+template<typename PlainObjectType , int MapOptions, typename StrideType >
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
+Index 	size,
+const StrideType & 	stride = StrideType() 
+)	
+```
+
+构建动态长度的向量或一维数组.
+
+```CPP
+template<typename PlainObjectType , int MapOptions, typename StrideType >
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
+Index 	rows,
+Index 	cols,
+const StrideType & 	stride = StrideType() 
+)	
+```
+
+构建动态长度的矩阵或数组.
+
+```CPP
+int array[8];
+Map<Matrix<int,2,4> >(array);
+Map<Matrix<int,2,4,RowMajor> >(array);
+Map<Matrix<int,2,4>, Unaligned, Stride<1,4> >(array);
+```
+
+### 用法
+
+`Map`不会分配新的空间，只是重新解释了底层内存.
+
+和`Eigen::Matrix`标准类型使用方法一样，所有的函数都拥有接受`Map`作为参数的重载版本.
+
+## 别名Aliasing
+
+参考文档
+
+* [Aliasing](https://eigen.tuxfamily.org/dox/group__TopicAliasing.html)
+
+别名`Aliasing`指的是在**赋值语句**两端出现了同一个矩阵(或者是数组，向量等).比如`mat = 2 * mat`,`mat = mat.transpose()`出现了别名.第一个别名是无害的，但第二个则是有害的.
+
+由于`Eigen`使用了延迟求解的表达式技术，所以别名出现变得频繁。
+
+### 解决别名问题
+
+* 成员函数`eval()`给表达式生成一个临时右值对象，之后便可以安全地赋值
+
+```CPP
+MatrixXi mat(3,3);
+mat.bottomRightCorner(2,2) = mat.topLeftCorner(2,2).eval();
+```
+
+注意`mat.bottomRightCorner(2,2) = mat.topLeftCorner(2,2)`不是任何时候都会有别名问题,如果`mat`的维数大于三维则不会有别名问题.
+
+### 别名实际有害的情况
+
+不是所有的别名都会有害
+
+```CPP
+mat = 2 * mat;
+mat = mat - MatrixXf::Identity(2,2);
+arr = arr.square();
+```
+
+总的来说，如果赋值语句右侧的对象的`(i,j)`项只会依赖于左侧对象的`(i,j)`项，则别名是无害的.比如第二个赋值语句，右侧临时对象`i,j`项只会依赖`mat`的`i,j`项，所以别名无害.
+
+### 默认别名的情况
+
+由于矩阵乘法很常见，`Eigen`默认假设，如果矩阵乘法的目标赋值矩阵没有被修改大小.比如如果`matA`是方阵，则`matA = matA * matA`是安全的。
+
+可以使用`noalias()`取消这个假设.
+
+```CPP
+matB.noalias() = matA * matA;
+```
+
+
