@@ -446,30 +446,30 @@ class Eigen::Map< PlainObjectType, MapOptions, StrideType >
 
 ```CPP
 template<typename PlainObjectType , int MapOptions, typename StrideType >
-Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
-const StrideType & 	stride = StrideType() 
-)	
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map  ( PointerArgType  dataPtr,
+const StrideType &  stride = StrideType() 
+) 
 ```
 
 构建固定长度的矩阵或数组。
 
 ```CPP
 template<typename PlainObjectType , int MapOptions, typename StrideType >
-Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
-Index 	size,
-const StrideType & 	stride = StrideType() 
-)	
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map  ( PointerArgType  dataPtr,
+Index   size,
+const StrideType &  stride = StrideType() 
+) 
 ```
 
 构建动态长度的向量或一维数组.
 
 ```CPP
 template<typename PlainObjectType , int MapOptions, typename StrideType >
-Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map	(	PointerArgType 	dataPtr,
-Index 	rows,
-Index 	cols,
-const StrideType & 	stride = StrideType() 
-)	
+Eigen::Map< PlainObjectType, MapOptions, StrideType >::Map  ( PointerArgType  dataPtr,
+Index   rows,
+Index   cols,
+const StrideType &  stride = StrideType() 
+) 
 ```
 
 构建动态长度的矩阵或数组.
@@ -529,5 +529,3 @@ arr = arr.square();
 ```CPP
 matB.noalias() = matA * matA;
 ```
-
-
