@@ -41,13 +41,14 @@ int main()
 
 最常用的最小二乘求解的矩阵分解法是奇异值分解`SVD decomposition`.`Eigen`提供了两类奇异值分解法，推荐使用的是`BDCSVD`,适用于高维矩阵，同时会自动对于小矩阵退化为`JacobiSVD`.
 
-```CPP
-#include <iostream>
-#include <Eigen/Dense>
 参考文档
 
 * [Linear algebra and decompositions](https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html)
- 
+
+```CPP
+#include <iostream>
+#include <Eigen/Dense>
+
 int main()
 {
    Eigen::MatrixXf A = Eigen::MatrixXf::Random(3, 2);
@@ -194,7 +195,6 @@ int main()
 }
 ```
 
-
 可以通过`setThreshold`设置阈值.
 
 ## 矩阵分解
@@ -207,5 +207,9 @@ int main()
 
 文档总结了所有`Eigen`支持的矩阵分解与奇异值分解方法类.
 
+### CompleteOrthogonalDecomposition类
 
+参考文档
+
+* [Eigen::CompleteOrthogonalDecomposition< MatrixType_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1CompleteOrthogonalDecomposition.html)
 
