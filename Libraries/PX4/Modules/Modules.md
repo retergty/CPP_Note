@@ -8,6 +8,8 @@
 
 在`modules/templates/template_module`有一个模板模块参考。
 
+一个模块必须包含`CMakeLists.txt`,`kConfig`文件.`kConfig`用来在`PX4`中注册模块，否则不会编译.
+
 ### ModuleBase类
 
 ```CPP

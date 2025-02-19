@@ -46,3 +46,11 @@ then
   . ${R}etc/init.d/rc.mc_apps
 fi
 ```
+
+## 主函数
+
+`px4`启动的初始化代码在`platforms`对应的系统里，如果是实际的飞控板，则是在`nuttx`中，如果是仿真环境，则是在`posix`中.
+
+在`nuttx`中，文件`px4_init.cpp`中的`px4_platform_init`函數管理着`px4`的系統初始化，包括工作队列初始化等，这个函数之后，`px4`任务便真正启动了.通常在`boards`的`init`函数中调用.
+
+在`posix`中，文件`main.cpp`中的`main`函数则是管理的仿真系统的运行.

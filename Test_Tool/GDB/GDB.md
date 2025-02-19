@@ -1363,6 +1363,8 @@ register_libstdcxx_printers(None)
 
 其中`sys.path.insert(0, '/cygdrive/d/gdb_pretty/Eigen')`是把优化打印的文件添加到`path`环境变量中。`from printers import register_eigen_printers`，就是从`printers.py`文件中引入`register_eigen_printers`函数。
 
+其中`libstdcxx.v6.printers`指的是从`libstdcxx/v6/printers.py`文件
+
 这个文件会在`gdb`启动时自动读取，例子注册了`Eigen`矩阵库的优化打印和`stl`容器的优化打印。
 
 ## 调试多`inferior`程序
