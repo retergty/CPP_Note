@@ -598,7 +598,7 @@ gz sdf -p <path to urdf file>
 
 ```shell
 xacro my_quad.urdf.xacro > my_quad.urdf
-gz sdf my_quad.urdf > my_quad.sdf
+gz sdf -p my_quad.urdf > my_quad.sdf
 ```
 
 把`xacro`文件转化为`urdf`文件，之后再使用`gz sdf`将其转化为`sdf`文件.
