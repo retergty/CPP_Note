@@ -594,6 +594,15 @@
 gz sdf -p <path to urdf file>
 ```
 
+比如
+
+```shell
+xacro my_quad.urdf.xacro > my_quad.urdf
+gz sdf my_quad.urdf > my_quad.sdf
+```
+
+把`xacro`文件转化为`urdf`文件，之后再使用`gz sdf`将其转化为`sdf`文件.
+
 ### `<gazebo>`用于`<robot>`
 
 `URDF`中的`<robot>`下不带`reference`的`<gazebo>`标签会应用在`<model>`标签下。
