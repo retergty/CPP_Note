@@ -86,6 +86,18 @@ template<
 * [operator""us](https://en.cppreference.com/w/cpp/chrono/operator%22%22us)
 * [operator""ns](https://en.cppreference.com/w/cpp/chrono/operator%22%22ns)
 
+## 非成员函数
+
+### 运算符重载函数
+
+* [operator+,-,*,/,%](https://en.cppreference.com/w/cpp/chrono/duration/operator_arith4)
+
+  对两个`duration`进行四则运算，将它们转化为相同类型，tick进行四则运算.
+
+* [operator==,!=,<,<=,>,>=,<=>](https://en.cppreference.com/w/cpp/chrono/duration/operator_cmp)
+
+  对两个`duration`进行比较，比大小.
+
 ## 例子
 
 ```CPP
