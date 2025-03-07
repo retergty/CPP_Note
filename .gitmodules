@@ -1,0 +1,3 @@
+[submodule "Theory/NumericalOptimization/LinearProgramming/SimplexMethod"]
+	path = Theory/NumericalOptimization/LinearProgramming/SimplexMethod
+	url = git@github.com:retergty/Simplex_Method.git
