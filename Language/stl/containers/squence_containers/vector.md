@@ -102,6 +102,15 @@ void swap( vector& other );
 
   返回指向底层存储空间首元素的指针，指针合法范围为`[data(), data() + size())`
 
+* [operator[]](https://en.cppreference.com/w/cpp/container/vector/operator_at)
+
+  访问指定序号的数据,返回数据的引用，不会检查越界.
+
+  ```CPP
+  reference operator[]( size_type pos );
+  const_reference operator[]( size_type pos ) const;
+  ```
+
 ### 访问容量
 
 * [empty](https://en.cppreference.com/w/cpp/container/vector/empty)
