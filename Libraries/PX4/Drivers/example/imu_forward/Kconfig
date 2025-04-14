@@ -1,0 +1,5 @@
+menuconfig DRIVERS_IMU_FORWARD
+	bool "imu_forward"
+	default n
+	---help---
+		Enable support for imu_forward

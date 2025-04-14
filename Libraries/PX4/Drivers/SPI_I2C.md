@@ -810,4 +810,4 @@ SPI::_transfer(uint8_t *send, uint8_t *recv, unsigned len)
 
 ```
 
-这个函数与`nuttx`沟通，驱动SPI按照DMA或轮询的方法收发数据.如果不支持DMA，`SPI`会以轮询的方式驱动.
+这个函数与`nuttx`沟通，驱动SPI按照DMA或轮询的方法收发数据.如果不支持DMA或数据包小于阈值，`SPI`会以轮询的方式驱动.

@@ -1,0 +1,7 @@
+module_name: IMU FORWARD
+serial_config:
+
+    - command: imu_forward start -d ${SERIAL_DEV}
+      port_config_param:
+        name: IMU_FOR_CONFIG
+        group: Serial
