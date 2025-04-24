@@ -207,9 +207,113 @@ int main()
 
 文档总结了所有`Eigen`支持的矩阵分解与奇异值分解方法类.
 
+### 就地分解
+
+有的矩阵分解可以使用就地分解，也就是在输入矩阵上进行，这样可以节省空间.
+
+参考文档
+
+* [Inplace matrix decompositions](https://eigen.tuxfamily.org/dox/group__InplaceDecomposition.html)
+
+要求就地分解的分解类型，模板实参必须为`Eigen::Ref`,并且构造函数必须指定输入矩阵.
+
+```CPP
+Eigen::PartialPivLU<Eigen::Ref<Eigen::MatrixXd> > lu(A);
+```
+
+就地分解后，矩阵`A`即被破坏.可以使用成员函数获取分解结果.
+
+```CPP
+std::cout << "Here is the matrix storing the L and U factors:\n" << lu.matrixLU() << "\n";
+```
+
+注意，没有共享指针在保持他的生命周期，要求使用者来管理`A`的生命周期.
+
+可以正常调用`compute`方法，计算指定矩阵的分解，但是不会改变分解的保存内存地址，总是保存在`A`中.
+
+```CPP
+lu.compute(A0);
+```
+
+支持就地分解的矩阵有
+
+* class LLT
+* class LDLT
+* class PartialPivLU
+* class FullPivLU
+* class HouseholderQR
+* class ColPivHouseholderQR
+* class FullPivHouseholderQR
+* class CompleteOrthogonalDecomposition
+
 ### CompleteOrthogonalDecomposition类
 
 参考文档
 
 * [Eigen::CompleteOrthogonalDecomposition< MatrixType_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1CompleteOrthogonalDecomposition.html)
 
+### LDLT类
+
+参考文档
+
+* [Eigen::LDLT< MatrixType_, UpLo_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1LDLT.html)
+
+对一个半正定或半负定的Hermitian矩阵进行鲁棒性强的`Cholesky`分解.
+
+$$
+A = P^TLDL^*P
+$$
+
+其中$P$`是置换矩阵（排列矩阵），$L$是单位下三角阵，$D$是对角矩阵.
+
+这个分解使用旋转来保证稳定性，所以$D$阵在右下角的$rank(A) - n$的子矩阵中会包含零.
+
+这个分解支持就地分解，不会占用额外的空间.
+
+```CPP
+template<typename MatrixType_ , int UpLo_>
+template<typename InputType >
+LDLT<MatrixType,UpLo_>& Eigen::LDLT< MatrixType_, UpLo_ >::compute ( const EigenBase< InputType > &  a ) 
+```
+
+计算矩阵分解.
+
+```CPP
+template<typename MatrixType_ , int UpLo_>
+bool Eigen::LDLT< MatrixType_, UpLo_ >::isNegative ( void   ) const
+isPositive()
+template<typename MatrixType_ , int UpLo_>
+bool Eigen::LDLT< MatrixType_, UpLo_ >::isPositive (  ) const
+```
+
+矩阵是正半定还是负半定.
+
+```CPP
+template<typename MatrixType_ , int UpLo_>
+Traits::MatrixL Eigen::LDLT< MatrixType_, UpLo_ >::matrixL (  ) const
+```
+
+返回分解结果`L`.
+
+```CPP
+template<typename MatrixType_ , int UpLo_>
+Diagonal<const MatrixType> Eigen::LDLT< MatrixType_, UpLo_ >::vectorD (  ) const
+```
+
+返回分解结果`D`.
+
+```CPP
+template<typename MatrixType_ , int UpLo_>
+template<typename Derived >
+LDLT<MatrixType,UpLo_>& Eigen::LDLT< MatrixType_, UpLo_ >::rankUpdate ( const MatrixBase< Derived > &  w,
+const typename LDLT< MatrixType, UpLo_ >::RealScalar &  sigma 
+) 
+```
+
+高效计算
+
+$$
+A + \sigma w w^T
+$$
+
+的分解.

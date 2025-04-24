@@ -529,3 +529,71 @@ arr = arr.square();
 ```CPP
 matB.noalias() = matA * matA;
 ```
+
+## 对角矩阵
+
+参考文档
+
+* [DiagonalMatrix](https://eigen.tuxfamily.org/dox/classEigen_1_1DiagonalMatrix.html)
+
+```CPP
+template<typename Scalar_, int SizeAtCompileTime, int MaxSizeAtCompileTime>
+class Eigen::DiagonalMatrix< Scalar_, SizeAtCompileTime, MaxSizeAtCompileTime >
+```
+
+可以构造对角矩阵.常用的方法如下
+
+```CPP
+Eigen::DiagonalMatrix<Scalar,Rows,Cols>(1,2,3,4); //直接构造对角线元素为1 2 3 4 的矩阵
+```
+
+* [Eigen::Diagonal< MatrixType, DiagIndex_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1Diagonal.html)
+
+```CPP
+template<typename Derived >
+Diagonal< Derived, Index_ > Eigen::MatrixBase< Derived >::diagonal
+```
+
+矩阵有`diagnal`方法，获取`index`对角线的元素.默认是主对角线
+
+```CPP
+Matrix4i m = Matrix4i::Random();
+cout << "Here is the matrix m:" << endl << m << endl;
+cout << "Here are the coefficients on the 1st super-diagonal and 2nd sub-diagonal of m:" << endl
+     << m.diagonal<1>().transpose() << endl
+     << m.diagonal<-2>().transpose() << endl;
+```
+
+输出是
+
+```CPP
+Here is the matrix m:
+ 7  9 -5 -3
+-2 -6  1  0
+ 6 -3  0  9
+ 6  6  3  9
+Here are the coefficients on the 1st super-diagonal and 2nd sub-diagonal of m:
+9 1 9
+6 6
+```
+
+注意，diagnal方法返回的是对应长度的向量，不是矩阵.
+
+```CPP
+v = m.digonal();
+```
+
+如果需要转化为矩阵可以这样
+
+```CPP
+Matrix<double, 4, 4> A{{1, 3, 0, 0}, {2, 4, 0, 0}, {0, 0, 5, 6}, {0, 0, 7, 8}};
+DiagonalMatrix<double,4,4> diag_m{A.diagonal()};
+Matrix<double,4,4> DenseB{diag_m};
+```
+
+或者
+
+```CPP
+DiagonalMatrix<double,4,4> diag_m{A.diagonal()};
+diag_m.toDenseMatrix();
+```

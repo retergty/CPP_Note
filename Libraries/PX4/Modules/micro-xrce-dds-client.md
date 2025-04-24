@@ -81,6 +81,12 @@ struct HelloWorld
 microxrceddsgen HelloWorld.idl
 ```
 
+安装时需要设置java使用系统代理
+
+```shell
+export JAVA_TOOL_OPTIONS='-Djava.net.useSystemProxies=true'
+```
+
 ### 初始化自定义协议
 
 ```CPP
