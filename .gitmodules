@@ -4,3 +4,6 @@
 [submodule "Theory/NumericalOptimization/QuadraticProgramming"]
 	path = Theory/NumericalOptimization/QuadraticProgramming
 	url = git@github.com:retergty/QuadProg.git
+[submodule "Theory/Kinamatics/LevenVergMarquartAlgorithm"]
+	path = Theory/Kinamatics/LevenVergMarquartAlgorithm
+	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
