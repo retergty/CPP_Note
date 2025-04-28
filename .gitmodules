@@ -7,3 +7,6 @@
 [submodule "Theory/Kinamatics/LevenVergMarquartAlgorithm"]
 	path = Theory/Kinamatics/LevenVergMarquartAlgorithm
 	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
+[submodule "Libraries/DDS"]
+	path = Libraries/DDS
+	url = git@github.com:retergty/Motor_DDS.git

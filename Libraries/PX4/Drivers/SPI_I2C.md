@@ -642,7 +642,30 @@ static struct stm32_spidev_s g_spi1dev =
 ICM42688P::ICM42688P(const I2CSPIDriverConfig &config) :
  SPI(config),
  I2CSPIDriver(config),
+ _drdy_gpio(config.drdy_gpio),
+ _px4_accel(get_device_id(), config.rotation),
+ _px4_gyro(get_device_id(), config.rotation)
+{
+ isICM686 = config.custom2 == DRV_IMU_DEVTYPE_ICM42686P;
+
+ if (config.drdy_gpio != 0) {
+  _drdy_missed_perf = perf_alloc(PC_COUNT, MODULE_NAME": DRDY missed");
+ }
+
+ if (config.custom1 != 0) {
+  _enable_clock_input = true;
+  _input_clock_freq = config.custom1;
+  ConfigureCLKIN();
+
+ } else {
+  _enable_clock_input = false;
+ }
+
+ ConfigureSampleRate(_px4_gyro.get_max_rate_hz());
+}
 ```
+
+还会根据最大的接受数据频率来配置`FIFO`中断水位.
 
 ```CPP
 int ICM42688P::init()
