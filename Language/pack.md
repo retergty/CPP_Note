@@ -31,7 +31,7 @@ template < parameter-list > typename|class ... pack-name (optional) (4)
 函数参数包的语法如下
 
 ```CPP
-pack-name ... pack-param-name (optional)	(5)	
+pack-name ... pack-param-name (optional) (5) 
 ```
 
 (1) 具有可选名称的常量模板参数包
@@ -83,7 +83,7 @@ valid(1.0, 1, 2, 3);     // OK: deduces U as double, Ts as {int, int, int}
 ## 包展开
 
 ```CPP
-pattern ...	
+pattern ... 
 ```
 
 扩展为零个或多个模式的列表。该模式(pattern)必须至少包含一个包

@@ -310,7 +310,7 @@ a.block<2,2>(1,1) = m;
 * `Matrix::Identity()`，返回`I`阵.
 * `LinSpaced(size, low, high)`返回`[low,high]`的线性插值，个数为`size`，只能用于一维。
 
-除此以外，还有`setZero`,`setIdentity`,`setOnes`等成员函数，把对象设置为这些矩阵。
+除此以外，还有`setZero`,`setIdentity`,`setOnes`,`setConstant`等成员函数，把对象设置为这些矩阵。
 
 ## 规约运算
 
