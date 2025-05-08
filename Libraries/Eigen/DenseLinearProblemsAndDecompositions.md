@@ -252,6 +252,26 @@ lu.compute(A0);
 
 * [Eigen::CompleteOrthogonalDecomposition< MatrixType_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1CompleteOrthogonalDecomposition.html)
 
+### LLT类
+
+参考文档
+
+* [Eigen::LLT< MatrixType_, UpLo_ > Class Template Reference](https://eigen.tuxfamily.org/dox/classEigen_1_1LLT.html)
+
+对一个正定的Hermitian矩阵进行`Cholesky`分解
+
+$$
+A = LL^T
+$$
+
+这是一个标准的`Cholesky`分解，但是数值稳定性和快速性都不如`LDLT`方法.
+
+#### 求逆
+
+```CPP
+A.llt().solve(I);
+```
+
 ### LDLT类
 
 参考文档
