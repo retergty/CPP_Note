@@ -70,6 +70,36 @@ class function<R(Args...)>;
 
   赋值函数
 
+## 推导指南
+
+```CPP
+template< class R, class... ArgTypes >
+function( R(*)(ArgTypes...) ) -> function<R(ArgTypes...)>;
+template< class F >
+function( F ) -> function</*see below*/>;
+```
+
+这两个推导指南帮助`std::function`从函数，从类的`opterator`运算符中调用.
+
+## 常见情况
+
+### 同时定义了接受`std::function`与普通函数指针的函数参数.
+
+```CPP
+void g(std::function<void(int)> f)
+{
+    std::cout << "call std::function" << std::endl;
+};
+
+
+void g(void (*)(int))
+{
+    std::cout << " call fuction poiter" << std::endl;
+}
+```
+
+此时，重载决议会调用普通函数指针.
+
 ## 例子
 
 ```CPP
