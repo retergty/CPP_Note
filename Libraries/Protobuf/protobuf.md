@@ -201,7 +201,7 @@ protoc -I=$SRC_DIR --cpp_out=$DST_DIR $SRC_DIR/addressbook.proto
 * `*_size`函数用于`repeated`字段，获取数组长度.
 * `*(index)`使用`index`访问数组.
 * `mutable_*`用于修改指定的元素。
-* `add_*`用于添加新的元素.
+* `add_*`用于添加新的元素.必须先使用这个函数来添加之后才可以`set`.
 
 字符串有
 
