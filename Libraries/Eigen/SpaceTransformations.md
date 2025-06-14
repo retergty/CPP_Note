@@ -121,6 +121,25 @@ m = AngleAxisf(0.25*M_PI, Vector3f::UnitX())
 
 比如这个例子就表示了`ZYX`转序.
 
+### angle
+
+```CPP
+Scalar & angle ()
+
+Scalar angle () const
+```
+
+获取角度，角度范围在`[0,PI]`范围
+
+### axis
+
+```CPP
+Vector3 & axis ()
+const Vector3 & axis () const
+```
+
+获取旋转轴.
+
 ## Quaternion类
 
 ```CPP

@@ -10,3 +10,6 @@
 [submodule "Libraries/DDS"]
 	path = Libraries/DDS
 	url = git@github.com:retergty/Motor_DDS.git
+[submodule "Theory/ModelPredictControl/DynamicMatrixControl"]
+	path = Theory/ModelPredictControl/DynamicMatrixControl
+	url = git@github.com:retergty/DynamicMatrixControl.git
