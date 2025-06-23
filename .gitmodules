@@ -13,3 +13,6 @@
 [submodule "Theory/ModelPredictControl/DynamicMatrixControl"]
 	path = Theory/ModelPredictControl/DynamicMatrixControl
 	url = git@github.com:retergty/DynamicMatrixControl.git
+[submodule "Libraries/ROS2/Example/QuadraticThrustVector"]
+	path = Libraries/ROS2/Example/QuadraticThrustVector
+	url = git@github.com:retergty/QuadraticThrustVector.git

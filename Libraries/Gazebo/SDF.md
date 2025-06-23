@@ -830,7 +830,7 @@ gz sdf -p my_quad.urdf > my_quad.sdf
 `<plugin>`标签包含两个必须的属性
 
 * `filename`是库文件的名字
-* `name`是插件的名字
+* `name`是插件的名字，也就是动态链接库`filename`里的`C++`类名.
 
 还有许多特定包需要的属性
 

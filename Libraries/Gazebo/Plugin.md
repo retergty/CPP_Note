@@ -389,3 +389,13 @@ class GZ_SIM_VISIBLE EntityComponentManager;
 `EntityComponentManager`类构建，删除或者返回实体或者组件.
 
 这是最重要的类。
+
+## 常见Plugin
+
+### [gui/libPlot3D.so](https://github.com/gazebosim/gz-sim/blob/gz-sim9/src/gui/plugins/plot_3d/Plot3D.hh)
+
+用于连接到一个joint或link，画轨迹点.
+
+### [apply-link-wrench](https://github.com/gazebosim/gz-sim/blob/gz-sim9/src/systems/apply_link_wrench/ApplyLinkWrench.hh)
+
+用于给link添加力.
