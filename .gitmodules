@@ -16,3 +16,6 @@
 [submodule "Libraries/ROS2/Example/QuadraticThrustVector"]
 	path = Libraries/ROS2/Example/QuadraticThrustVector
 	url = git@github.com:retergty/QuadraticThrustVector.git
+[submodule "Libraries/ROS2/Example/UnitreeA1"]
+	path = Libraries/ROS2/Example/UnitreeA1
+	url = git@github.com:retergty/unitree-a1-ros2-port.git
