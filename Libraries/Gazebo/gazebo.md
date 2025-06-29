@@ -19,6 +19,7 @@
 `gazebo`使用环境变量进行搜索资源，比如模型等.可以在`sdf`中使用`<uri>model://a1_description/meshes/trunk.dae</uri>`,`gazebo`就会使用`GZ_SIM_RESOURCE_PATH`指定的路径来查找.
 
 * `GZ_SIM_RESOURCE_PATH`
+* `GZ_VERSION`当前`gazebo`的版本号，`harmonic`注意大小写.
 
 多个路径采用冒号分割
 

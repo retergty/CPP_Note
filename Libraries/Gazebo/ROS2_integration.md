@@ -6,6 +6,17 @@
 * 使用`ROS2`通过`ros_gz`桥与`Gazebo`通信，使用主题的方法与`Gazebo`通信。
 * 使用`ROS`生成`Gazebo`模型：`Gazebo`世界可以包含在启动时加载的模型。但是，有时您需要在运行时生成模型。该任务可以使用`ROS 2`来执行。
 
+使用以下的`ROS2`包
+
+* [Github](https://github.com/gazebosim/ros_gz/tree/humble)
+
+* [ros_gz](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz)提供所有其他包的元包
+* [ros_gz_image](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_image)使用 image_transport 将图像从 Gazebo Transport 传输到 ROS 的单向传输桥
+* [ros_gz_bridge](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_bridge)Gazebo Transport 和 ROS 之间的双向传输桥
+* [ros_gz_sim](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_sim)方便使用 Gazebo Sim 和 ROS 的启动文件和可执行文件
+* [ros_gz_sim_demos](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_sim_demos)Demos using the ROS-Gazebo integration
+* [ros_gz_point_cloud](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_point_cloud)用于从 Gazebo Sim 模拟将点云发布到 ROS 的插件
+
 ## 使用ROS2与Gazebo通信
 
 ### ros_gz_bridge
