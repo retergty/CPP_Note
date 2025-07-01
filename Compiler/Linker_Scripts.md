@@ -247,6 +247,8 @@ SECTIONS { ...
 
 ### 放置输入段
 
+放置输入段是顺序读取的，也就是说，如果链接文件之前有匹配放置过这个输入段，那么不会放置到之后指定的，哪怕之前是使用`*`通配符匹配的.
+
 `contents`包含输入段，可以通过直接指定文件，直接指定文件里的段等等方法.
 
 `contents`支持格式如下
@@ -271,10 +273,28 @@ SECTIONS { ...
 
   把所有输入文件中的`section`段放置在这个输出段中，直接指定`filename`文件的优先级高于这个.也就是说`*`指的是所有剩余的文件。
 
+* `EXCLUDE_FILE (*crtend.o *otherfile.o) *(.ctors)`
+* `*(EXCLUDE_FILE (*crtend.o *otherfile.o) .ctors)`
+  使用`EXCLUDE_FILE`排除特定文件.
+
 * `filename( COMMON )`
 * `*( COMMON )`
 
   `COMMON`指的是所有的未初始化的变量。链接器允许通过`COMMON`指定所有未初始化的数据，就好像它们都是在输入段`COMMON`中的.
+
+* `archive:file`
+* `archive:`
+* `:file`
+
+  匹配档案中的文件，匹配整个档案，匹配在多个档案中的文件.
+
+  ```linkerscript
+  *modules__mc_att_control.a:*(.text* .rodata*)
+  *modules__mc_rate_control.a:*(.text* .rodata*)
+  *drivers__imu__invensense__icm20602.a:*(.text* .rodata*)
+  ```
+
+  第一个`*`会匹配文件路径
 
 指定文件名时可以使用通配符，但是链接脚本里的通配符不会匹配`/`，因为这个是`Unix`里的目录分隔符。单独使用的`*`是一个例外.
 
