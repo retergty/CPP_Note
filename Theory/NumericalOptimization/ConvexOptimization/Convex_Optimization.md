@@ -148,7 +148,6 @@ $$
 f(x) = \frac{Ax+b}{c^Tx+d} \quad {\bf{dom}}f=\{x \; | \; c^Tx+d>0 \}
 $$
 
-
 ## 正常锥Proper cones
 
 如果一个凸锥$K \subseteq \bf{R}^n$满足以下条件
@@ -318,11 +317,11 @@ $$
 * 逐点最大值，$f(x) = max\{f_1(x),f_2(x),...,f_n(x)\}$
 * 逐点上确界，如果$f(x,y)$对于每个固定的$y \in A$都是凸的，那么$g(x) = sup_{y \in A} f(x,y)$也是凸的
 * 函数复合，$g: R^n \to R^k$,$h: R^k \to R$,$f(x) = h(g(x))=h(g_1(x),g_2(x),...,g_k(x))$,$h$是凸函数，且
-    * $g_i$是凸函数，$\hat h$对于$i$变量单调不减
-    * $g_i$是凹函数，$\hat h$对于$i$变量单调不增
-    * $g_i$是仿射函数
-    
-    则函数复合也是凸函数,$\hat h$是定义域延展的函数.
+  * $g_i$是凸函数，$\hat h$对于$i$变量单调不减
+  * $g_i$是凹函数，$\hat h$对于$i$变量单调不增
+  * $g_i$是仿射函数s
+  
+  ss则函数复合也是凸函数,$\hat h$是定义域延展的函数.
 
 * 透视函数，$g(x,t) = tf(x/t), \quad {\bf dom}g=\{(x,t)\;|\; x/t \in {\bf dom}f, \; t \gt 0\}$
 
@@ -331,7 +330,7 @@ $$
 函数$f$的共轭函数定义为
 
 $$
-f^\ast(y) = {\tt sup}_{x \in {\bf dom}f} (y^Tx-f(x)) 
+f^\ast(y) = {\tt sup}_{x \in {\bf dom}f} (y^Tx-f(x))
 $$
 
 ![cj](./pictures/conjugacte_function.png)
@@ -451,7 +450,6 @@ subject \; to \quad &Gx \leq h\\
 $$
 
 $P \in S^n_+$
-
 
 #### 二次约束规划Quadratically constrained quadratic program
 
@@ -823,7 +821,7 @@ A & 0
 \begin{bmatrix}
 x^\star \\
 \nu^\star
-\end{bmatrix} = 
+\end{bmatrix} =
 \begin{bmatrix}
 -q \\
 b
@@ -856,7 +854,7 @@ A & 0
 \begin{bmatrix}
 \Delta x_{nt} \\
 w
-\end{bmatrix} = 
+\end{bmatrix} =
 \begin{bmatrix}
 -\nabla f(x) \\
 0
@@ -902,7 +900,7 @@ A & 0
 \begin{bmatrix}
 \Delta x_{nt} \\
 \nu
-\end{bmatrix} = 
+\end{bmatrix} =
 -\begin{bmatrix}
 \nabla f(x) \\
 Ax-b
@@ -919,7 +917,7 @@ A & 0
 \begin{bmatrix}
 \Delta x_{nt} \\
 \Delta \nu_{nt}
-\end{bmatrix} = 
+\end{bmatrix} =
 -\begin{bmatrix}
 \nabla f(x) + A^T\nu\\
 Ax-b
@@ -1089,7 +1087,7 @@ A & 0
 \begin{bmatrix}
 \Delta x_{nt} \\
 \nu_{nt}
-\end{bmatrix} = 
+\end{bmatrix} =
 -\begin{bmatrix}
 t\nabla f(x) + \nabla\phi(x) \\
 0
@@ -1130,7 +1128,7 @@ $$
 
 * 如果最优值$p^\star \lt 0$则有严格可行解，此外，不需要很高的精度，只要$s\lt0$即可停止
 * 如果最优值$p^\star \gt 0$则不可行，此外，不需要很高精度，只要发现某个对偶可行点具有正的目标值后就可以停止.
-* 如果最优值$p^\star = 0$并且最小值在$x^\star$和$s^\star=0$处达到，则不等式组是可行的，但不是严格可行的.如果$p^\star = 0$但最小值不可达到，那么不等式组是不可行的.实践中，当不等式$\vert p^\star \vert \lt \epsilon$时，小于某个小正数时，优化算法就会停止，断定不可行. 
+* 如果最优值$p^\star = 0$并且最小值在$x^\star$和$s^\star=0$处达到，则不等式组是可行的，但不是严格可行的.如果$p^\star = 0$但最小值不可达到，那么不等式组是不可行的.实践中，当不等式$\vert p^\star \vert \lt \epsilon$时，小于某个小正数时，优化算法就会停止，断定不可行.
 
 ### 原对偶内点法Primal-dual interior-point methods
 
@@ -1152,7 +1150,7 @@ $$
 并且$t \gt 0$,$Df$为导数算子
 
 $$
-Df(x) = 
+Df(x) =
 \begin{bmatrix}
 \nabla f_1(x)^T \\
 . \\ . \\

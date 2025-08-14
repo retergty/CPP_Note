@@ -19,3 +19,6 @@
 [submodule "Libraries/ROS2/Example/UnitreeA1"]
 	path = Libraries/ROS2/Example/UnitreeA1
 	url = git@github.com:retergty/unitree-a1-ros2-port.git
+[submodule "Libraries/Pinocchio/Examples"]
+	path = Libraries/Pinocchio/Examples
+	url = git@github.com:retergty/pinocchio.git
