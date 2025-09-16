@@ -1101,7 +1101,7 @@ $$
 $$
 \begin{align}
 \nabla f_0(x) + \sum\limits^m_{i=1}\lambda_i\nabla f_i(x) + A^T\nu &= 0 \\
--\lambda_if_i(x) &= -1/t \quad i=1,...,m\\
+-\lambda_if_i(x) &= 1/t \quad i=1,...,m\\
 Ax &= b
 \end{align}
 $$
@@ -1198,7 +1198,7 @@ $$
 
 $$
 \begin{bmatrix}
-\nabla^2 f(x)+\sum\limits^m_{i=1}\lambda_i\nabla^2f_i(x) & Df(x)^T & A^T \\
+\nabla^2 f_0(x)+\sum\limits^m_{i=1}\lambda_i\nabla^2f_i(x) & Df(x)^T & A^T \\
 -{\bf diag}(\lambda)Df(x) & -{\bf diag}(f(x)) & 0 \\
 A & 0 & 0
 \end{bmatrix}
