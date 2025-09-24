@@ -466,7 +466,7 @@ $$
 $$
 \begin{align*}
 minimize \quad & f^Tx\\
-subject \; to \quad &\Vert A_ix + b\Vert \leq c_i^T+d_i,\quad i=1,2...,m\\
+subject \; to \quad &\Vert A_ix + b\Vert \leq c_i^Tx+d_i,\quad i=1,2...,m\\
 & Fx = g
 \end{align*}
 $$
