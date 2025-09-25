@@ -1197,7 +1197,7 @@ $$
 线性化
 
 $$
-r_t(y+\Delta y) \approx r_t(y) + Dr_t(y)\Delta y = 0 
+r_t(y+\Delta y) \approx r_t(y) + Dr_t(y)\Delta y = 0
 $$
 
 即
