@@ -756,12 +756,22 @@ $$
 \hat f(x+v)=f(x) + \nabla f(x)^Tv+\frac12v^T\nabla^2f(x)v
 $$
 
-在$v=\Delta x_{nt}$处达到最小值
+在$v=\Delta x_{nt}$处达到最小值（设$\nabla^2f(x)$正定且$f(x)$足够可微），最小值为
+
+$$
+\underset{v}{min}\hat{f}(x+v) = f(x) - \frac{1}{2}\nabla f(x)^T\nabla^2 f(x)^{-1}\nabla f(x)
+$$
 
 #### 牛顿减量Newton decremen
 
 $$
 \lambda (x) = (\nabla f(x)^T\nabla^2f(x)^{-1}\nabla f(x))^{1/2}
+$$
+
+等价于
+
+$$
+\lambda (x) = (\Delta x^T_{nt}\nabla^2f(x) \Delta x_{nt})^{1/2}
 $$
 
 #### 算法
@@ -1025,7 +1035,7 @@ subject \; to \quad
 \end{align*}
 $$
 
-设$x^\star(t)$是上述问题的最优解,定义中心路径为集合$\{x^\star(t) \;|\; t\gt0\}$
+设$x^\star(t)$是上述问题的最优解,定义中心路径为集合$\{x^\star(t) \mid t\gt0\}$
 
 中心路径的点满足
 
