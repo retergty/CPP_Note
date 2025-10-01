@@ -148,3 +148,15 @@ class Eigen::Quaternion< Scalar_, Options_ >
 ```
 
 四元数类可以很方便地表示旋转.
+
+### 构造函数
+
+```CPP
+Quaternion (const Scalar &w, const Eigen::MatrixBase< Derived > &vec)
+
+Quaternion (const Scalar &w, const Scalar &x, const Scalar &y, const Scalar &z)
+ 
+Quaternion (const Scalar *data)
+ 
+Quaternion (Quaternion &&other)
+```
