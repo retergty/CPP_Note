@@ -196,6 +196,8 @@ $$
 
 $\nabla_\textbf{x}\tilde{f}^T$就是系统动态函数$f(\textbf{x}_n, \textbf{u}_n)$在关于$\textbf{x}$的梯度在$(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n)$的值。
 
+$\bar{\textbf{x}}_{n+1}$是先验设定的，当给定$\bar{\textbf{x}}_n$与$\bar{\textbf{u}}_n$后通过系统动态方程自然可以得出。
+
 注意值函数$V(\textbf{x}_n, t_n)$是会随着$n$变化的，也就是说，每次$n$变化时，值函数也都会变化。可以理解为，在每个特定的$n$下，都是一个独特的值函数，表示从当前$\textbf{x}_n$到达目标点的最小值函数。
 
 最优值变为
@@ -222,3 +224,77 @@ $$
     &\delta \textbf{u}^* = -\nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}})^{-1} (\nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}) + \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}) \delta \textbf{x}) \\
     &\delta \textbf{u}^* = \underbrace{- \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}})^{-1} \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}})}_{\text{feed-forward term}} - \underbrace{\nabla_\textbf{uu}^2 Q^{-1}(\bar{\textbf{x}}, \bar{\textbf{u}}) \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}) \delta \textbf{x}}_{\text{feedback term}}\end{aligned}
 $$
+
+将$\delta u^*$代入并消元，得到$V(\textbf{x}_n, t_n)$,
+
+$$
+\begin{aligned}
+    &V(\textbf{x}, t_n) = Q(\delta \textbf{x}, \delta \textbf{u}^*, t_n) + Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \\
+    &= \nabla_\textbf{x}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{x}+ \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{u}^* + \dfrac{1}{2} \delta \textbf{x}^T \nabla_\textbf{xx}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{x}+ \dfrac{1}{2} \delta \textbf{x}^T \nabla_\textbf{xu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{u}^* \\& \hspace{1cm} + \dfrac{1}{2} \delta \textbf{u}^{*T} \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{x}+ \dfrac{1}{2} \delta \textbf{u}^{*T} \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{u}^* + Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \\
+    
+    &= \nabla_\textbf{x}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{x}- \dfrac{1}{2} \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^{-1} \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \\& \hspace{1cm} - \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^{-1} \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \delta \textbf{x}+ \dfrac{1}{2} \delta \textbf{x}^T \nabla_\textbf{xx}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \delta \textbf{x}\\& \hspace{1cm} - \dfrac{1}{2} \delta \textbf{x}^T \nabla_\textbf{xu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^{-1} \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \delta \textbf{x}+ Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)\\ 
+    \end{aligned}
+$$
+
+其中除了$\delta \textbf{x}=\textbf{x}-\bar{\textbf{x}}_n$以外均为定值，求导得到
+
+$$
+\begin{aligned}
+%  \label{eq:ddp-updates}
+% \begin{split}W
+    \nabla_{\textbf{x}} V (\textbf{x}, t_n) &= \nabla_\textbf{x}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) - \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^T \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^{-1} \nabla_\textbf{u}Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \\
+    \nabla_{\textbf{xx}}^2 V(\textbf{x}, t_n) &= \nabla_\textbf{xx}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) - \nabla_\textbf{xu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n) \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)^{-1} \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}, \bar{\textbf{u}}, t_n)
+% \end{split}
+\end{aligned}
+$$
+
+这样就得出了在第$n$步中，值函数$V(\textbf{x}, t_n)$的表达式。
+
+### 算法大致流程
+
+#### 后向过程
+
+给定初始状态与初始输入序列$\textbf{x}_0$,$\bar{\textbf{U}} = [\bar{\textbf{u}}_0, \bar{\textbf{u}}_1, .., \bar{\textbf{u}}_{N-1}]$,从后向前迭代，每次使用上述公式计算出$\delta u^*$，称为后向过程(backwards pass).线性化点$\bar{\textbf{x}}_n$通过系统动态得出.
+
+$$
+\begin{aligned}
+    t=N \hspace{1cm} &\text{Approx. }Q(\delta \textbf{x}_{N-1}, \delta \textbf{u}_{N-1}, t_{N-1}) \text{ and } V(\textbf{x}_N, t_N) \\
+        &\text{Compute }\delta \textbf{u}^*_{N-1}\\
+        &\text{Find an approx. of }V(\textbf{x}_{N-1}, t_{N-1}) \\[10pt]
+    t=N-1 \hspace{1cm} &\text{Approx. }Q(\delta \textbf{x}_{N-2}, \delta \textbf{u}_{N-2}, t_{N-2}) \text{ and }V(\textbf{x}_{N-1}, t_{N-1}) \\
+        &\text{Compute }\delta \textbf{u}_{N-2}^* \\
+        &\text{Find an approx. of }V(\textbf{x}_{N-2}, t_{N-2}) \\[10pt]
+    \vdots \\[10pt]
+    t=0 \hspace{1cm} &\text{Approx. }Q(\delta \textbf{x}_{0}, \delta \textbf{u}_{0}, t_{0}) \text{ and }V(\textbf{x}_{1}, t_1)\\
+        &\text{Compute }\delta \textbf{u}_{0}^* \\\end{aligned}
+$$
+
+#### 前向过程
+
+后向过程获得了最优的控制序列增量 $\delta \textbf{U}^* = [\delta \textbf{u}^*_0, \delta \textbf{u}^*_1, .., \delta \textbf{u}^*_{N-1}]$,需要转换为最优控制序列 $\textbf{U}^* = [\textbf{u}^*_0, \textbf{u}^*_1, .., \textbf{u}^*_{N-1}]$
+
+$$
+\begin{aligned}
+    \delta \textbf{u}^*_n &= - \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n)^{-1} \big( \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) + \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) \delta \textbf{x}^*_n \big) \\
+    \textbf{u}_n^* - \bar{\textbf{u}}_n &= - \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n)^{-1} \big( \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) + \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) (\textbf{x}^*_n - \bar{\textbf{x}}_n) \big) \\
+    \textbf{u}^*_n &= \bar{\textbf{u}}_n - \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n)^{-1} \big( \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) + \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) (\textbf{x}^*_n - \bar{\textbf{x}}_n) \big)\end{aligned}
+$$
+
+最优系统状态可以通过系统动态得出,前向过程如下
+
+$$
+\begin{aligned}
+    \textbf{x}^*_0 &= \bar{\textbf{x}}_0 \\
+    \textbf{u}^*_n &= \bar{\textbf{u}}_n - \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n)^{-1}( \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) + \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) (\textbf{x}^*_n - \bar{\textbf{x}}_n)) \\
+    \textbf{x}^*_{n+1} &= f(\textbf{x}^*_n, \textbf{u}^*_n)\end{aligned}
+$$
+
+### 算法伪代码
+
+通过添加线搜索方法，可以防止解在最优解附近跳跃，
+
+![Implement_Details](./picture/DynamicProgrammingImplemet.png)
+
+## iLQR
+
+`iLQR`就是使用一阶泰勒展开估计系统动态与代价函数的微分动态规划.
