@@ -1073,7 +1073,13 @@ $$
 L = \frac{1}{2}(\textbf{x} - \textbf{x}_n)^TQ(\textbf{x} - \textbf{x}_n)
 $$
 
-## Rollout
+## 声明限制Constraint
+
+```CPP
+
+```
+
+## 推导状态Rollout
 
 `Rollout`表示根据当前输入与初始状态，使用积分算法推导动态系统指定时间范围内的状态.
 
@@ -1700,6 +1706,249 @@ void concatenate(const ControllerBase* otherController) { concatenate(otherContr
 ```
 
 `concatenate`函数将另一个控制器连接到这个控制器后.
+
+### FeedforwardController类
+
+`FeedforwardController`提供是一个简单的控制器.进行简单的线性插值.
+
+```CPP
+/**
+ * FeedforwardController provides a time-dependent control law without state-dependent feedback.
+ * Commonly, this is used to wrap around a more general controller and extract only the feedforward portion.
+ */
+class FeedforwardController final : public ControllerBase {
+ public:
+  /** Constructor, leaves object uninitialized */
+  FeedforwardController() = default;
+
+  /**
+   * Constructor initializes all required members of the controller.
+   *
+   * @param [in] controllerTime: Time stamp array of the controller
+   * @param [in] controllerFeedforward: The feedforward control input array.
+   */
+  FeedforwardController(scalar_array_t controllerTime, vector_array_t controllerFeedforward)
+      : timeStamp_(std::move(controllerTime)), uffArray_(std::move(controllerFeedforward)) {}
+
+  /**
+   * Constructor to initialize the feedforward input data with a general controller rolled-out along a nominal stateTrajectory
+   *
+   * @param [in] controllerTime the times for the rollout
+   * @param [in] stateTrajectory the states for the rollout
+   * @param [in] controller the controller to extract the feedforward controls from during a rollout
+   */
+  FeedforwardController(const scalar_array_t& controllerTime, const vector_array_t& stateTrajectory, ControllerBase* controller);
+
+  /** Copy constructor */
+  FeedforwardController(const FeedforwardController& other);
+
+  /** Move constructor */
+  FeedforwardController(FeedforwardController&& other);
+
+  /** Copy assignment (copy and swap idiom) */
+  FeedforwardController& operator=(FeedforwardController rhs);
+
+  /** Destructor */
+  ~FeedforwardController() override = default;
+
+  /**
+   * setController Assign control law
+   * @param [in] controllerTime: Time stamp array of the controller
+   * @param [in] controllerFeedforward: The feedforward control input array.
+   */
+  void setController(const scalar_array_t& controllerTime, const vector_array_t& controllerFeedforward);
+
+  vector_t computeInput(scalar_t t, const vector_t& x) override;
+
+  void concatenate(const ControllerBase* nextController, int index, int length) override;
+
+  int size() const override;
+
+  ControllerType getType() const override;
+
+  void clear() override;
+
+  bool empty() const override;
+
+  FeedforwardController* clone() const override;
+
+  void display() const override;
+
+  void flatten(const scalar_array_t& timeArray, const std::vector<std::vector<float>*>& flatArray2) const override;
+
+  static FeedforwardController unFlatten(const scalar_array_t& timeArray, const std::vector<std::vector<float> const*>& flatArray2);
+
+ private:
+  void flattenSingle(scalar_t time, std::vector<float>& flatArray) const;
+
+ public:
+  scalar_array_t timeStamp_;
+  vector_array_t uffArray_;
+
+  friend void swap(FeedforwardController& a, FeedforwardController& b) noexcept;
+};
+```
+
+#### setController
+
+```CPP
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void FeedforwardController::setController(const scalar_array_t& controllerTime, const vector_array_t& controllerFeedforward) {
+  timeStamp_ = controllerTime;
+  uffArray_ = controllerFeedforward;
+}
+```
+
+#### computeInput
+
+```CPP
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+vector_t FeedforwardController::computeInput(scalar_t t, const vector_t& x) {
+  return LinearInterpolation::interpolate(t, timeStamp_, uffArray_);
+}
+```
+
+进行简单的线性插值，获得最优控制解.
+
+#### concatenate
+
+```CPP
+******************************************************************************************************/
+/******************************************************************************************************/
+void FeedforwardController::concatenate(const ControllerBase* nextController, int index, int length) {
+  if (auto nextFfwdCtrl = dynamic_cast<const FeedforwardController*>(nextController)) {
+    if (!timeStamp_.empty() && timeStamp_.back() > nextFfwdCtrl->timeStamp_.front()) {
+      throw std::runtime_error("Concatenate requires that the nextController comes later in time.");
+    }
+    int last = index + length;
+    timeStamp_.insert(timeStamp_.end(), nextFfwdCtrl->timeStamp_.begin() + index, nextFfwdCtrl->timeStamp_.begin() + last);
+    uffArray_.insert(uffArray_.end(), nextFfwdCtrl->uffArray_.begin() + index, nextFfwdCtrl->uffArray_.begin() + last);
+  } else {
+    throw std::runtime_error("Concatenate only works with controllers of the same type.");
+  }
+}
+```
+
+将控制器延长.
+
+### LinearController
+
+```CPP
+
+/**
+ * LinearController implements a time and state dependent controller of the
+ * form u[x,t] = k[t] * x + uff[t]
+ */
+class LinearController final : public ControllerBase {
+ public:
+  /** Constructor, leaves object uninitialized */
+  LinearController() = default;
+
+  /**
+   * @brief Constructor initializes all required members of the controller.
+   *
+   * @param [in] controllerTime: Time stamp array of the controller
+   * @param [in] controllerBias: The bias array.
+   * @param [in] controllerGain: The feedback gain array.
+   */
+  LinearController(scalar_array_t controllerTime, vector_array_t controllerBias, matrix_array_t controllerGain)
+      : timeStamp_(std::move(controllerTime)), biasArray_(std::move(controllerBias)), gainArray_(std::move(controllerGain)) {}
+
+  /** Copy constructor */
+  LinearController(const LinearController& other);
+
+  /** Move constructor */
+  LinearController(LinearController&& other);
+
+  /** Copy assignment (copy and swap idiom) */
+  LinearController& operator=(LinearController rhs);
+
+  /** Destructor */
+  ~LinearController() override = default;
+
+  /** Clone */
+  LinearController* clone() const override;
+
+  /**
+   * @brief setController Assign control law
+   * @param [in] controllerTime: Time stamp array of the controller
+   * @param [in] controllerBias: The bias array.
+   * @param [in] controllerGain: The feedback gain array.
+   */
+  void setController(const scalar_array_t& controllerTime, const vector_array_t& controllerBias, const matrix_array_t& controllerGain);
+
+  vector_t computeInput(scalar_t t, const vector_t& x) override;
+
+  void concatenate(const ControllerBase* nextController, int index, int length) override;
+
+  int size() const override;
+
+  ControllerType getType() const override;
+
+  void clear() override;
+
+  bool empty() const override;
+
+  void display() const override;
+
+  void getFeedbackGain(scalar_t time, matrix_t& gain) const;
+
+  void getBias(scalar_t time, vector_t& bias) const;
+
+  scalar_array_t controllerEventTimes() const override;
+
+  void flatten(const scalar_array_t& timeArray, const std::vector<std::vector<float>*>& flatArray2) const override;
+
+  static LinearController unFlatten(const size_array_t& stateDim, const size_array_t& inputDim, const scalar_array_t& timeArray,
+                                    const std::vector<std::vector<float> const*>& flatArray2);
+
+ private:
+  void flattenSingle(scalar_t time, std::vector<float>& flatArray) const;
+
+ public:
+  scalar_array_t timeStamp_;
+  vector_array_t biasArray_;
+  vector_array_t deltaBiasArray_;
+  matrix_array_t gainArray_;
+
+  friend void swap(LinearController& a, LinearController& b) noexcept;
+};
+```
+
+`LinearController`实现的是有状态反馈的控制器.
+
+$$
+\textbf{u}(\textbf{x},t) = k[t]\textbf{x} + u_{ff}[t]
+$$
+
+### setController
+
+```CPP
+void LinearController::setController(const scalar_array_t& controllerTime, const vector_array_t& controllerBias,
+                                     const matrix_array_t& controllerGain) {
+  timeStamp_ = controllerTime;
+  biasArray_ = controllerBias;
+  gainArray_ = controllerGain;
+}
+```
+
+### computeInput
+
+```CPP
+vector_t LinearController::computeInput(scalar_t t, const vector_t& x) {
+  const auto indexAlpha = LinearInterpolation::timeSegment(t, timeStamp_);
+
+  vector_t uff = LinearInterpolation::interpolate(indexAlpha, biasArray_);
+  const matrix_t k = LinearInterpolation::interpolate(indexAlpha, gainArray_);
+
+  uff.noalias() += k * x;
+  return uff;
+}
+```
 
 ## 非切换问题
 

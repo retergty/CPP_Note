@@ -46,6 +46,10 @@ $$
     \end{cases}\end{split}
 $$
 
+## 代价函数Cost
+
+代价函数`Cost`分为三个部分，中间代价`intermediate`
+
 ## 代码分析
 
 ### 最优控制问题结构体OptimalControlProblem
