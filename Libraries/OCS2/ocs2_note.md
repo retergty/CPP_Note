@@ -48,7 +48,23 @@ $$
 
 ## 代价函数Cost
 
-代价函数`Cost`分为三个部分，中间代价`intermediate`
+代价函数`Cost`分为三种，中间代价`intermediate`,切换前代价`prejump`,最终代价`final`.
+
+`ocs2`假定中间代价`intermediate`函数的`Hession`矩阵和在任何时候都是正定的.
+
+## 约束Constraints
+
+约束`Constraints`也分为三种，中间约束`intermediate`,切换前约束`prejump`,最终约束`final`.
+
+中间约束可以是时间，状态，输入的函数，但最终约束只能是时间与状态的函数.约束条件应该从`StateConstraint`或`StateInputConstraint`类继承。派生类应该根据约束的次数定义约束值及其线性或二次近似值。
+
+为了处理`OCS2`中的约束，可以使用硬约束或软约束方法.
+
+软约束由`OptimalControlProblem`单独收集,软约束处理基于惩罚方法，其中约束被用户定义的惩罚函数所包裹（有关这些惩罚函数的列表，请参阅`ocs2_core/soft_constraint/penalties`）。要从约束项创建软约束，可以使用`StateSoftConstraint`和 `StateInputSoftConstraint`类。可以为每个软约束设置自己的惩罚函数,十分灵活.
+
+硬约束（称为约束）根据其类型通过不同的技术以更高的精度处理，状态，输入等式约束通过投影方法处理。状态等式与所有不等式通过松弛障碍法或增广拉格朗日法(禁用).
+
+由于状态输入等式约束是通过投影方法处理的，因此`OCS2`假设约束相对于输入的雅可比矩阵是满行秩.如果无法保证这个条件，则应该使用软约束技术。
 
 ## 代码分析
 

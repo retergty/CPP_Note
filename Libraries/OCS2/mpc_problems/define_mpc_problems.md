@@ -1073,10 +1073,214 @@ $$
 L = \frac{1}{2}(\textbf{x} - \textbf{x}_n)^TQ(\textbf{x} - \textbf{x}_n)
 $$
 
-## 声明限制Constraint
+## 声明约束Constraint
+
+约束分为硬约束(hard constraints或constraints)与软约束(soft contraints).处理方法不同.
 
 ```CPP
+/* Soft constraints */
+/** Intermediate soft constraint penalty */
+std::unique_ptr<StateInputCostCollection> softConstraintPtr;
+/** Intermediate state-only soft constraint penalty */
+std::unique_ptr<StateCostCollection> stateSoftConstraintPtr;
+/** Pre-jump soft constraint penalty */
+std::unique_ptr<StateCostCollection> preJumpSoftConstraintPtr;
+/** Final soft constraint penalty */
+std::unique_ptr<StateCostCollection> finalSoftConstraintPtr;
+```
 
+可以看到，软约束实际上是代价函数
+
+硬约束需要声明约束的次数，线性还是二次的泰勒近似.
+
+```CPP
+enum class ConstraintOrder { Linear, Quadratic };
+```
+
+### StateConstraint类
+
+```CPP
+/** State-only constraint function base class */
+class StateConstraint {
+ public:
+  explicit StateConstraint(ConstraintOrder order) : order_(order) {}
+  virtual ~StateConstraint() = default;
+  virtual StateConstraint* clone() const = 0;
+
+  /** Get the constraint order (Linear or Quadratic) */
+  constexpr ConstraintOrder getOrder() const { return order_; };
+
+  /** Check constraint activity */
+  virtual bool isActive(scalar_t time) const { return true; }
+
+  /** Get the size of the constraint vector at given time */
+  virtual size_t getNumConstraints(scalar_t time) const = 0;
+
+  /** Get the constraint vector value */
+  virtual vector_t getValue(scalar_t time, const vector_t& state, const PreComputation& preComp) const = 0;
+
+  /** Get the constraint linear approximation */
+  virtual VectorFunctionLinearApproximation getLinearApproximation(scalar_t time, const vector_t& state,
+                                                                   const PreComputation& preComp) const {
+    if (order_ == ConstraintOrder::Linear) {
+      throw std::runtime_error("[StateConstraint] Linear approximation not implemented!");
+    } else {
+      throw std::runtime_error("[StateConstraint] The class only provides Quadratic approximation! call getQuadraticApproximation()");
+    }
+  }
+
+  /** Get the constraint quadratic approximation */
+  virtual VectorFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state,
+                                                                         const PreComputation& preComp) const {
+    if (order_ == ConstraintOrder::Quadratic) {
+      throw std::runtime_error("[StateConstraint] Quadratic approximation not implemented!");
+    } else {
+      throw std::runtime_error("[StateConstraint] The class only provides Linear approximation! call getLinearApproximation()");
+    }
+  }
+
+ protected:
+  StateConstraint(const StateConstraint& rhs) = default;
+
+ private:
+  ConstraintOrder order_;
+};
+```
+
+这是纯状态约束的通用基类,
+
+`getValue`获取在当前时间，当前状态下的约束的值,如果是等式约束,就是${\mathbf g_2}_i(\mathbf x(t), t)$的值，不等式约束就是$h_i(\mathbf x(t), t)$的值.
+
+`getNumConstraints`获取当前这个类有多少个约束,就是`vector_t`的长度.
+
+### LinearStateConstraint类
+
+```CPP
+/**
+ * Linear state-only constraint
+ */
+class LinearStateConstraint : public StateConstraint {
+ public:
+  /**
+   * Constructor
+   *
+   * @param [in] h: Constant term in F * x + h = 0
+   * @param [in] F: x factor in F * x + h = 0
+   */
+  LinearStateConstraint(vector_t h, matrix_t F);
+
+  ~LinearStateConstraint() override = default;
+
+  LinearStateConstraint* clone() const override;
+
+  size_t getNumConstraints(scalar_t time) const final;
+
+  vector_t getValue(scalar_t t, const vector_t& x, const PreComputation& /* preComputation */) const final;
+
+  VectorFunctionLinearApproximation getLinearApproximation(scalar_t t, const vector_t& x,
+                                                           const PreComputation& /* preComputation */) const final;
+
+ public:
+  vector_t h_; /**< State only constraint */
+  matrix_t F_; /**< State only constraint derivative wrt. state */
+};
+```
+
+这是一个简单的线性纯状态的约束
+
+对于等式约束就是
+
+$$
+F\textbf{x} + \textbf{h} = 0
+$$
+
+对于不等式约束就是
+
+$$
+F\textbf{x} + \textbf{h} \geq 0
+$$
+
+#### getValue
+
+```CPP
+vector_t LinearStateConstraint::getValue(scalar_t t, const vector_t& x, const PreComputation&) const {
+  vector_t g = h_;
+  g.noalias() += F_ * x;
+  return g;
+}
+```
+
+获取值
+
+#### getLinearApproximation
+
+```CPP
+VectorFunctionLinearApproximation LinearStateConstraint::getLinearApproximation(scalar_t t, const vector_t& x,
+                                                                                const PreComputation&) const {
+  VectorFunctionLinearApproximation g;
+  g.f = h_;
+  g.f.noalias() += F_ * x;
+  g.dfdx = F_;
+  return g;
+}
+```
+
+### StateInputConstraint类
+
+```CPP
+class StateInputConstraint {
+ public:
+  explicit StateInputConstraint(ConstraintOrder order) : order_(order) {}
+  virtual ~StateInputConstraint() = default;
+  virtual StateInputConstraint* clone() const = 0;
+
+  /** Get the constraint order (Linear or Quadratic) */
+  constexpr ConstraintOrder getOrder() const { return order_; };
+
+  /** Check constraint activity */
+  virtual bool isActive(scalar_t time) const { return true; }
+
+  /** Get the size of the constraint vector at given time */
+  virtual size_t getNumConstraints(scalar_t time) const = 0;
+
+  /** Get the constraint vector value */
+  virtual vector_t getValue(scalar_t time, const vector_t& state, const vector_t& input, const PreComputation& preComp) const = 0;
+
+  /** Get the constraint linear approximation */
+  virtual VectorFunctionLinearApproximation getLinearApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                   const PreComputation& preComp) const {
+    if (order_ == ConstraintOrder::Linear) {
+      throw std::runtime_error("[StateInputConstraint] Linear approximation not implemented!");
+    } else {
+      throw std::runtime_error("[StateInputConstraint] The class only provides Quadratic approximation! call getQuadraticApproximation()");
+    }
+  }
+
+  /** Get the constraint quadratic approximation */
+  virtual VectorFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                         const PreComputation& preComp) const {
+    if (order_ == ConstraintOrder::Quadratic) {
+      throw std::runtime_error("[StateConstraint] Quadratic approximation not implemented!");
+    } else {
+      throw std::runtime_error("[StateConstraint] The class only provides Linear approximation! call getLinearApproximation()");
+    }
+  }
+
+ protected:
+  StateInputConstraint(const StateInputConstraint& rhs) = default;
+
+ private:
+  ConstraintOrder order_;
+};
+```
+
+状态-输入约束.
+
+### 自动微分支持
+
+```CPP
+class StateInputConstraintCppAd : public StateInputConstraint;
+class StateConstraintCppAd : public StateConstraint;
 ```
 
 ## 推导状态Rollout
@@ -1949,6 +2153,297 @@ vector_t LinearController::computeInput(scalar_t t, const vector_t& x) {
   return uff;
 }
 ```
+
+## 罚函数Penalties
+
+罚函数是优化问题中的对于超过约束的惩罚函数，用于将不等式约束或软约束添加到代价函数中去.罚函数假定为凸的.是时间与约束违反(就是约束函数的值)的函数.
+
+### PenaltyBase
+
+```CPP
+class PenaltyBase {
+ public:
+  /** Default constructor */
+  PenaltyBase() = default;
+
+  /** Default destructor */
+  virtual ~PenaltyBase() = default;
+
+  /** Clones the class */
+  virtual PenaltyBase* clone() const = 0;
+
+  /** Get the name of the penalty function. This method is only used during error handling. */
+  virtual std::string name() const = 0;
+
+  /**
+   * Compute the penalty value at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: Constraint value.
+   * @return penalty cost.
+   */
+  virtual scalar_t getValue(scalar_t t, scalar_t h) const = 0;
+
+  /**
+   * Compute the penalty derivative at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: Constraint value.
+   * @return penalty derivative with respect to constraint value.
+   */
+  virtual scalar_t getDerivative(scalar_t t, scalar_t h) const = 0;
+
+  /**
+   * Compute the penalty second derivative at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: Constraint value.
+   * @return penalty second derivative with respect to constraint value.
+   */
+  virtual scalar_t getSecondDerivative(scalar_t t, scalar_t h) const = 0;
+
+ protected:
+  PenaltyBase(const PenaltyBase& other) = default;
+};
+```
+
+罚函数基类,实现纯虚函数就可以.
+
+### DoubleSidedPenalty
+
+```CPP
+
+/**
+ * Implements the double sided inequality \f$ l \leq h \leq u \f$ with a given penalty function \f$ p() \f$.
+ *
+ * \f[
+ *   p_{box}(h) = p(h - l) + p(u - h)
+ * \f]
+ */
+class DoubleSidedPenalty final : public PenaltyBase {
+ public:
+  /**
+   * Constructor
+   * @param [in] lowerBound: The lower bound.
+   * @param [in] upperBound: The upper bound.
+   * @param [in] penalty: The penalty for the two inequality constraint.
+   */
+  DoubleSidedPenalty(scalar_t lowerBound, scalar_t upperBound, std::unique_ptr<PenaltyBase> penalty)
+      : lowerBound_(lowerBound), upperBound_(upperBound), penaltyPtr_(std::move(penalty)) {}
+
+  ~DoubleSidedPenalty() override = default;
+  DoubleSidedPenalty* clone() const override { return new DoubleSidedPenalty(*this); }
+  std::string name() const override { return "DoubleSidedPenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t h) const override {
+    return penaltyPtr_->getValue(t, h - lowerBound_) + penaltyPtr_->getValue(t, upperBound_ - h);
+  }
+  scalar_t getDerivative(scalar_t t, scalar_t h) const override {
+    return penaltyPtr_->getDerivative(t, h - lowerBound_) - penaltyPtr_->getDerivative(t, upperBound_ - h);
+  }
+  scalar_t getSecondDerivative(scalar_t t, scalar_t h) const override {
+    return penaltyPtr_->getSecondDerivative(t, h - lowerBound_) + penaltyPtr_->getSecondDerivative(t, upperBound_ - h);
+  }
+
+ private:
+  DoubleSidedPenalty(const DoubleSidedPenalty& other)
+      : lowerBound_(other.lowerBound_), upperBound_(other.upperBound_), penaltyPtr_(other.penaltyPtr_->clone()) {}
+
+  const scalar_t lowerBound_;
+  const scalar_t upperBound_;
+  std::unique_ptr<PenaltyBase> penaltyPtr_;
+};
+```
+
+实现了一个双向的不等式
+
+$$
+l \leq h \leq u
+$$
+
+的罚函数.
+
+$$
+p_{box}(h) = p(h - l) + p(u - h)
+$$
+
+其中$p$是单向不等式的罚函数.
+
+### QuadraticPenalty
+
+```CPP
+class QuadraticPenalty final : public PenaltyBase {
+ public:
+  /**
+   * Thos constructor sets both the scale and stepLength the same. This is a common practice in Augmented Lagrangian.
+   * @param [in] scale: Scaling of the cost.
+   */
+  explicit QuadraticPenalty(scalar_t scale) : scale_(scale) {}
+
+  ~QuadraticPenalty() override = default;
+  QuadraticPenalty* clone() const override { return new QuadraticPenalty(*this); }
+  std::string name() const override { return "QuadraticPenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t h) const override { return 0.5 * scale_ * h * h; }
+  scalar_t getDerivative(scalar_t t, scalar_t h) const override { return scale_ * h; }
+  scalar_t getSecondDerivative(scalar_t t, scalar_t h) const override { return scale_; }
+
+ private:
+  QuadraticPenalty(const QuadraticPenalty& other) = default;
+
+  const scalar_t scale_;
+};
+```
+
+实现了等式软约束
+
+$$
+h = 0
+$$
+
+的二次型罚函数.
+
+$$
+L_{A} = \frac{\mu}{2} h^2
+$$
+
+其中$\mu$是一个系数.
+
+### RelaxedBarrierPenalty
+
+```CPP
+/**
+ * Implements the relaxed barrier function for a single inequality constraint \f$ h \geq 0 \f$
+ *
+ * \f[
+ *   p(h)=\left\lbrace
+ *               \begin{array}{ll}
+ *                 -\mu \ln(h) & if \quad  h > \delta, \\
+ *                 -\mu \ln(\delta) + \mu \frac{1}{2} \left( \left( \frac{h-2\delta}{\delta} \right)^2 - 1 \right) & otherwise,
+ *               \end{array}
+ *             \right.
+ * \f]
+ *
+ * where \f$ \mu \geq 0 \f$, and \f$ \delta \geq 0 \f$ are user defined parameters.
+ */
+class RelaxedBarrierPenalty final : public PenaltyBase {
+ public:
+  /**
+   * Configuration object for the relaxed barrier penalty.
+   * mu : scaling factor
+   * delta: relaxation parameter, see class description
+   */
+  struct Config {
+    Config() : Config(1.0, 1e-3) {}
+    Config(scalar_t muParam, scalar_t deltaParam) : mu(muParam), delta(deltaParam) {}
+    scalar_t mu;
+    scalar_t delta;
+  };
+
+  /**
+   * Constructor
+   * @param [in] config: Configuration object containing mu and delta.
+   */
+  explicit RelaxedBarrierPenalty(Config config) : config_(std::move(config)) {}
+
+  ~RelaxedBarrierPenalty() override = default;
+  RelaxedBarrierPenalty* clone() const override { return new RelaxedBarrierPenalty(*this); }
+  std::string name() const override { return "RelaxedBarrierPenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t h) const override;
+  scalar_t getDerivative(scalar_t t, scalar_t h) const override;
+  scalar_t getSecondDerivative(scalar_t t, scalar_t h) const override;
+
+ private:
+  RelaxedBarrierPenalty(const RelaxedBarrierPenalty& other) = default;
+
+  const Config config_;
+};
+```
+
+实现了经典的松弛障碍法罚函数.
+
+是不等式约束
+
+$$
+h \geq 0
+$$
+
+的松弛障碍函数
+
+$$
+ p(h)=\left\lbrace
+             \begin{array}{ll}
+                 -\mu \ln(h) & if \quad  h > \delta, \\
+                -\mu \ln(\delta) + \mu \frac{1}{2} \left( \left( \frac{h-2\delta}{\delta} \right)^2 - 1 \right) & otherwise,
+               \end{array}
+      \right.
+$$
+
+松弛障碍法相比于障碍法，优势在于迭代初期可以允许迭代点超出可行域,快速逼近最优解，减少迭代次数.​​平衡效率与可行性
+
+#### Config
+
+```CPP
+/**
+  * Configuration object for the relaxed barrier penalty.
+  * mu : scaling factor
+  * delta: relaxation parameter, see class description
+  */
+struct Config {
+  Config() : Config(1.0, 1e-3) {}
+  Config(scalar_t muParam, scalar_t deltaParam) : mu(muParam), delta(deltaParam) {}
+  scalar_t mu;
+  scalar_t delta;
+};
+```
+
+松弛障碍法参数.
+
+#### getValue
+
+```CPP
+scalar_t RelaxedBarrierPenalty::getValue(scalar_t t, scalar_t h) const {
+  if (h > config_.delta) {
+    return -config_.mu * log(h);
+  } else {
+    const scalar_t delta_h = (h - 2.0 * config_.delta) / config_.delta;
+    return config_.mu * (-log(config_.delta) + 0.5 * delta_h * delta_h - 0.5);
+  };
+}
+```
+
+获得当前值
+
+#### getDerivative
+
+```CPP
+scalar_t RelaxedBarrierPenalty::getDerivative(scalar_t t, scalar_t h) const {
+  if (h > config_.delta) {
+    return -config_.mu / h;
+  } else {
+    return config_.mu * ((h - 2.0 * config_.delta) / (config_.delta * config_.delta));
+  };
+}
+```
+
+获得导数值
+
+#### getSecondDerivative
+
+```CPP
+scalar_t RelaxedBarrierPenalty::getSecondDerivative(scalar_t t, scalar_t h) const {
+  if (h > config_.delta) {
+    return config_.mu / (h * h);
+  } else {
+    return config_.mu / (config_.delta * config_.delta);
+  };
+}
+```
+
+获得二阶导数值.
+
+### 
 
 ## 非切换问题
 
