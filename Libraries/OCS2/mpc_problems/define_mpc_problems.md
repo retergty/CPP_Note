@@ -1405,6 +1405,223 @@ VectorFunctionLinearApproximation LinearStateInputConstraint::getLinearApproxima
 }
 ```
 
+## 声明软约束SoftConstraint
+
+如同上一章所说，软约束实际就是代价函数.
+
+### StateSoftConstraint
+
+```CPP
+/**
+ *   Implements the cost penalty for state constraint terms
+ *   \f$ h_i(x) \quad \forall  i \in [1,..,M] \f$
+ *
+ *   penalty(t, x) = \f$ \sum_{i=1}^{M} p(t, h_i(x)) \f$
+ *
+ *   The scalar penalty function \f$ p() \f$ and its derivatives are provided by the user.
+ *   This class uses the chain rule to compute the second-order approximation of the constraint-penalty. In the case that the
+ *   second-order approximation of constraint is not provided, it employs a Gauss-Newton approximation technique which only
+ *   relies on the first-order approximation. In general, the penalty function can be a function of time.
+ *
+ *   A few commonly-used penalty functions have been provided by the toolbox such as Relaxed-Barrier and Squared-Hinge
+ *   penalty functions.
+ */
+class StateSoftConstraint final : public StateCost {
+ public:
+  /**
+   * Constructor.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+   */
+  StateSoftConstraint(std::unique_ptr<StateConstraint> constraintPtr, std::vector<std::unique_ptr<PenaltyBase>> penaltyPtrArray);
+
+  /**
+   * Constructor.
+   * @note This allows a varying number of constraints and uses the same penalty function for each constraint.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyFunction: A pointer to the penalty function on the constraint.
+   */
+  StateSoftConstraint(std::unique_ptr<StateConstraint> constraintPtr, std::unique_ptr<PenaltyBase> penaltyFunction);
+
+  ~StateSoftConstraint() override = default;
+
+  /** Gets the wrapped constraint. */
+  template <typename Derived = StateConstraint>
+  Derived& get() {
+    static_assert(std::is_base_of<StateConstraint, Derived>::value, "Template argument must derive from StateConstraint");
+    return dynamic_cast<Derived&>(*constraintPtr_);
+  }
+
+  StateSoftConstraint* clone() const override;
+
+  bool isActive(scalar_t time) const override;
+
+  scalar_t getValue(scalar_t time, const vector_t& state, const TargetTrajectories& /* targetTrajectories */,
+                    const PreComputation& preComp) const override;
+
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state,
+                                                                 const TargetTrajectories& /* targetTrajectories */,
+                                                                 const PreComputation& preComp) const override;
+
+ private:
+  StateSoftConstraint(const StateSoftConstraint& other);
+
+  std::unique_ptr<StateConstraint> constraintPtr_;
+  MultidimensionalPenalty penalty_;
+};
+```
+
+创建纯状态软约束，罚函数为
+
+$$
+p(t, x) =  \sum_{i=1}^{M} p_i(t, h_i(x))
+$$
+
+### StateInputSoftConstraint
+
+```CPP
+/**
+ *   Implements the cost penalty for state-input constraint terms
+ *   \f$ h_i(x, u) \quad \forall  i \in [1,..,M] \f$
+ *
+ *   penalty(t, x, u) = \f$ \sum_{i=1}^{M} p(t, h_i(x, u)) \f$
+ *
+ *   The scalar penalty function \f$ p() \f$ and its derivatives are provided by the user.
+ *   This class uses the chain rule to compute the second-order approximation of the constraint-penalty. In the case that the
+ *   second-order approximation of constraint is not provided, it employs a Gauss-Newton approximation technique which only
+ *   relies on the first-order approximation. In general, the penalty function can be a function of time.
+ *
+ *   A few commonly-used penalty functions have been provided by the toolbox such as Relaxed-Barrier and Squared-Hinge
+ *   penalty functions.
+ */
+class StateInputSoftConstraint final : public StateInputCost {
+ public:
+  /**
+   * Constructor.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+   */
+  StateInputSoftConstraint(std::unique_ptr<StateInputConstraint> constraintPtr, std::vector<std::unique_ptr<PenaltyBase>> penaltyPtrArray);
+
+  /**
+   * Constructor.
+   * @note This allows a varying number of constraints and uses the same penalty function for each constraint.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyFunction: A pointer to the penalty function on the constraint.
+   */
+  StateInputSoftConstraint(std::unique_ptr<StateInputConstraint> constraintPtr, std::unique_ptr<PenaltyBase> penaltyFunction);
+
+  ~StateInputSoftConstraint() override = default;
+
+  /** Gets the wrapped constraint. */
+  template <typename Derived = StateInputConstraint>
+  Derived& get() {
+    static_assert(std::is_base_of<StateInputConstraint, Derived>::value, "Template argument must derive from StateInputConstraint");
+    return dynamic_cast<Derived&>(*constraintPtr_);
+  }
+
+  StateInputSoftConstraint* clone() const override;
+
+  bool isActive(scalar_t time) const override;
+
+  scalar_t getValue(scalar_t time, const vector_t& state, const vector_t& input, const TargetTrajectories& /* targetTrajectories */,
+                    const PreComputation& preComp) const override;
+
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                 const TargetTrajectories& /* targetTrajectories */,
+                                                                 const PreComputation& preComp) const override;
+
+ private:
+  StateInputSoftConstraint(const StateInputSoftConstraint& other);
+
+  std::unique_ptr<StateInputConstraint> constraintPtr_;
+  MultidimensionalPenalty penalty_;
+};
+```
+
+状态输入软约束，罚函数为
+
+$$
+p(t, x, u) =  \sum_{i=1}^{M} p_i(t, h_i(x, u))
+$$
+
+### StateInputSoftBoxConstraint
+
+```CPP
+/**
+ *   Implements the cost penalty for state-input box constraints
+ */
+class StateInputSoftBoxConstraint final : public StateInputCost {
+ public:
+  struct BoxConstraint {
+    //! Index of the constraint in the state or input vector
+    size_t index = 0;
+
+    //! Lower bound of the box constraint (default is low, but not numeric::lowest to prevent underflow)
+    scalar_t lowerBound = -1e30;
+
+    //! Upper bound of the box constraint (default is high, but not numeric::max to prevent overflow)
+    scalar_t upperBound = 1e30;
+
+    //! Penalty function
+    std::unique_ptr<PenaltyBase> penaltyPtr;
+
+    /* Constructors and assignment operators */
+    BoxConstraint() = default;
+    ~BoxConstraint() = default;
+    BoxConstraint(const BoxConstraint& other);
+    BoxConstraint& operator=(const BoxConstraint& other);
+    BoxConstraint(BoxConstraint&& other) noexcept = default;
+    BoxConstraint& operator=(BoxConstraint&& other) noexcept = default;
+  };
+
+  /**
+   * Constructor.
+   * @param stateBoxConstraints : box constraint specification for states
+   * @param inputBoxConstraints : box constraint specification for inputs
+   */
+  StateInputSoftBoxConstraint(std::vector<BoxConstraint> stateBoxConstraints, std::vector<BoxConstraint> inputBoxConstraints);
+
+  ~StateInputSoftBoxConstraint() override = default;
+
+  StateInputSoftBoxConstraint* clone() const override;
+
+  bool isActive(scalar_t time) const override;
+
+  /**
+   * Takes the cost value at the given time, state, input and adds it as constant offset to further evaluations.
+   *
+   * Taking a penalty on constraint bounds that are far away can create a large (negative) value inside the feasible set, for example when
+   * using a relaxed barrier constraint. Adding a constant offset does not change the optimal solution, but gives peace of mind that the
+   * cost values are in a reasonable absolute range.
+   */
+  void initializeOffset(scalar_t time, const vector_t& state, const vector_t& input);
+
+  scalar_t getValue(scalar_t time, const vector_t& state, const vector_t& input, const TargetTrajectories& /* targetTrajectories */,
+                    const PreComputation& preComp) const override;
+
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                 const TargetTrajectories& /* targetTrajectories */,
+                                                                 const PreComputation& preComp) const override;
+
+ private:
+  StateInputSoftBoxConstraint(const StateInputSoftBoxConstraint& other) = default;
+
+  void sortByIndex(std::vector<BoxConstraint>& boxConstraints) const;
+
+  scalar_t getValue(scalar_t t, const vector_t& h, const std::vector<BoxConstraint>& boxConstraints) const;
+
+  void fillQuadraticApproximation(scalar_t t, const vector_t& h, const std::vector<BoxConstraint>& boxConstraints, scalar_t& value,
+                                  vector_t& firstDerivative, matrix_t& secondDerivative) const;
+
+  std::vector<BoxConstraint> stateBoxConstraints_;
+  std::vector<BoxConstraint> inputBoxConstraints_;
+  scalar_t offset_;
+};
+```
+
+这是一个状态-输入软约束，约束就是限幅$u_{lower} \leq u \leq u_{upper}$
+
 ## 声明拉格朗日约束AugmentedLagrang
 
 增广拉格朗日约束是接受拉格朗日乘子，约束违反，时间的约束函数.
@@ -3224,7 +3441,7 @@ $$
 
 ## 增广罚函数AugmentedPenalty
 
-罚函数是优化问题中的对于超过约束的惩罚函数，用于将不等式约束或软约束添加到代价函数中去.罚函数假定为凸的.是时间，约束违反(就是约束函数的值)，拉格朗日乘子的的函数.
+罚函数是优化问题中的对于超过约束的惩罚函数，用于将不等式约束或软约束添加到拉格朗日对偶函数中去，通过最大化这个拉格朗日对偶函数，获取原问题的KKT点.罚函数假定为凸的.是时间，约束违反(就是约束函数的值)，拉格朗日乘子的的函数.
 
 ### AugmentedPenaltyBase
 
@@ -3367,10 +3584,247 @@ $$
 h = 0
 $$
 
-构建增广拉格朗日函数
+构建增广拉格朗日罚函数
 
 $$
-L_{A} = L * \lambda h + \frac{\mu}{2} h^2
+p(h,l) = -l h + \frac{\mu}{2} h^2
+$$
+
+其中$l$是拉格朗日乘子，h是约束函数值.
+
+### ModifiedRelaxedBarrierPenalty
+
+```CPP
+/**
+ *  Implements the augmented Lagrangian for a single inequality constraint \f$ h \geq 0 \f$ through the modified-log-barrier method.
+ *
+ *  This leads to the following augmented-Lagrangian penalty function (referred to as the smooth-PHR penalty in the corresponding paper):
+ *  \f[
+ *      p(h, \lambda) = \frac{\lambda^2}{\rho} \psi\left(\frac{\rho h}{\lambda}\right).
+ *  \f]
+ *
+ *  where \f$ \pho \f$ is the scale. \f$ \psi(.) \f$ is defined as a shifted quadratically-relaxed log barrier function.
+ *  Unlike the relaxed log barrier penalty, this function is defined over the domain \f$ x > -1 \f$. Therefore, the value of the
+ *  relaxation parameter has to also belong to this domain.
+ *
+ *  This is then minimized by the solver, while the maximization of the approximate dual function is done by updating the Lagrange
+ *  multipliers with the following update rule:
+ *  \f[
+ *      \lambda^*_{k+1} = -\alpha \lambda^*_k \psi'\left(\frac{\pho h^*_{k+1}}{\lambda^*_k}\right).
+ *  \f]
+ *
+ * where \f$ \psi'(.) \f$ is the total derivative of \f$ \psi(.) \f$.
+ */
+class ModifiedRelaxedBarrierPenalty final : public AugmentedPenaltyBase {
+ public:
+  /**
+   * Configuration object for the modified relaxed barrier penalty.
+   * scale: scaling factor, see class description
+   * relaxation: relaxation parameter, see class description
+   * stepLenght: step-length parameter, see class description
+   */
+  struct Config {
+    Config() : Config(10.0, 0.0, 1.0) {}
+    Config(scalar_t scaleParam, scalar_t relaxationParam, scalar_t stepSizeParam)
+        : scale(scaleParam), relaxation(relaxationParam), stepSize(stepSizeParam) {}
+    scalar_t scale;
+    scalar_t relaxation;
+    scalar_t stepSize;
+  };
+
+  /** Constructor */
+  ModifiedRelaxedBarrierPenalty(Config config) : config_(std::move(config)), quadCoeff_(config_) {}
+
+  /** Factory function */
+  static std::unique_ptr<ModifiedRelaxedBarrierPenalty> create(Config config) {
+    return std::make_unique<ModifiedRelaxedBarrierPenalty>(std::move(config));
+  }
+
+  ~ModifiedRelaxedBarrierPenalty() override = default;
+  ModifiedRelaxedBarrierPenalty* clone() const override { return new ModifiedRelaxedBarrierPenalty(*this); }
+  std::string name() const override { return "ModifiedRelaxedBarrierPenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t l, scalar_t h) const override {
+    const scalar_t v = vFunc(l, h);
+    if (v > config_.relaxation) {
+      return -wFunc(l) * log(1.0 + v);
+    } else {
+      const scalar_t vDelta = v - config_.relaxation;
+      return wFunc(l) * (0.5 * quadCoeff_.c2 * vDelta * vDelta + quadCoeff_.c1 * vDelta + quadCoeff_.c0);
+    }
+  }
+
+  scalar_t getDerivative(scalar_t t, scalar_t l, scalar_t h) const override {
+    const scalar_t v = vFunc(l, h);
+    if (v > config_.relaxation) {
+      return -wFunc(l) / (1.0 + v) * dvdhFunc(l);
+    } else {
+      return wFunc(l) * (quadCoeff_.c2 * (v - config_.relaxation) + quadCoeff_.c1) * dvdhFunc(l);
+    }
+  }
+
+  scalar_t getSecondDerivative(scalar_t t, scalar_t l, scalar_t h) const override {
+    const scalar_t v = vFunc(l, h);
+    const scalar_t dvdh = dvdhFunc(l);
+    if (v > config_.relaxation) {
+      return wFunc(l) / ((1.0 + v) * (1.0 + v)) * dvdh * dvdh;
+    } else {
+      return wFunc(l) * quadCoeff_.c2 * dvdh * dvdh;
+    }
+  }
+
+  scalar_t updateMultiplier(scalar_t t, scalar_t l, scalar_t h) const override {
+    const scalar_t v = vFunc(l, h);
+    constexpr scalar_t lambdaMin = 1e-4;
+    if (v > config_.relaxation) {
+      return std::max(lambdaMin, wFunc(l) * dvdhFunc(l) / (1 + v));
+    } else {
+      return std::max(lambdaMin, config_.stepSize * wFunc(l) * (-quadCoeff_.c2 * (v - config_.relaxation) - quadCoeff_.c1) * dvdhFunc(l));
+    }
+  }
+
+  scalar_t initializeMultiplier() const override { return 1.0; }
+
+ private:
+  ModifiedRelaxedBarrierPenalty(const ModifiedRelaxedBarrierPenalty& other) = default;
+
+  scalar_t wFunc(scalar_t l) const { return l * l / config_.scale; }
+  scalar_t dvdhFunc(scalar_t l) const { return config_.scale / l; }
+  scalar_t vFunc(scalar_t l, scalar_t h) const { return config_.scale * h / l; }
+
+  struct QuadCoeff {
+    QuadCoeff(const Config& config) {
+      c2 = 1.0 / std::pow(1.0 + config.relaxation, 2);
+      c1 = -1.0 / (1.0 + config.relaxation);
+      c0 = -log(1.0 + config.relaxation);
+    }
+
+    scalar_t c2 = 0.0, c1 = 0.0, c0 = 0.0;
+  };
+
+  const Config config_;
+  const QuadCoeff quadCoeff_;
+};
+```
+
+使用对数log障碍法与增广拉格朗日函数法，对不等式约束
+
+$$
+h \geq 0
+$$
+
+定义罚函数
+
+$$
+p(h, \lambda) = \frac{\lambda^2}{\rho} \psi\left(\frac{\rho h}{\lambda}\right)
+$$
+
+$\rho$是系数，$\psi(.)$是修改的对数障碍函数，定义域在$x>-1$
+
+更新拉格朗日值的方程如下
+
+$$
+\lambda^*_{k+1} = -\alpha \lambda^*_k \psi'\left(\frac{\rho h^*_{k+1}}{\lambda^*_k}\right)
+$$
+
+### SlacknessSquaredHingePenalty
+
+```CPP
+/**
+ *  Implements the augmented Lagrangian for a single inequality constraint \f$ h \geq 0 \f$ by transforming it to the following form:
+ *
+ *  \f[ \left\lbrace
+ *              \begin{array}{ll}
+ *                  h - s = 0, \\
+ *                  s \geq 0.
+ *              \end{array}
+ *            \right.
+ *  \f]
+ *
+ *  This leads to the following augmented-Lagrangian penalty function (referred to as PHR penalty in the corresponding paper):
+ *  \f[
+ *      p(h, \lambda) = \frac{1}{2 \rho} (\max\{ 0, \lambda - \rho h \}^2 - \lambda^2).
+ *  \f]
+ *
+ *  where \rho is the scale factor of the penalty. This is then minimized with the DDP algorithm, while the maximization of the
+ *  approximate dual function is done by updating the Lagrange multipliers with a gradient ascent step as such:
+ * \f[
+ *      \lambda^*_{k+1} = \max\{ \lambda^*_k - \alpha h^*_{k+1}, (1 - \frac{\alpha}{\rho}) \lambda^*_k \}.
+ * \f]
+ */
+class SlacknessSquaredHingePenalty final : public AugmentedPenaltyBase {
+ public:
+  /**
+   * Configuration object for the squared hinge penalty.
+   * @param [in] scale : scaling factor. In the class description, it is referred to as \pho.
+   * @param [in] stepSize: step-size for updating Lagrange multiplier. In the class description, it is referred to as \alpha.
+   */
+  struct Config {
+    Config() : Config(10.0, 1.0) {}
+    Config(scalar_t scaleParam, scalar_t stepSizeParam) : scale(scaleParam), stepSize(stepSizeParam) {}
+    scalar_t scale;
+    scalar_t stepSize;
+  };
+
+  /** Constructor */
+  SlacknessSquaredHingePenalty(Config config) : config_(std::move(config)) {}
+
+  /** Factory function */
+  static std::unique_ptr<SlacknessSquaredHingePenalty> create(Config config) {
+    return std::make_unique<SlacknessSquaredHingePenalty>(std::move(config));
+  }
+
+  ~SlacknessSquaredHingePenalty() override = default;
+  SlacknessSquaredHingePenalty* clone() const override { return new SlacknessSquaredHingePenalty(*this); }
+  std::string name() const override { return "SlacknessSquaredHingePenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t l, scalar_t h) const override {
+    return (h < l / config_.scale) ? (-l * h + 0.5 * config_.scale * h * h) : (-0.5 * l * l / config_.scale);
+  }
+  scalar_t getDerivative(scalar_t t, scalar_t l, scalar_t h) const override {
+    return (h < l / config_.scale) ? (-l + config_.scale * h) : 0.0;
+  }
+  scalar_t getSecondDerivative(scalar_t t, scalar_t l, scalar_t h) const override { return (h < l / config_.scale) ? config_.scale : 0.0; }
+
+  scalar_t updateMultiplier(scalar_t t, scalar_t l, scalar_t h) const override {
+    return std::max(0.0, std::max(l - config_.stepSize * config_.scale * h, (1.0 - config_.stepSize) * l));
+  }
+  scalar_t initializeMultiplier() const override { return 0.0; }
+
+ private:
+  SlacknessSquaredHingePenalty(const SlacknessSquaredHingePenalty& other) = default;
+
+  const Config config_;
+};
+```
+
+将不等式约束
+
+$$
+h \geq 0
+$$
+
+转换为
+
+$$
+ \left\lbrace
+          \begin{array}{ll}
+                 h - s = 0, \\
+                 s \geq 0.
+             \end{array}
+           \right.
+$$
+
+增广拉格朗日罚函数为
+
+$$
+p(h, \lambda) = \frac{1}{2 \rho} (\max\{ 0, \lambda - \rho h \}^2 - \lambda^2)
+$$
+
+拉格朗日乘子更新
+
+$$
+\lambda^*_{k+1} = \max\{ \lambda^*_k - \alpha h^*_{k+1}, (1 - \frac{\alpha}{\rho}) \lambda^*_k \}
 $$
 
 ## 非切换问题
