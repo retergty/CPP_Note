@@ -1271,3 +1271,55 @@ $$
 $$
 \Vert r_t(x^+,\lambda^+,\nu^+) \Vert_2 \leq (1-\alpha s)\Vert r_t(x,\lambda,\nu) \Vert_2
 $$
+
+## 增广拉格朗日方法Augmented Lagrangian Method
+
+增广拉格朗日方法是解决等式约束下目标函数的优化问题，结合了拉格朗日乘子法与二次罚函数法的优势,构造拉格朗日函数优化问题
+
+$$
+\mathcal{L}_p(x,\nu) = f(x) + \sum_i\nu_ih_i(x) + \frac{\rho}{2}\sum_ih_i(x)^2
+$$
+
+其中，$h_i(x)$是等式约束, $\nu_i$是其对应的拉格朗日乘子. $\rho \gt 0$是惩罚参数，控制约束违反的惩罚强度.
+
+最小化$L_p(x,\nu)$就会解出原问题的最优解(对偶间隙为零情况下).
+
+### 迭代步骤
+
+1. 固定$\nu$和$\rho$求解无约束优化问题, $x^{k+1} = argmin_x \mathcal{L}_p(x,\nu^k)$
+2. 更新乘子$\nu^{k+1} = \nu^k + \rho h_i(x^{k+1})$
+3. 调整惩罚参数$\rho$
+
+### 算法思路
+
+若$x^{k+1}$是$\mathcal{L}_\rho(x^{(k+1)}, \nu^{(k)})$的极小点，因此关于$x$的梯度为零.
+
+$$
+\nabla_x \mathcal{L}_\rho(x^{(k+1)}, \nu^{(k)}) =
+\nabla f(x^{(k+1)}) +
+\nabla h(x^{(k+1)})^\top \nu^{(k)} + \rho h(x^{(k+1)}) = 0
+$$
+
+整理得
+
+$$
+\nabla f(x^{(k+1)}) + \rho h(x^{(k+1)}) = -
+\nabla h(x^{(k+1)})^\top \nu^{(k)}
+$$
+
+而原问题的最优解KKT条件为
+
+$$
+\nabla f(x^*) +
+\nabla h(x^*)^\top \nu^= 0
+$$
+
+我们的目的是让$\nu^k$逐步逼近$\nu^\ast$
+
+显然，通过更新
+
+$$
+\nu^{k+1} = \nu^k + \rho h_i(x^{k+1})
+$$
+
+可以逼近最优KKT.

@@ -3,7 +3,6 @@
 `OCS2`通过一个结构体定义`MPC`问题，通过一个特定的文件定义`MPC`求解参数.
 
 ```CPP
-```CPP
 /** Optimal Control Problem definition */
 struct OptimalControlProblem {
   /* Cost */
@@ -31,12 +30,38 @@ struct OptimalControlProblem {
   std::unique_ptr<StateInputConstraintCollection> equalityConstraintPtr;
   /** Intermediate state-only equality constraints */
   std::unique_ptr<StateConstraintCollection> stateEqualityConstraintPtr;
+  /** Pre-jump equality constraints */
+  std::unique_ptr<StateConstraintCollection> preJumpEqualityConstraintPtr;
+  /** Final equality constraints */
+  std::unique_ptr<StateConstraintCollection> finalEqualityConstraintPtr;
+
+  /* Inequality Constraints */
   /** Intermediate inequality constraints */
   std::unique_ptr<StateInputConstraintCollection> inequalityConstraintPtr;
-  /** pre-jump constraints */
-  std::unique_ptr<StateConstraintCollection> preJumpEqualityConstraintPtr;
-  /** final constraints */
-  std::unique_ptr<StateConstraintCollection> finalEqualityConstraintPtr;
+  /** Intermediate state-only inequality constraints */
+  std::unique_ptr<StateConstraintCollection> stateInequalityConstraintPtr;
+  /** Pre-jump inequality constraints */
+  std::unique_ptr<StateConstraintCollection> preJumpInequalityConstraintPtr;
+  /** Final inequality constraints */
+  std::unique_ptr<StateConstraintCollection> finalInequalityConstraintPtr;
+
+  /* Lagrangians */
+  /** Lagrangian for intermediate equality constraints */
+  std::unique_ptr<StateInputAugmentedLagrangianCollection> equalityLagrangianPtr;
+  /** Lagrangian for intermediate state-only equality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> stateEqualityLagrangianPtr;
+  /** Lagrangian for intermediate inequality constraints */
+  std::unique_ptr<StateInputAugmentedLagrangianCollection> inequalityLagrangianPtr;
+  /** Lagrangian for intermediate state-only inequality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> stateInequalityLagrangianPtr;
+  /** Lagrangian for pre-jump equality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> preJumpEqualityLagrangianPtr;
+  /** Lagrangian for pre-jump inequality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> preJumpInequalityLagrangianPtr;
+  /** Lagrangian for final equality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> finalEqualityLagrangianPtr;
+  /** Lagrangian for final inequality constraints */
+  std::unique_ptr<StateAugmentedLagrangianCollection> finalInequalityLagrangianPtr;
 
   /* Dynamics */
   /** System dynamics pointer */
@@ -46,8 +71,30 @@ struct OptimalControlProblem {
   /** The pre-computation module */
   std::unique_ptr<PreComputation> preComputationPtr;
 
-  ...
-}
+  /** The cost desired trajectories (will be substitute by ReferenceManager) */
+  const TargetTrajectories* targetTrajectoriesPtr;
+
+  /** Default constructor */
+  OptimalControlProblem();
+
+  /** Default destructor */
+  ~OptimalControlProblem() = default;
+
+  /** Copy constructor */
+  OptimalControlProblem(const OptimalControlProblem& other);
+
+  /** Copy assignment */
+  OptimalControlProblem& operator=(const OptimalControlProblem& rhs);
+
+  /** Move constructor */
+  OptimalControlProblem(OptimalControlProblem&& other) noexcept = default;
+
+  /** Move assignment */
+  OptimalControlProblem& operator=(OptimalControlProblem&& rhs) noexcept = default;
+
+  /** Swap */
+  void swap(OptimalControlProblem& other) noexcept;
+};
 ```
 
 ## Collection类
@@ -1283,6 +1330,596 @@ class StateInputConstraintCppAd : public StateInputConstraint;
 class StateConstraintCppAd : public StateConstraint;
 ```
 
+### LinearStateInputConstraint类
+
+```CPP
+/**
+ * Linear state-input constraint
+ */
+class LinearStateInputConstraint : public StateInputConstraint {
+ public:
+  /**
+   * Constructor
+   *
+   * @param[in] e: Constant term in C * x + D * u + e = 0
+   * @param[in] C: x factor in C * x + D * u + e = 0
+   * @param[in] D: u factor in C * x + D * u + e = 0
+   */
+  LinearStateInputConstraint(vector_t e, matrix_t C, matrix_t D);
+
+  ~LinearStateInputConstraint() override = default;
+
+  LinearStateInputConstraint* clone() const override;
+
+  size_t getNumConstraints(scalar_t time) const final;
+
+  vector_t getValue(scalar_t t, const vector_t& x, const vector_t& u, const PreComputation& /* preComputation */) const final;
+
+  VectorFunctionLinearApproximation getLinearApproximation(scalar_t t, const vector_t& x, const vector_t& u,
+                                                           const PreComputation& /* preComputation */) const final;
+
+ public:
+  vector_t e_; /**< State input constraint */
+  matrix_t C_; /**< State input constraint derivative wrt. state */
+  matrix_t D_; /**< State input constraint derivative wrt. input */
+};
+```
+
+这是一个简单的线性状态输入的约束
+
+对于等式约束就是
+
+$$
+C\textbf{x} + D\textbf{u} + \textbf{e} = 0
+$$
+
+对于不等式约束就是
+
+$$
+C\textbf{x} + D\textbf{u} + \textbf{e} \geq 0
+$$
+
+#### getValue
+
+```CPP
+vector_t LinearStateInputConstraint::getValue(scalar_t t, const vector_t& x, const vector_t& u, const PreComputation&) const {
+  vector_t g = e_;
+  g.noalias() += C_ * x;
+  g.noalias() += D_ * u;
+  return g;
+}
+```
+
+#### getLinearApproximation
+
+```CPP
+VectorFunctionLinearApproximation LinearStateInputConstraint::getLinearApproximation(scalar_t t, const vector_t& x, const vector_t& u,
+                                                                                     const PreComputation&) const {
+  VectorFunctionLinearApproximation g;
+  g.f = e_;
+  g.f.noalias() += C_ * x;
+  g.f.noalias() += D_ * u;
+  g.dfdx = C_;
+  g.dfdu = D_;
+  return g;
+}
+```
+
+## 声明拉格朗日约束AugmentedLagrang
+
+增广拉格朗日约束是接受拉格朗日乘子，约束违反，时间的约束函数.
+
+### 工厂函数
+
+```CPP
+/**
+ * Factory function for state augmented Lagrangian.
+ * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+ * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+ */
+std::unique_ptr<StateAugmentedLagrangian> create(std::unique_ptr<StateConstraint> constraintPtr,
+                                                 std::vector<std::unique_ptr<augmented::AugmentedPenaltyBase>> penaltyPtrArray) {
+  return std::make_unique<StateAugmentedLagrangian>(std::move(constraintPtr), std::move(penaltyPtrArray));
+}
+
+                                                 
+
+/**
+ * Factory function for state augmented Lagrangian.
+ * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+ * @param [in] penaltyPtr: A pointer to the penalty function on the constraint.
+ */
+std::unique_ptr<StateAugmentedLagrangian> create(std::unique_ptr<StateConstraint> constraintPtr,
+                                                 std::unique_ptr<augmented::AugmentedPenaltyBase> penaltyPtr) {
+  return std::make_unique<StateAugmentedLagrangian>(std::move(constraintPtr), std::move(penaltyPtr));
+}
+
+/**
+ * Factory function for state-input augmented Lagrangian.
+ * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+ * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+ */
+std::unique_ptr<StateInputAugmentedLagrangian> create(std::unique_ptr<StateInputConstraint> constraintPtr,
+                                                      std::vector<std::unique_ptr<augmented::AugmentedPenaltyBase>> penaltyPtrArray){
+  return std::make_unique<StateInputAugmentedLagrangian>(std::move(constraintPtr), std::move(penaltyPtrArray));
+}
+/**
+ * Factory function for state-input augmented Lagrangian.
+ * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+ * @param [in] penaltyPtr: A pointer to the penalty function on the constraint.
+ */
+std::unique_ptr<StateInputAugmentedLagrangian> create(std::unique_ptr<StateInputConstraint> constraintPtr,
+                                                      std::unique_ptr<augmented::AugmentedPenaltyBase> penaltyPtr) {
+  return std::make_unique<StateInputAugmentedLagrangian>(std::move(constraintPtr), std::move(penaltyPtr));
+}
+```
+
+工厂函数接收约束函数，罚函数，生成对应的增广拉格朗日约束.
+
+### Multiplier类
+
+```CPP
+/** The penalty and Lagrangian multipliers associated to a constraint vector of size Multiplier::lagrangian.size() */
+struct Multiplier {
+  Multiplier() : Multiplier(0.0, vector_t()) {}
+  Multiplier(scalar_t penaltyArg, vector_t lagrangianArg) : penalty(penaltyArg), lagrangian(std::move(lagrangianArg)) {}
+
+  scalar_t penalty;
+  vector_t lagrangian;
+};
+```
+
+保存了拉格朗日乘子.
+
+### LagrangianMetrics类
+
+```CPP
+/** The structure contains a term's constraint vector and its associated penalty */
+struct LagrangianMetrics {
+  LagrangianMetrics() : LagrangianMetrics(0.0, vector_t()) {}
+  LagrangianMetrics(scalar_t penaltyArg, vector_t constraintArg) : penalty(penaltyArg), constraint(std::move(constraintArg)) {}
+
+  scalar_t penalty;
+  vector_t constraint;
+};
+```
+
+保存了约束值，与相关的惩罚值.
+
+### MultidimensionalPenalty类
+
+```CPP
+
+/**
+ *   A helper class that implements the penalty for multidimensional constraint
+ *   \f$ h_i(x, u) \quad \forall  i \in [1,..,M] \f$
+ *
+ *   penalty(t, x, u) = \f$ \sum_{i=1}^{M} p(t, h_i(x, u)) \f$
+ *
+ *   This class uses the chain rule to compute the second-order approximation of the constraint-penalty. In the case that the
+ *   second-order approximation of constraint is not provided, it employs a Gauss-Newton approximation technique which only
+ *   relies on the first-order approximation. In general, the penalty function can be a function of time.
+ */
+class MultidimensionalPenalty final {
+ public:
+  /**
+   * Constructor
+   * @note This imposes a fixed number of constraints, where the corresponding penalty function in the array is applied.
+   * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+   */
+  template <class PenaltyType>
+  MultidimensionalPenalty(std::vector<std::unique_ptr<PenaltyType>> penaltyPtrArray);
+
+  /**
+   * Constructor with s single penalty function
+   * @note This allows a varying number of constraints and uses the same penalty function for each constraint.
+   * @param [in] penaltyPtr: A pointer to the penalty function on the constraint.
+   */
+  template <class PenaltyType>
+  MultidimensionalPenalty(std::unique_ptr<PenaltyType> penaltyPtr);
+
+  /** Default destructor */
+  ~MultidimensionalPenalty() = default;
+
+  /** Copy constructor */
+  MultidimensionalPenalty(const MultidimensionalPenalty& other);
+
+  /**
+   * Get the penalty cost.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: Vector of inequality constraint values.
+   * @return Penalty: The penalty cost.
+   */
+  scalar_t getValue(scalar_t t, const vector_t& h, const vector_t* l = nullptr) const;
+
+  /**
+   * Get the derivative of the penalty cost.
+   * Implements the chain rule between the inequality constraint and penalty function.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: The constraint linear approximation.
+   * @return The penalty cost quadratic approximation.
+   */
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t t, const VectorFunctionLinearApproximation& h,
+                                                                 const vector_t* l = nullptr) const;
+
+  /**
+   * Get the derivative of the penalty cost.
+   * Implements the chain rule between the inequality constraint and penalty function.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] h: The constraint quadratic approximation.
+   * @return The penalty cost quadratic approximation.
+   */
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t t, const VectorFunctionQuadraticApproximation& h,
+                                                                 const vector_t* l = nullptr) const;
+
+  /**
+   * Updates the Lagrange multipliers.
+   *
+   * @param [in] t: The time stamp.
+   * @param [in] l: The Lagrange multipliers.
+   * @param [in] h: The vector of constraint values.
+   * @return updated Lagrange multipliers.
+   */
+  vector_t updateMultipliers(scalar_t t, const vector_t& h, const vector_t& l) const;
+
+  /**
+   * Initializes the Lagrange multipliers.
+   *
+   * @param [in] numConstraints: Number of constraints associated to this penalty.
+   * @return Initial Lagrange multipliers.
+   */
+  vector_t initializeMultipliers(size_t numConstraints) const;
+
+ private:
+  std::tuple<scalar_t, vector_t, vector_t> getPenaltyValue1stDev2ndDev(scalar_t t, const vector_t& h, const vector_t* l) const;
+
+  std::vector<std::unique_ptr<augmented::AugmentedPenaltyBase>> penaltyPtrArray_;
+};
+```
+
+实现了一个多个约束下的罚函数类
+
+$$
+h_i(\textbf{x}, \textbf{u}) \quad \forall  i \in [1,..,M] \\
+p(t,\textbf{x},\textbf{u}) = \sum_{i=1}^{M} p(t, h_i(\textbf{x}, \textbf{u}))
+$$
+
+其实就是实现了链式法则，
+
+#### getValue
+
+```CPP
+scalar_t MultidimensionalPenalty::getValue(scalar_t t, const vector_t& h, const vector_t* l) const {
+  const auto numConstraints = h.rows();
+  assert(penaltyPtrArray_.size() == 1 || penaltyPtrArray_.size() == numConstraints);
+
+  scalar_t penalty = 0;
+  for (size_t i = 0; i < numConstraints; i++) {
+    const auto& penaltyTerm = (penaltyPtrArray_.size() == 1) ? penaltyPtrArray_[0] : penaltyPtrArray_[i];
+    penalty += penaltyTerm->getValue(t, getMultiplier(l, i), h(i));
+  }
+
+  return penalty;
+}
+```
+
+遍历当前罚函数，获取总的罚函数值.
+
+#### updateMultipliers与initializeMultipliers
+
+```CPP
+vector_t MultidimensionalPenalty::updateMultipliers(scalar_t t, const vector_t& h, const vector_t& l) const {
+  const size_t numConstraints = h.size();
+  assert(l.size() == numConstraints);
+  assert(penaltyPtrArray_.size() == 1 || penaltyPtrArray_.size() == numConstraints);
+
+  vector_t updted_l(numConstraints);
+  for (size_t i = 0; i < numConstraints; i++) {
+    const auto& penaltyTerm = (penaltyPtrArray_.size() == 1) ? penaltyPtrArray_[0] : penaltyPtrArray_[i];
+    updted_l(i) = penaltyTerm->updateMultiplier(t, l(i), h(i));
+  }
+
+  return updted_l;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+vector_t MultidimensionalPenalty::initializeMultipliers(size_t numConstraints) const {
+  assert(penaltyPtrArray_.size() == 1 || penaltyPtrArray_.size() == numConstraints);
+
+  vector_t l(numConstraints);
+  for (size_t i = 0; i < numConstraints; i++) {
+    const auto& penaltyTerm = (penaltyPtrArray_.size() == 1) ? penaltyPtrArray_[0] : penaltyPtrArray_[i];
+    l(i) = penaltyTerm->initializeMultiplier();
+  }
+
+  return l;
+}
+```
+
+初始化，更新拉格朗日乘子.
+
+#### getQuadraticApproximation
+
+```CPP
+ScalarFunctionQuadraticApproximation MultidimensionalPenalty::getQuadraticApproximation(scalar_t t,
+                                                                                        const VectorFunctionQuadraticApproximation& h,
+                                                                                        const vector_t* l) const {
+  const auto stateDim = h.dfdx.cols();
+  const auto inputDim = h.dfdu.cols();
+  const auto numConstraints = h.f.rows();
+
+  scalar_t penaltyValue = 0.0;
+  vector_t penaltyDerivative, penaltySecondDerivative;
+  std::tie(penaltyValue, penaltyDerivative, penaltySecondDerivative) = getPenaltyValue1stDev2ndDev(t, h.f, l);
+  const matrix_t penaltySecondDev_dhdx = penaltySecondDerivative.asDiagonal() * h.dfdx;
+
+  // to make sure that dfdux in the state-only case has a right size
+  ScalarFunctionQuadraticApproximation penaltyApproximation(stateDim, inputDim);
+
+  penaltyApproximation.f = penaltyValue;
+  penaltyApproximation.dfdx.noalias() = h.dfdx.transpose() * penaltyDerivative;
+  penaltyApproximation.dfdxx.noalias() = h.dfdx.transpose() * penaltySecondDev_dhdx;
+  for (size_t i = 0; i < numConstraints; i++) {
+    penaltyApproximation.dfdxx.noalias() += penaltyDerivative(i) * h.dfdxx[i];
+  }
+
+  if (inputDim > 0) {
+    penaltyApproximation.dfdu.noalias() = h.dfdu.transpose() * penaltyDerivative;
+    penaltyApproximation.dfdux.noalias() = h.dfdu.transpose() * penaltySecondDev_dhdx;
+    penaltyApproximation.dfduu.noalias() = h.dfdu.transpose() * penaltySecondDerivative.asDiagonal() * h.dfdu;
+    for (size_t i = 0; i < numConstraints; i++) {
+      penaltyApproximation.dfduu.noalias() += penaltyDerivative(i) * h.dfduu[i];
+      penaltyApproximation.dfdux.noalias() += penaltyDerivative(i) * h.dfdux[i];
+    }
+  }
+
+  return penaltyApproximation;
+}
+```
+
+通过当前时间，以及约束函数的泰勒展开，获得这个罚函数的泰勒展开.
+
+### StateAugmentedLagrangianInterface
+
+```CPP
+/** The base class for Augmented Lagrangian penalty of state constraint. */
+class StateAugmentedLagrangianInterface {
+ public:
+  StateAugmentedLagrangianInterface() = default;
+  virtual ~StateAugmentedLagrangianInterface() = default;
+  virtual StateAugmentedLagrangianInterface* clone() const = 0;
+
+  /** Check penalty's activity */
+  virtual bool isActive(scalar_t time) const = 0;
+
+  /** Get the size of the constraint vector at given time */
+  virtual size_t getNumConstraints(scalar_t time) const = 0;
+
+  /** Get the constraint and its penalty value */
+  virtual LagrangianMetrics getValue(scalar_t time, const vector_t& state, const Multiplier& multiplier,
+                                     const PreComputation& preComp) const = 0;
+
+  /** Get the constraint's penalty quadratic approximation */
+  virtual ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const Multiplier& multiplier,
+                                                                         const PreComputation& preComp) const = 0;
+
+  /** Update Lagrange/penalty multipliers and the penalty function value. */
+  virtual std::pair<Multiplier, scalar_t> updateLagrangian(scalar_t time, const vector_t& state, const vector_t& constraint,
+                                                           const Multiplier& multiplier) const = 0;
+
+  /** Initialize Lagrange/penalty multipliers. */
+  virtual Multiplier initializeLagrangian(scalar_t time) const = 0;
+
+ protected:
+  StateAugmentedLagrangianInterface(const StateAugmentedLagrangianInterface& rhs) = default;
+};
+```
+
+纯状态拉格朗日约束的基类.
+
+可以看到，获取当前约束函数值的`getValue`接收时间,当前状态，当前拉格朗日乘子作为参数.
+
+### StateAugmentedLagrangian类
+
+```CPP
+/** The base class for Augmented Lagrangian penalty of state constraint. */
+class StateAugmentedLagrangian final : public StateAugmentedLagrangianInterface {
+ public:
+  /**
+   * Constructor.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+   */
+  StateAugmentedLagrangian(std::unique_ptr<StateConstraint> constraintPtr,
+                           std::vector<std::unique_ptr<augmented::AugmentedPenaltyBase>> penaltyPtrArray);
+
+  /**
+   * Constructor.
+   * @note This allows a varying number of constraints and uses the same penalty function for each constraint.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtr: A pointer to the penalty function on the constraint.
+   */
+  StateAugmentedLagrangian(std::unique_ptr<StateConstraint> constraintPtr, std::unique_ptr<augmented::AugmentedPenaltyBase> penaltyPtr);
+
+  StateAugmentedLagrangian* clone() const override;
+  bool isActive(scalar_t time) const override;
+  size_t getNumConstraints(scalar_t time) const override;
+
+  LagrangianMetrics getValue(scalar_t time, const vector_t& state, const Multiplier& multiplier,
+                             const PreComputation& preComp) const override;
+
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const Multiplier& multiplier,
+                                                                 const PreComputation& preComp) const override;
+
+  std::pair<Multiplier, scalar_t> updateLagrangian(scalar_t time, const vector_t& state, const vector_t& constraint,
+                                                   const Multiplier& multiplier) const override;
+
+  Multiplier initializeLagrangian(scalar_t time) const override;
+
+  /** Gets the wrapped constraint. */
+  template <typename Derived = StateConstraint>
+  Derived& get() {
+    static_assert(std::is_base_of<StateConstraint, Derived>::value, "Template argument must derive from StateConstraint!");
+    return dynamic_cast<Derived&>(*constraintPtr_);
+  }
+
+ private:
+  StateAugmentedLagrangian(const StateAugmentedLagrangian& other);
+
+  std::unique_ptr<StateConstraint> constraintPtr_;
+  MultidimensionalPenalty penalty_;
+};
+```
+
+这是纯状态拉格朗日约束类.
+
+#### getValue
+
+```CPP
+LagrangianMetrics StateAugmentedLagrangian::getValue(scalar_t time, const vector_t& state, const Multiplier& multiplier,
+                                                     const PreComputation& preComp) const {
+  const auto h = constraintPtr_->getValue(time, state, preComp);
+  const auto p = multiplier.penalty * penalty_.getValue(time, h, &multiplier.lagrangian);
+  return {p, h};
+}
+```
+
+可以看到，首先调用约束函数，获取当前约束违反$h$,再调用惩罚函数，获取惩罚值，组合成`LagrangianMetrics`返回.
+
+#### getQuadraticApproximation
+
+```CPP
+ScalarFunctionQuadraticApproximation StateAugmentedLagrangian::getQuadraticApproximation(scalar_t time, const vector_t& state,
+                                                                                         const Multiplier& multiplier,
+                                                                                         const PreComputation& preComp) const {
+  switch (constraintPtr_->getOrder()) {
+    case ConstraintOrder::Linear:
+      return multiplier.penalty *
+             penalty_.getQuadraticApproximation(time, constraintPtr_->getLinearApproximation(time, state, preComp), &multiplier.lagrangian);
+    case ConstraintOrder::Quadratic:
+      return multiplier.penalty * penalty_.getQuadraticApproximation(time, constraintPtr_->getQuadraticApproximation(time, state, preComp),
+                                                                     &multiplier.lagrangian);
+    default:
+      throw std::runtime_error("[StateAugmentedLagrangian] Unknown constraint Order");
+  }
+}
+```
+
+获取当前时间，状态，拉格朗日乘子下的二次估计.
+
+#### updateLagrangian
+
+```CPP
+std::pair<Multiplier, scalar_t> StateAugmentedLagrangian::updateLagrangian(scalar_t time, const vector_t& /*state*/,
+                                                                           const vector_t& constraint, const Multiplier& multiplier) const {
+  const Multiplier updatedMultiplier{multiplier.penalty, penalty_.updateMultipliers(time, constraint, multiplier.lagrangian)};
+  const auto penalty = updatedMultiplier.penalty * penalty_.getValue(time, constraint, &updatedMultiplier.lagrangian);
+  return {updatedMultiplier, penalty};
+}
+```
+
+返回更新后的拉格朗日值，这些函数都是无状态的.
+
+### StateInputAugmentedLagrangianInterface类
+
+```CPP
+/** The base class for Augmented Lagrangian penalty of state-input constraint. */
+class StateInputAugmentedLagrangianInterface {
+ public:
+  StateInputAugmentedLagrangianInterface() = default;
+  virtual ~StateInputAugmentedLagrangianInterface() = default;
+  virtual StateInputAugmentedLagrangianInterface* clone() const = 0;
+
+  /** Check penalty's activity */
+  virtual bool isActive(scalar_t time) const = 0;
+
+  /** Get the size of the constraint vector at given time */
+  virtual size_t getNumConstraints(scalar_t time) const = 0;
+
+  /** Get the constraint and its penalty value */
+  virtual LagrangianMetrics getValue(scalar_t time, const vector_t& state, const vector_t& input, const Multiplier& lagrangian,
+                                     const PreComputation& preComp) const = 0;
+
+  /** Get the constraint's penalty quadratic approximation */
+  virtual ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                         const Multiplier& lagrangian,
+                                                                         const PreComputation& preComp) const = 0;
+
+  /** Update Lagrange/penalty multipliers and the penalty function value. */
+  virtual std::pair<Multiplier, scalar_t> updateLagrangian(scalar_t time, const vector_t& state, const vector_t& input,
+                                                           const vector_t& constraint, const Multiplier& lagrangian) const = 0;
+
+  /** Initialize Lagrange/penalty multipliers. */
+  virtual Multiplier initializeLagrangian(scalar_t time) const = 0;
+
+ protected:
+  StateInputAugmentedLagrangianInterface(const StateInputAugmentedLagrangianInterface& rhs) = default;
+};
+```
+
+状态-输入拉格朗日基类.
+
+### StateInputAugmentedLagrangian类
+
+```CPP
+/** The base class for Augmented Lagrangian penalty of state-input constraint. */
+class StateInputAugmentedLagrangian final : public StateInputAugmentedLagrangianInterface {
+ public:
+  /**
+   * Constructor.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtrArray: An array of pointers to the penalty function on the constraint.
+   */
+  StateInputAugmentedLagrangian(std::unique_ptr<StateInputConstraint> constraintPtr,
+                                std::vector<std::unique_ptr<augmented::AugmentedPenaltyBase>> penaltyPtrArray);
+
+  /**
+   * Constructor.
+   * @note This allows a varying number of constraints and uses the same penalty function for each constraint.
+   * @param [in] constraintPtr: A pointer to the constraint which will be enforced as soft constraints.
+   * @param [in] penaltyPtr: A pointer to the penalty function on the constraint.
+   */
+  StateInputAugmentedLagrangian(std::unique_ptr<StateInputConstraint> constraintPtr,
+                                std::unique_ptr<augmented::AugmentedPenaltyBase> penaltyPtr);
+
+  StateInputAugmentedLagrangian* clone() const override;
+  bool isActive(scalar_t time) const override;
+  size_t getNumConstraints(scalar_t time) const override;
+
+  LagrangianMetrics getValue(scalar_t time, const vector_t& state, const vector_t& input, const Multiplier& multiplier,
+                             const PreComputation& preComp) const override;
+
+  ScalarFunctionQuadraticApproximation getQuadraticApproximation(scalar_t time, const vector_t& state, const vector_t& input,
+                                                                 const Multiplier& multiplier,
+                                                                 const PreComputation& preComp) const override;
+
+  std::pair<Multiplier, scalar_t> updateLagrangian(scalar_t time, const vector_t& /*state*/, const vector_t& /*input*/,
+                                                   const vector_t& constraint, const Multiplier& multiplier) const override;
+
+  Multiplier initializeLagrangian(scalar_t time) const override;
+
+  /** Gets the wrapped constraint. */
+  template <typename Derived = StateInputConstraint>
+  Derived& get() {
+    static_assert(std::is_base_of<StateInputConstraint, Derived>::value, "Template argument must derive from StateInputConstraint!");
+    return dynamic_cast<Derived&>(*constraintPtr_);
+  }
+
+ private:
+  StateInputAugmentedLagrangian(const StateInputAugmentedLagrangian& other);
+
+  std::unique_ptr<StateInputConstraint> constraintPtr_;
+  MultidimensionalPenalty penalty_;
+};
+```
+
+状态-输入拉格朗日类.
+
 ## 推导状态Rollout
 
 `Rollout`表示根据当前输入与初始状态，使用积分算法推导动态系统指定时间范围内的状态.
@@ -2443,7 +3080,298 @@ scalar_t RelaxedBarrierPenalty::getSecondDerivative(scalar_t t, scalar_t h) cons
 
 获得二阶导数值.
 
-### 
+### SmoothAbsolutePenalty
+
+```CPP
+/**
+ * Implements the smooth-absolute function for a single equality constraint \f$ h = 0 \f$
+ *
+ * \f[
+ *   p(h) = \mu sqrt(h^2 + \delta^2).
+ * \f]
+ *
+ * where \f$ \mu > 0 \f$, and \f$ \delta > 0 \f$ are scale and relaxation parameters respectively. Note that
+ * \f$ \delta \f$ defines the error bound between the absolute function and its approximation:
+ *
+ * \f[
+ *   | x - sqrt(h^2 + \delta^2) | \leq \delta, \quad \forall x \in R
+ * \f]
+ */
+class SmoothAbsolutePenalty final : public PenaltyBase {
+ public:
+  /**
+   * Configuration object for the smooth absolute penalty.
+   * scale: scaling factor, see class description
+   * relaxation: relaxation parameter, see class description
+   */
+  struct Config {
+    Config(scalar_t scaleParam = 100.0, scalar_t relaxationParam = 1e-2) : scale(scaleParam), relaxation(relaxationParam) {}
+    scalar_t scale;
+    scalar_t relaxation;
+  };
+
+  /**
+   * Constructor
+   * @param [in] config: Configuration object containing mu and delta.
+   */
+  explicit SmoothAbsolutePenalty(Config config) : config_(std::move(config)) {}
+
+  ~SmoothAbsolutePenalty() override = default;
+  SmoothAbsolutePenalty* clone() const override { return new SmoothAbsolutePenalty(*this); }
+  std::string name() const override { return "SmoothAbsolutePenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t h) const override { return config_.scale * sqrt(h * h + config_.relaxation * config_.relaxation); }
+  scalar_t getDerivative(scalar_t t, scalar_t h) const override {
+    return config_.scale * h / sqrt(h * h + config_.relaxation * config_.relaxation);
+  }
+  scalar_t getSecondDerivative(scalar_t t, scalar_t h) const override {
+    const scalar_t deltaSquare = config_.relaxation * config_.relaxation;
+    return config_.scale * deltaSquare / pow(h * h + deltaSquare, 1.5);
+  }
+
+ private:
+  SmoothAbsolutePenalty(const SmoothAbsolutePenalty& other) = default;
+
+  const Config config_;
+};
+```
+
+实现了等式约束
+
+$$
+h = 0
+$$
+
+的平滑绝对值罚函数
+
+$$
+p(h) = \mu \sqrt{h^2 + \delta^2}
+$$
+
+其中$\mu > 0$放大倍数,$\delta > 0$是放松系数.
+
+是绝对值函数的平滑近似，$\delta$越小，近似程度越高.
+
+### SquaredHingePenalty
+
+```CPP
+
+/**
+ * Implements the squared-hinge function for a single inequality constraint \f$ h \geq 0 \f$
+ *
+ * \f[
+ *   p(h)=\left\lbrace
+ *               \begin{array}{ll}
+ *                 \frac{\mu}{2} (h - \delta)^2 & if \quad  h < \delta, \\
+ *                 0 & otherwise,
+ *               \end{array}
+ *             \right.
+ * \f]
+ *
+ * where \f$ \mu > 0 \f$, and \f$ \delta \in R \f$ are user defined parameters.
+ */
+class SquaredHingePenalty final : public PenaltyBase {
+ public:
+  /**
+   * Configuration object for the squared hinge penalty.
+   * mu : scaling factor
+   * delta: relaxation parameter, see class description
+   */
+  struct Config {
+    Config() : Config(100.0, 1e-1) {}
+    Config(scalar_t muParam, scalar_t deltaParam) : mu(muParam), delta(deltaParam) {}
+    scalar_t mu;
+    scalar_t delta;
+  };
+
+  /**
+   * Constructor
+   * @param [in] config: Configuration object containing mu and delta.
+   */
+  explicit SquaredHingePenalty(Config config) : config_(std::move(config)) {}
+
+  ~SquaredHingePenalty() override = default;
+  SquaredHingePenalty* clone() const override { return new SquaredHingePenalty(*this); }
+  std::string name() const override { return "SquaredHingePenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t h) const override;
+  scalar_t getDerivative(scalar_t t, scalar_t h) const override;
+  scalar_t getSecondDerivative(scalar_t t, scalar_t h) const override;
+
+ private:
+  SquaredHingePenalty(const SquaredHingePenalty& other) = default;
+
+  Config config_;
+};
+```
+
+实现了不等式约束
+
+$$
+h \geq 0
+$$
+
+的平滑平方合页惩罚函数
+
+$$
+p(h)=\left\lbrace
+                \begin{array}{ll}
+                 \frac{\mu}{2} (h - \delta)^2 & if \quad  h < \delta, \\
+                  0 & otherwise,
+               \end{array}
+             \right.
+$$
+
+## 增广罚函数AugmentedPenalty
+
+罚函数是优化问题中的对于超过约束的惩罚函数，用于将不等式约束或软约束添加到代价函数中去.罚函数假定为凸的.是时间，约束违反(就是约束函数的值)，拉格朗日乘子的的函数.
+
+### AugmentedPenaltyBase
+
+```CPP
+/**
+ * The penalty function interface class is used to penalize constraint violation by adding a penalty term to the cost function.
+ * We assume that the penalty function is convex. In general, the penalty is a function of time, Lagrange multiplier, and
+ * constraint violation.
+ */
+class AugmentedPenaltyBase {
+ public:
+  /** Default constructor */
+  AugmentedPenaltyBase() = default;
+
+  /** Default destructor */
+  virtual ~AugmentedPenaltyBase() = default;
+
+  /** Clones the class */
+  virtual AugmentedPenaltyBase* clone() const = 0;
+
+  /** Get the name of the penalty function. This method is only used during error handling. */
+  virtual std::string name() const = 0;
+
+  /**
+   * Compute the penalty value at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] l: The Lagrange multiplier.
+   * @param [in] h: Constraint value.
+   * @return penalty cost.
+   */
+  virtual scalar_t getValue(scalar_t t, scalar_t l, scalar_t h) const = 0;
+
+  /**
+   * Compute the penalty derivative at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] l: The Lagrange multiplier.
+   * @param [in] h: Constraint value.
+   * @return penalty derivative with respect to constraint value.
+   */
+  virtual scalar_t getDerivative(scalar_t t, scalar_t l, scalar_t h) const = 0;
+
+  /**
+   * Compute the penalty second derivative at a certain constraint value.
+   *
+   * @param [in] t: The time that the constraint is evaluated.
+   * @param [in] l: The Lagrange multiplier.
+   * @param [in] h: Constraint value.
+   * @return penalty second derivative with respect to constraint value.
+   */
+  virtual scalar_t getSecondDerivative(scalar_t t, scalar_t l, scalar_t h) const = 0;
+
+  /**
+   * Updates the Lagrange multiplier.
+   *
+   * @param [in] t: The time stamp.
+   * @param [in] l: The Lagrange multiplier.
+   * @param [in] h: Constraint values.
+   * @return updated Lagrange multiplier.
+   */
+  virtual scalar_t updateMultiplier(scalar_t t, scalar_t l, scalar_t h) const = 0;
+
+  /**
+   * Initializes the Lagrange multiplier.
+   *
+   * @return initial value of the Lagrange multiplier.
+   */
+  virtual scalar_t initializeMultiplier() const = 0;
+
+ protected:
+  AugmentedPenaltyBase(const AugmentedPenaltyBase& other) = default;
+};
+```
+
+增广罚函数基类.
+
+### QuadraticPenalty
+
+```CPP
+/**
+ *  Implements the augmented Lagrangian for a single equality constraint \f$ h = 0 \f$. This leads to the following
+ *  augmented Lagrangian:
+ *
+ *  \f[
+ *      L_{A} = L * \lambda h + \frac{\mu}{2} h^2.
+ *  \f]
+ *
+ *  where \f$ L \f$ is the Lagrangian and \f$ \mu \f$ is the scale, while the remaining terms form the penalty
+ *  function \f$ p(h, \lambda) \f$.
+ *
+ *  This is then minimized with the solver, while the Lagrange multipliers are updated as:
+ * \f[
+ *      \lambda^*_{k+1} = \lambda^*_k - \alpha h^*_{k+1}.
+ * \f]
+ *
+ * with \f$ alpha \f$ is the step-length. In Augmented Lagrangian method this is often set to \f$ \mu \f$.
+ */
+class QuadraticPenalty final : public AugmentedPenaltyBase {
+ public:
+  /**
+   * Configuration object for the quadratic penalty.
+   * scale: scaling factor, see class description
+   * stepSize: step-length parameter, see class description
+   */
+  struct Config {
+    Config() : Config(100.0, 0.0) {}
+    Config(scalar_t scaleParam, scalar_t stepSizeParam) : scale(scaleParam), stepSize(stepSizeParam) {}
+    scalar_t scale;
+    scalar_t stepSize;
+  };
+
+  /** Constructor */
+  explicit QuadraticPenalty(Config config) : config_(std::move(config)) {}
+
+  /** Factory function */
+  static std::unique_ptr<QuadraticPenalty> create(Config config) { return std::make_unique<QuadraticPenalty>(std::move(config)); }
+
+  ~QuadraticPenalty() override = default;
+  QuadraticPenalty* clone() const override { return new QuadraticPenalty(*this); }
+  std::string name() const override { return "QuadraticPenalty"; }
+
+  scalar_t getValue(scalar_t t, scalar_t l, scalar_t h) const override { return -l * h + 0.5 * config_.scale * h * h; }
+  scalar_t getDerivative(scalar_t t, scalar_t l, scalar_t h) const override { return -l + config_.scale * h; }
+  scalar_t getSecondDerivative(scalar_t t, scalar_t l, scalar_t h) const override { return config_.scale; }
+
+  scalar_t updateMultiplier(scalar_t t, scalar_t l, scalar_t h) const override { return l - config_.stepSize * config_.scale * h; }
+  scalar_t initializeMultiplier() const override { return 0.0; }
+
+ private:
+  QuadraticPenalty(const QuadraticPenalty& other) = default;
+
+  const Config config_;
+};
+```
+
+对等式约束
+
+$$
+h = 0
+$$
+
+构建增广拉格朗日函数
+
+$$
+L_{A} = L * \lambda h + \frac{\mu}{2} h^2
+$$
 
 ## 非切换问题
 
@@ -2490,4 +3418,4 @@ class RobotInterface {
 
 ### 倒立摆cartpole
 
-![cartpole.md](./not_switch_problems/cartpole.md)
+* [cartpole.md](./not_switch_problems/cartpole.md)
