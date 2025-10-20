@@ -122,7 +122,7 @@ $$
 
 $S^n$指的是$n$维对称实矩阵的集合
 
-$S^n_+$指的是$n$维正半定（对称）矩阵的集合,S^n_{++}$指的是$n$维正定（对称）矩阵的集合
+$S^n_+$指的是$n$维正半定（对称）矩阵的集合,$S^n_{++}$指的是$n$维正定（对称）矩阵的集合
 
 可以证明，$S^n_+$是凸锥,称为正半定锥.
 
@@ -599,9 +599,9 @@ $$
 
 KKT条件如下
 
-1. 主问题约束$f_i(x) \leq 0, \quad i=1,...,m, \quad h_i(x) = 0, \quad i=1,...p $
-2. 对偶问题约束$\lambda \geq 0 $
-3. 互补松弛$\lambda_if_i(x)=0 $
+1. 主问题约束 $f_i(x) \leq 0, \quad i=1,...,m, \quad h_i(x) = 0, \quad i=1,...p$
+2. 对偶问题约束 $\lambda \geq 0$
+3. 互补松弛 $\lambda_if_i(x)=0$
 4. 关于$x$的梯度为零$\nabla f_0(x)+\sum\limits^m_{i=1}\lambda_i\nabla f_i(x) + \sum\limits^p_{i=1}\nu_i\nabla h_i(x) = 0$
 
 显然，如果强对偶满足，且$x,\lambda,\nu$是最优的，那么它们必须满足KKT条件。
@@ -1297,13 +1297,13 @@ $$
 $$
 \nabla_x \mathcal{L}_\rho(x^{(k+1)}, \nu^{(k)}) =
 \nabla f(x^{(k+1)}) +
-\nabla h(x^{(k+1)})^\top \nu^{(k)} + \rho h(x^{(k+1)}) = 0
+\nabla h(x^{(k+1)})^\top \nu^{(k)} + \rho \nabla h(x^{(k+1)})^\top h(x^{(k+1)}) = 0
 $$
 
 整理得
 
 $$
-\nabla f(x^{(k+1)}) + \rho h(x^{(k+1)}) = -
+\nabla f(x^{(k+1)}) + \rho \nabla h(x^{(k+1)})^\top h(x^{(k+1)}) = -
 \nabla h(x^{(k+1)})^\top \nu^{(k)}
 $$
 

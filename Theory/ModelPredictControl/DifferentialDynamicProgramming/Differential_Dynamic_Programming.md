@@ -185,11 +185,11 @@ $$
 \begin{aligned}
 %  \label{eq:ddp-derivatives}
 % \begin{split} % not supported by katex
-    \nabla_\textbf{x}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{x}g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{x}\tilde{f}^T \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \\
-    \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{u}g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f^T \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \\
-    \nabla_\textbf{xx}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{xx}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{x}\tilde{f}^T \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{x}\tilde{f} + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{xx}^2 \tilde{f} \\
-    \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{uu}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f^T \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{u}f + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{uu}^2 f \\
-    \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{ux}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f^T \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{x}\tilde{f} + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{ux}^2 f
+    \nabla_\textbf{x}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{x}g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{x}\tilde{f} \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \\
+    \nabla_\textbf{u}Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{u}g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \\
+    \nabla_\textbf{xx}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{xx}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{x}\tilde{f} \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{x}\tilde{f}^T + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{xx}^2 \tilde{f} \\
+    \nabla_\textbf{uu}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{uu}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{u}f^T + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{uu}^2 f \\
+    \nabla_\textbf{ux}^2 Q(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n, t_n) &= \nabla_\textbf{ux}^2 g(\bar{\textbf{x}}_n, \bar{\textbf{u}}_n) + \nabla_\textbf{u}f \nabla_{\textbf{x}\textbf{x}}^2 V(\bar{\textbf{x}}_{n+1}, t_{n+1}) \nabla_\textbf{x}\tilde{f}^T + \nabla_{\textbf{x}} V(\bar{\textbf{x}}_{n+1}, t_{n+1})^T \nabla_\textbf{ux}^2 f
 % \end{split} % not supported by katex
 \end{aligned}
 $$
