@@ -132,7 +132,7 @@ $$
 
 $$
 p_i = \nabla_{x} \hat J_{i}(x_{i}) \\
-P_{i+1} = \nabla_{xx}^2 \hat J_{i}(x_{i})
+P_{i} = \nabla_{xx}^2 \hat J_{i}(x_{i})
 $$
 
 对$\tilde J_i(\delta x_i,\delta u_i)$求$\delta u_i$偏导可得
@@ -167,7 +167,7 @@ $$
 $$
 \begin{align*}
 \nabla_{x} \hat J_{i}(x_{i}) &= \nabla_{x}\tilde J_i(x_i,u_i) - \nabla_{ux}^2 \tilde J_i(x_i,u_i)  \nabla_{uu}^2 \tilde J_i(x_i,u_i)^{-1} \nabla_{u}\tilde J_i(x_i,u_i) \\
-\nabla_{xx}^2 \hat J_{i+1}(x_{i+1}) &=  \nabla_{xx}^2 \tilde J_i(x_i,u_i) - \nabla_{xu}^2 \tilde J_i(x_i,u_i) \nabla_{uu}^2 \tilde J_i(x_i,u_i)^{-1} \nabla_{ux}^2 \tilde J_i(x_i,u_i)
+\nabla_{xx}^2 \hat J_{i}(x_{i}) &=  \nabla_{xx}^2 \tilde J_i(x_i,u_i) - \nabla_{xu}^2 \tilde J_i(x_i,u_i) \nabla_{uu}^2 \tilde J_i(x_i,u_i)^{-1} \nabla_{ux}^2 \tilde J_i(x_i,u_i)
 \end{align*}
 $$
 
