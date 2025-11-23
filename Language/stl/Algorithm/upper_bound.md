@@ -26,4 +26,3 @@ ForwardIt upper_bound( ForwardIt first, ForwardIt last,
 如果在`[first,last)`中有这个元素，返回指向这个元素的迭代器，否则返回`last`.
 
 如果`[first,last)`中的元素没有按照指定比较方法分好区（排好序），函数未定义.
-

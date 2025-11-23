@@ -83,7 +83,7 @@ function( F ) -> function</*see below*/>;
 
 ## 常见情况
 
-### 同时定义了接受`std::function`与普通函数指针的函数参数.
+### 同时定义了接受`std::function`与普通函数指针的函数参数
 
 ```CPP
 void g(std::function<void(int)> f)
