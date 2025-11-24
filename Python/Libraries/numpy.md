@@ -135,6 +135,9 @@ print(a > 1)   # [False, True, True]
 ```python
 arr = np.array([[1, 2], [3, 4]])
 print(arr + 10)  # [[11,12], [13,14]]（10广播为[[10,10],[10,10]]）
+
+Q_list = np.array([[1, 2],[3, 4]])
+A = Q_list == Q_list.max() # 布尔数组 [[False False] [False  True]]
 ```
 
 * 不同形状数组运算
@@ -205,6 +208,16 @@ flat_f2 = arr.flatten(order='F')  # [1, 4, 2, 5, 3, 6]
 
 # 方法3: 转置后行优先展平（等效）
 flat_f3 = arr.T.flatten()         # [1, 4, 2, 5, 3, 6]
+```
+
+* `flatnonzero`:将输入数组展平，并删除所有零元素，返回做完操作后的下标
+
+```python
+arr = np.array([[1, 2], [3, 4]])
+
+arr2 = arr == arr.max() # [[False False] [False  True]]
+
+arr3 = np.flatnonzero(arr2) # [3]
 ```
 
 ### 转置
