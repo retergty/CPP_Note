@@ -386,7 +386,7 @@ $$
 $$
 \begin{align*}
   G_t &\approx r_t + \gamma \hat V_\pi(s_{t+1}) \quad &\text{1-step}\\
-  G_t  &\approx r_t + \gamma r_{t+1} + \gamma^2 \hat V_\pi(s_{t+2}) \quad &\text{2-step} \\ 
+  G_t  &\approx r_t + \gamma r_{t+1} + \gamma^2 \hat V_\pi(s_{t+2}) \quad &\text{2-step} \\
   G_t &\approx r_t + \gamma r_{t+1} + ...+ \gamma^{n-1}r_n + \gamma^n \hat V_\pi(s_{t+n}) \quad &\text{n-step}
 \end{align*}
 $$
