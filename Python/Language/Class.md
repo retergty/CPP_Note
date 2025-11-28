@@ -153,3 +153,153 @@ print(MyClass.shared_attr)  # 输出 100（类属性本身不变）
     ```
 
 注意类方法也可以通过类实例调用，这是`self`就会转化为`cls`.
+
+## 类继承
+
+```python
+class ParentClass:
+    # 父类定义
+    pass
+
+class ChildClass(ParentClass):  # 单继承
+    # 子类定义
+    pass
+
+class MultiChildClass(ParentClass1, ParentClass2):  # 多继承
+    # 子类定义
+    pass
+```
+
+会继承父类的方法与属性
+
+### MRO顺序
+
+`MRO(Method Resolution Order)`是Python中确定类继承体系中方法查找顺序的算法。它定义了当调用一个方法时，Python解释器按照什么顺序在类层次结构中查找该方法。
+
+查看`mro`
+
+```python
+class A: pass
+class B(A): pass
+class C(A): pass
+class D(B, C): pass
+
+print(D.mro())
+# 输出: [<class '__main__.D'>, 
+#        <class '__main__.B'>, 
+#        <class '__main__.C'>, 
+#        <class '__main__.A'>, 
+#        <class 'object'>]
+
+print(D.__mro__)  # 同上
+```
+
+方法解析顺序为
+
+* 子类优先于父类
+* 同级别类中按声明顺序
+* 保持单调性（子类不会在父类之前出现）
+
+属性查找机制为
+
+* 实例属性字典 __dict__
+* 类属性字典
+* 父类属性（按MRO顺序）
+* _getattr__方法（如果定义）
+
+```python
+class Parent:
+    attr = "Parent Attribute"
+
+class Child(Parent):
+    attr = "Child Attribute"  # 隐藏父类同名属性
+
+print(Child.attr)  # 输出: Child Attribute
+print(Parent.attr)  # 输出: Parent Attribute
+```
+
+### 方法调用
+
+#### 直接调用
+
+使用`父类名.方法名(self, 其他参数)`便可调用实例方法
+
+```python
+class Parent:
+    def greet(self):
+        print("Hello from Parent")
+
+class Child(Parent):
+    def greet(self):
+        Parent.greet(self)  # 直接调用父类Parent的greet方法
+        print("Hi from Child")
+
+child = Child()
+child.greet()
+# 输出：
+# Hello from Parent
+# Hi from Child
+```
+
+使用`父类名.方法名(cls, 其他参数)`便可调用类方法.
+
+```python
+class Parent:
+    @classmethod
+    def class_greet(cls):
+        print(f"Hello from {cls.__name__} (Parent)")
+
+class Child(Parent):
+    @classmethod
+    def class_greet(cls):
+        Parent.class_greet(cls)  # 直接调用父类类方法
+        print(f"Hi from {cls.__name__} (Child)")
+
+Child.class_greet()
+# 输出：
+# Hello from Child (Parent)
+# Hi from Child (Child)
+```
+
+#### super()方法
+
+`super()`是一个内置函数，用于在子类中调用父类（超类）的方法。它的核心作用是动态查找并调用父类（或MRO顺序中下一个类）的方法.同时可以确保所有父类方法只会被调用一次，避免了菱形继承的问题.
+
+```python
+class Parent:
+    def greet(self):
+        print("Hello from Parent")
+
+class Child(Parent):
+    def greet(self):
+        super().greet()  # 调用父类的greet
+        print("Hi from Child")  # 扩展新逻辑
+
+child = Child()
+child.greet()
+# 输出：
+# Hello from Parent
+# Hi from Child
+```
+
+### 初始化与构造过程
+
+```python
+class Parent:
+    def __init__(self, name):
+        self.name = name
+        print("Parent initialized")
+
+class Child(Parent):
+    def __init__(self, name, age):
+        super().__init__(name)  # 必须显式调用
+        self.age = age
+        print("Child initialized")
+
+c = Child("Alice", 10)
+# 输出:
+# Parent initialized
+# Child initialized
+```
+
+子类必须显式调用父类的`__init__`函数

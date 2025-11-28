@@ -29,7 +29,7 @@ $$
 定义为从时刻 $t$ 开始的未来奖励加权和
 
 $$
-G_t = r_t + \gamma r_{t+1} + \gamma^2 r_{t+1} + ... = \sum_{k=0}^\infty \gamma^k r_{t+k}
+G_t = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + ... = \sum_{k=0}^\infty \gamma^k r_{t+k}
 $$
 
 ### 马尔科夫决策中的轨迹
@@ -126,7 +126,7 @@ $$
 Q_\pi(s,a) &= {\mathbb{E}}_{\tau \sim \pi}[r(S_0,A_0) + \alpha r(S_1,A_1) + ... \mid S_0 = s,A_0 = a] \\
 &= r(s,a) + \alpha {\mathbb{E}}_{\tau \sim \pi}[r(S_1,A_1) + \alpha r(S_2,A_2) + ... \mid S_0 = s,A_0 = a] \\
 &= r(s,a) + \alpha {\mathbb{E}}_{s^\prime,a^\prime}[{\mathbb{E}}_{\tau_{\geq 1} \sim \pi}[r(S_1,A_1) + \alpha r(S_2,A_2) + ... \mid S_1 = s^\prime,A_1 = a^\prime]] \\
-&= r(s,a) + \alpha {\mathbb{E}}_{s^\prime \sim p(\cdot \mid s,a),a^\prime \sim \pi(\cdot \mid s)}[Q_\pi (s^\prime,a^\prime)] \\
+&= r(s,a) + \alpha {\mathbb{E}}_{s^\prime \sim p(\cdot \mid s,a),a^\prime \sim \pi(\cdot \mid s^\prime)}[Q_\pi (s^\prime,a^\prime)] \\
 &= r(s,a) + \alpha {\mathbb{E}}_{s^\prime \sim p(\cdot \mid s,a)}[V_\pi(s^\prime)]
 \end{align*}
 $$
@@ -182,7 +182,7 @@ $$
 期望 ${\mathbb{E}}(\phi(X))$ 可以使用如下式子进行估计
 
 $$
-\frac{1}{n}\sum_i \phi(X_i) \approx E(\phi(X)) 
+\frac{1}{n}\sum_i \phi(X_i) \approx E(\phi(X))
 $$
 
 其中 $X_i \sim f_X(x)$ 是独立同分布采样.
@@ -229,7 +229,7 @@ $$
 \theta^+ = \theta + \beta \nabla_\theta U(\theta)
 $$
 
-### 估计策略梯度
+### 策略梯度估计
 
 使用蒙特卡洛方法
 
@@ -276,3 +276,194 @@ $$
 \nabla_\theta U(\theta) \approx \frac{1}{N} \sum_i (\nabla_\theta \sum_{t=0}^{T-1}\log \pi_\theta(a^{(i)}_t \mid s^{(i)}_t) R(\tau^{(i)}))
 $$
 
+## 价值函数估计
+
+估计在当前策略下的价值函数与动作函数的值，根据贝尔曼方程
+
+$$
+\begin{align*}
+V_\pi(s) &= \sum_a \pi (a \mid s) [r(s,a)+\alpha \sum_{s^\prime} p(s^\prime \mid s,a)V_\pi(s^\prime)] \\
+Q_\pi(s) &= r(s,a) + \alpha \sum_{s^\prime} p(s^\prime \mid s,a) \sum_{a^\prime}\pi(a^\prime \mid s^\prime) Q_\pi(s^\prime,a^\prime)
+\end{align*}
+$$
+
+### 蒙特卡洛方法
+
+进行多次试验，使用价值函数的定义式来估计值函数
+
+$$
+\begin{align*}
+  V_\pi(s) &\triangleq {\mathbb{E}}_{\tau \sim \pi}[R(\tau) \mid S_0 = s] \\
+  Q_\pi(s,a) &= {\mathbb{E}}_{\tau \sim \pi}[r(S_0,A_0) + \alpha r(S_1,A_1) + ... \mid S_0 = s,A_0 = a]
+\end{align*}
+$$
+
+价值函数估计大致流程如下
+
+1. 采样完整轨迹(Episode),从初始状态出发，遵循策略 $\pi$与环境进行交互，获得
+
+    $$
+    (s_0,a_0,r_0),(s_1,a_1,r_1),(s_2,a_2,r_2),...,(s_{T-1},a_{T-1},r_{T-1}),..,(s_T)
+    $$
+
+2. 从后往前运行，计算当前状态$s_{t}$折扣回报并记录
+
+    $$
+    G(s_{t}) = r_{t} + \gamma G(s_{t+1})
+    $$
+
+3. 遍历所有的状态空间 $S$，计算对应状态的折扣回报
+
+    $$
+    V_\pi(s) = \frac{1}{k}\sum_{i=1}^k G^{(m)}(s)
+    $$
+
+动作价值函数估计大致如此.
+
+### 增量式更新
+
+使用增量式更新可以避免存储所有的折扣回报
+
+$$
+V_\pi^{(m+1)}(s_t) = V_\pi^{(m)}(s_t) + \frac{1}{m+1}(G_t^{m+1}- V_\pi^{(m)}(s_t))
+$$
+
+其中，$V_\pi^{(m+1)}(s_t)$ 表示第 $m+1$ 次更新状态 $s_t$的折扣回报，$G_t^{m+1}(s_t)$ 表示第 $m+1$ 次更新的状态 $s_t$ 的折扣函数.
+
+$$
+\begin{align*}
+  V_\pi^{(m+1)}(s_t) &= \frac{1}{m+1} \sum_i^{m+1} G_t^{(i)} \\
+  &= \frac{1}{m+1}(\sum_i^m G^{(i)}_t + G^{(m+1)}_t) \\
+  &= \frac{m}{m+1}V_\pi^{(m)}(s_t) + \frac{1}{m+1}G^{(m+1)}_t \\
+  &= V_\pi^{(m)}(s_t) + \frac{1}{m+1}(G_t^{m+1}- V_\pi^{(m)}(s_t))
+\end{align*}
+$$
+
+更通用的可以总结为
+
+$$
+新估计 = 旧估计 + \alpha (新观测 - 旧估计)
+$$
+
+### 时序差分TD
+
+蒙特卡洛方法的缺陷在： 它需要完整的轨迹来重构当前观测的 $G_t$，但如果是十分长的轨迹序列，蒙特卡洛方法可能便不再适用.
+
+称 $r_t + \gamma \hat V_\pi(s_{t+1})$ 为 `TD target`.
+
+称 $r_t + \gamma \hat V_\pi(s_{t+1})- V_\pi^{(m)}(s_t)$ 为 `TD error`
+
+时序差分的方法，用来估计当前观测 $G_t$
+
+$$
+\begin{align*}
+  G_t &= r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + ... \\
+  &= r_t + \gamma(r_{t+1} + \gamma r_{t+2}) \\
+  &= r_t + \gamma G_{t+1} \\
+  & \approx r_t + \gamma \hat V_\pi(s_{t+1})
+\end{align*}
+$$
+
+也可以理解为贝尔曼方程
+
+$$
+\begin{align*}
+V_\pi(s_t) &= {\mathbb{E}}_{a \sim \pi(\cdot \mid s)}[r_t + \gamma{\mathbb{E}}_{s^\prime \sim p(\cdot \mid s,a)}(V_\pi(s_{t+1}))] \\
+& \approx r_t + \gamma \hat V_\pi(s_{t+1})
+\end{align*}
+$$
+
+一步返回的TD公式为
+
+$$
+V_\pi^{(m+1)}(s_t) = V_\pi^{(m)}(s_t) +  \alpha ( r_t + \gamma \hat V_\pi(s_{t+1})- V_\pi^{(m)}(s_t))
+$$
+
+### n步时序差分
+
+使用$n$步来估计 $G_t$
+
+$$
+\begin{align*}
+  G_t &\approx r_t + \gamma \hat V_\pi(s_{t+1}) \quad &\text{1-step}\\
+  G_t  &\approx r_t + \gamma r_{t+1} + \gamma^2 \hat V_\pi(s_{t+2}) \quad &\text{2-step} \\ 
+  G_t &\approx r_t + \gamma r_{t+1} + ...+ \gamma^{n-1}r_n + \gamma^n \hat V_\pi(s_{t+n}) \quad &\text{n-step}
+\end{align*}
+$$
+
+将这个公式带回到增量式更新即可。
+
+蒙特卡洛算法可以理解为无穷步的时序差分.
+
+## 动作价值函数估计
+
+蒙特卡洛方法
+
+$$
+\begin{align*}
+  Q_\pi^{(m+1)}(s_t,a_t) = \frac{1}{m+1}\sum_{i=1}^{m+1}G_t^{(i)}
+\end{align*}
+$$
+
+蒙特卡洛增量方法
+
+$$
+Q_\pi^{(m+1)}(s_t,a_t) = Q_\pi^{(m)}(s_t,a_t) + \frac{1}{m+1}(G_t^{(m+1)}-Q_\pi^{(m)}(s_t,a_t))
+$$
+
+1步时序差分
+
+$$
+G_t^{(m+1)} \approx r_t + \gamma \hat Q_\pi(s_{t+1},a_{t+1}) \\
+Q_\pi^{(m+1)}(s_t,a_t) = Q_\pi^{(m)}(s_t,a_t) + \alpha(r_t + \gamma \hat Q_\pi(s_{t+1},a_{t+1})-Q_\pi^{(m)}(s_t,a_t))
+$$
+
+n步时序差分
+
+$$
+G_t^{(m+1)} \approx r_t + \gamma r_{t+1} + ...+ \gamma^{n-1}r_n + \gamma^n \hat Q_\pi(s_{t+n},a_{t+n})
+$$
+
+## $\lambda$回报
+
+`λ-return`（λ-回报）是强化学习中时序差分（TD）学习的核心概念，用于在偏差（Bias）与方差（Variance）之间实现平衡，是TD(λ)算法的基础。数学表达式为
+
+$$
+G_t^\lambda = (1-\lambda) \sum_{n=1}^\infty \lambda^{n-1}G_t^{(n)}
+$$
+
+$G_t^{(n)}$ n步回报. $\lambda \in (0,1)$是加权系数
+
+将每一步带入进去，获得
+
+$$
+G_t^\lambda =\sum_{l=1}^\infty(\gamma\lambda)^{l-1}r_{t+l} + \gamma^l \lambda^{l-1}((1-\lambda)\hat V_\pi(s_{t+l}))
+$$
+
+可见，这是一个加权，$\lambda$ 越大偏差越大，但方差越小。
+
+## 参数化
+
+如果状态数很大，甚至是无穷多的状态，那么就应该使用一个神经网络进行拟合.将状态数用神经网络参数拟合.
+
+使用神经网络参数化价值函数，
+
+$$
+\hat V_\pi(s,w)
+$$
+
+$w$是神经网络的参数.
+
+优化的目标便是寻找 $w^\ast$ 使得
+
+$$
+w^\ast = \argmin E_\pi [(y_t - \hat V_\pi(s_t,w))^2]
+$$
+
+其中 $y_t$ 是真实的价值函数值，但是难以得到，所以采用 `TD Target`近似表示
+
+使用均方误差作为损失函数
+
+$$
+\mathbb{L}(w) = \frac{1}{n}\sum_i(r_{t+1}^{(i)} + \gamma V_\pi(s_{t+1}^{(i)},w)-\hat V\pi(s_t,w)^2)
+$$
