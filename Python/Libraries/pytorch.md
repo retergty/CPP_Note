@@ -372,3 +372,283 @@ optimizer.zero_grad()  # 清空历史梯度（关键！避免累加）
 loss.backward()  # 计算梯度（存入 model 参数的 .grad）
 optimizer.step()  # 优化器根据梯度更新参数
 ```
+
+## 神经网络
+
+`pytorch.nn`是一个模块化的神经网络，有着丰富的预定义的层，激活函数，损失函数等.
+
+### `nn.Module`
+
+`nn.Module`是所有神经网络的基类，继承这一个类并重写`__init__`与`forward`函数就可以实现一个神经网络
+
+```python
+import torch.nn as nn
+
+class MyNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()  # 必须调用父类初始化
+        # 定义网络层
+        self.layer1 = nn.Linear(10, 5)
+        self.layer2 = nn.ReLU()
+        self.layer3 = nn.Linear(5, 2)
+    
+    def forward(self, x):
+        # 定义前向传播
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        return x
+
+# 实例化网络
+model = MyNetwork()
+print(model)
+```
+
+#### `nn.Module`作用
+
+* 自动化的参数管理系统，自动管理所有的神经网络参数
+
+    ```python
+    class MyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = nn.Linear(10, 5)  # 自动注册参数
+            
+    model = MyModel()
+    print(list(model.parameters()))  # 包含 linear.weight 和 linear.bias
+    ```
+
+* 子模块管理，自动管理嵌套模块
+
+    ```python
+    class ComplexModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.block1 = nn.Sequential(
+                nn.Linear(10, 20),
+                nn.ReLU()
+            )
+            self.block2 = AnotherModule()  # 自定义子模块
+            
+    model = ComplexModel()
+    print(model)  # 自动显示完整层次结构
+    ```
+
+* 自动处理设备间转移
+
+    ```python
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = MyModel()
+    model.to(device)  # 自动将所有参数和缓冲区转移到指定设备
+
+    # 无需手动处理每个参数
+    ```
+
+* 提供训练与评估机制
+
+    ```python
+    model.train()  # 启用训练模式（Dropout生效）
+    # ...训练代码...
+
+    model.eval()   # 启用评估模式（Dropout关闭）
+    # ...验证代码...
+    ```
+
+#### 重写`__init__`与`forward`
+
+在`__init__`函数中
+
+1. 声明子模块：创建网络层（线性层、卷积层等）
+2. 初始化参数：设置层的超参数（输入输出维度等）
+3. 配置辅助组件：如激活函数、归一化层等
+
+在`__init__`函数中初始化，声明要使用的网络层，此时网络的结构还没有指定。
+
+在`forward`函数中
+
+1. 指定计算流程：定义输入如何通过各层
+2. 实现前向传播：执行实际的张量运算
+3. 返回输出结果：产生预测值
+
+在`forward`函数中，指定网络的结构，指定数据的流向，计算`backward`时便是反过来进行.
+
+### 常用层
+
+* 线性层，执行线性变换 $y = xW^T + b$，层的参数就是 $W^T$ 与 $b$
+
+    ```python
+    nn.Linear(in_features, out_features, bias=True)
+    # in_features 输入特征维度
+    # out_features 输出特征维度
+    # bias 是否添加偏置项
+    ```
+
+* 卷积层,执行卷积，层的参数就是卷积核中元素的值
+
+    ```python
+    # 1D卷积（序列数据）
+    nn.Conv1d(in_channels, out_channels, kernel_size)
+
+    # 2D卷积（图像）
+    nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0)
+
+    # 3D卷积（视频/医学影像）
+    nn.Conv3d(in_channels, out_channels, kernel_size)
+
+    # in_channels: 输入通道数（如RGB图像为3）表示一张图片的一个像素有多少个数字
+    # out_channels： 输出通道数（卷积核数量） 表述输出的一张图片一个像素有多少的数字
+    # kernel_size： 卷积核尺寸
+    # stride： 步长
+    # padding： 填充大小
+    ```
+
+* 池化层，降维、减少计算量、增强平移不变性
+
+    ```python
+    # 最大池化：2x2窗口，步长2
+    max_pool = nn.MaxPool2d(kernel_size=2, stride=2)
+
+    # 平均池化：3x3窗口，步长1
+    avg_pool = nn.AvgPool2d(kernel_size=3, stride=1)
+
+    # 全局平均池化
+    global_avg_pool = nn.AdaptiveAvgPool2d(output_size=1)
+
+    # 前向传播示例
+    input_feature = torch.randn(16, 64, 112, 112)  # 卷积层输出
+    output_max = max_pool(input_feature)  # 输出形状: (16, 64, 56, 56)
+    output_avg = avg_pool(input_feature)  # 输出形状: (16, 64, 110, 110)
+    output_global = global_avg_pool(input_feature)  # 输出形状: (16, 64, 1, 1)
+    ```
+
+* 循环层,处理序列数据（时间序列、文本）
+
+    ```python
+    # LSTM层：输入特征100维，隐藏状态200维，2层堆叠
+    lstm_layer = nn.LSTM(
+        input_size=100,
+        hidden_size=200,
+        num_layers=2,
+        batch_first=True,  # 输入格式为(batch, seq, feature)
+        bidirectional=False
+    )
+
+    # 前向传播示例
+    sequence = torch.randn(32, 10, 100)  # 32个序列，每个序列10个时间步，每步100维特征
+    output, (hn, cn) = lstm_layer(sequence)
+
+    # output形状: (32, 10, 200) 所有时间步的输出
+    # hn形状: (2, 32, 200) 最后一层所有时间步的隐藏状态
+    # cn形状: (2, 32, 200) 最后一层所有时间步的细胞状态
+    ```
+
+* 归一化层,标准化数据分布，加速训练，提高稳定性
+
+    ```python
+    # 2D图像批归一化：输入通道64
+    bn_layer = nn.BatchNorm2d(num_features=64)
+
+    # 前向传播示例
+    input_feature = torch.randn(32, 64, 56, 56)  # 32张图，64通道，56x56
+    output = bn_layer(input_feature)  # 输出形状不变: (32, 64, 56, 56)
+    ```
+
+* 激活函数层,引入非线性，使网络能拟合复杂函数
+
+    ```python
+    relu = nn.ReLU(inplace=True)  # inplace=True节省内存
+    sigmoid = nn.Sigmoid()
+    softmax = nn.Softmax(dim=1)  # 沿类别维度计算
+
+    # 前向传播示例
+    input_data = torch.tensor([-2.0, 0.5, 3.0])
+    output_relu = relu(input_data)  # tensor([0.0, 0.5, 3.0])
+    ```
+
+    $$
+    \begin{align*}
+        Sigmoid &: \sigma(x) = \frac{1}{1+e^{-x}} \\
+        Tanh&: \tanh(x) \\
+        ReLU &: max(0,x) \\
+        LeakyReLU &: max(0,01x,x) \\
+        Softmax &: \frac{e^{x_i}}{\sum_j e^{x_j}}
+    \end{align*}
+    $$
+
+* Dropout,随机丢弃神经元，防止过拟合
+
+    ```python
+    # 标准Dropout
+    dropout = nn.Dropout(p=0.5)
+
+    # 2D Dropout（用于卷积层后）
+    spatial_dropout = nn.Dropout2d(p=0.2)
+
+    # 前向传播示例
+    input_data = torch.randn(32, 256)
+    output = dropout(input_data)  # 随机50%元素置零
+    ```
+
+* 损失函数层,量化预测值与真实值的差异
+
+    ```python
+    # 交叉熵损失（含Softmax）
+    criterion = nn.CrossEntropyLoss()
+
+    # 前向传播示例
+    outputs = model(inputs)  # 模型预测，形状(batch, num_classes)
+    loss = criterion(outputs, targets)  # targets为类别索引
+    ```
+
+## 优化器
+
+`PyTorch`的`torch.optim`根据损失函数的梯度，找到一组参数，让损失函数的值最小。
+
+### 经典工作流程
+
+```python
+import torch.optim as optim
+
+# 1. 定义优化器：传入模型参数+超参数（学习率等）
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(10):  # 训练10轮
+    for x, y in dataloader:  # 遍历数据
+        # 2. 前向传播：计算预测值
+        pred = model(x)
+        # 3. 计算损失：预测 vs 真实值
+        loss = criterion(pred, y)
+        # 4. 清零梯度（关键！避免梯度累积）
+        optimizer.zero_grad()
+        # 5. 反向传播：计算损失对参数的梯度
+        loss.backward()
+        # 6. 更新参数：优化器根据梯度调整参数
+        optimizer.step()
+```
+
+* `optimizer.zero_grad()`清空模型参数的梯度`.grad`值
+* `loss.backward()`自动计算所有参数的梯度
+* `optimizer.step()`根据梯度更新参数.
+
+### `torch.optim`模块
+
+`PyTorch`的`torch.optim`模块包含了几乎所有主流优化器，按算法原理可分为三大类：
+
+* 基础梯度下降类：SGD（随机梯度下降）及其变种（带动量、Nesterov动量）
+* 自适应学习率类：Adam、AdamW、RMSprop（为每个参数动态调整学习率）。
+* 经典自适应类：Adagrad、Adadelta（早期自适应算法，现较少用）。
+
+### 常用优化器
+
+* Adam
+
+    ```py
+    optimizer = optim.Adam(
+        params=model.parameters(),
+        lr=0.001,          # 学习率（默认0.001，常用0.001~0.0001）
+        betas=(0.9, 0.999), # 一阶矩/二阶矩衰减率（默认即可）
+        eps=1e-8,          # 数值稳定项（默认即可）
+        weight_decay=0     # L2正则化系数（默认0，建议用AdamW代替）
+    )
+    ```

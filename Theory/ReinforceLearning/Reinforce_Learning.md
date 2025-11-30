@@ -467,3 +467,226 @@ $$
 $$
 \mathbb{L}(w) = \frac{1}{n}\sum_i(r_{t+1}^{(i)} + \gamma V_\pi(s_{t+1}^{(i)},w)-\hat V\pi(s_t,w)^2)
 $$
+
+## 策略提升
+
+回顾策略梯度，并进行数学变换
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[G_0(\tau) \sum_{t=0}^{T-1}\nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+无穷步的轨迹为
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[G_0(\tau) \sum_{t=0}^{\infty}\nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+其中
+
+$$\begin{align*}
+  J(\pi_\theta) &= {\mathbb{E}}_{\tau\sim P_\theta(\tau)}[R(\tau)] \\
+  G_0(\tau) &= \sum_{k=0}^{\infty} \gamma^k r_k
+\end{align*}
+$$
+
+可以证明
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\sum_{t=0}^{\infty}\nabla_\theta\log \pi_\theta(a_t \mid s_t) G_t(\tau)]
+$$
+
+其中
+
+$$
+G_t(\tau) = \sum_{k=t}^{\infty} \gamma^{k-t}r_k
+$$
+
+可以理解为把 $t$ 时刻认为零时刻，开始计算累计函数.
+
+证明过程，就是证明
+
+$$
+{\mathbb{E}}_{\tau \sim P_\theta(\tau)}[G_{< t}(\tau) \nabla_\theta\log \pi_\theta(a_t \mid s_t)] = 0
+$$
+
+展开对数概率
+
+$$
+\begin{align*}
+  原式 &= {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[G_{< t}(\tau) \frac{\nabla_\theta \pi_\theta(a_t \mid s_t)}{\pi_\theta(a_t \mid s_t)}] \\
+  &= \sum_\tau G_{< t}(\tau) \frac{\nabla_\theta \pi_\theta(a_t \mid s_t)}{\pi_\theta(a_t \mid s_t)} p(\tau) \\
+  &= 0
+\end{align*}
+$$
+
+还可以将概率梯度使用动作价值函数表示
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\sum_{t=0}^{\infty}Q_\pi(s_t,a_t) \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+可以使用全期望公式证明
+
+$$
+\begin{align*}
+{\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\nabla_\theta\log \pi_\theta(a_t \mid s_t) G_t(\tau)] &=  {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\nabla_\theta\log \pi_\theta(a_t \mid s_t) G_t(\tau)] \\
+&= {\mathbb{E}}_{s_t,a_t}{\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\nabla_\theta\log \pi_\theta(a_t \mid s_t) G_t(\tau) \mid s_t,a_t] \\
+&= {\mathbb{E}}_{s_t,a_t}\nabla_\theta\log \pi_\theta(a_t \mid s_t) {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[G_t(\tau) \mid s_t,a_t] \\
+&= {\mathbb{E}}_{s_t,a_t} \nabla_\theta\log \pi_\theta(a_t \mid s_t) Q_\pi(s_t,a_t) \\
+\end{align*}
+$$
+
+### 总结
+
+通用公式
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\sum_{t=0}^{\infty}f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+其中 $f_t$可以是
+
+$$
+\begin{align*}
+  & G_t(\tau) \\
+  & G_t(\tau) - V_\pi(s_t) \\
+  & Q(s_t,a_t) \\
+  & Q(s_t,a_t) - V_\pi(s_t) \\
+  & r_t + \gamma V_\pi(s_{t+1}) - V_\pi(s_t)
+\end{align*}
+$$
+
+还可以是`n`步TD都可以.
+
+## Actor-Critic
+
+使用两个神经网络，一个估计策略 $\pi_\theta(a \mid s)$,一个估计价值函数 $V_\phi(s)$.两个神经网络的协同工作.在线(on policy)优化策略与估计价值函数
+
+### Actor（策略网络）
+
+* **功能**：策略网络根据当前状态 $s$,输出动作的概率分布 $\pi_\theta(a\mid s)$
+* **作用**: 根据当前策略选择动作，探索环境并收集经验
+* **更新方式**： 通过策略梯度（Policy Gradient）调整参数 $\theta$，目标是最大化累积奖励的期望
+
+策略网络的目标是最大化策略价值
+
+$$
+\max_\theta J(\pi_\theta)
+$$
+
+变为最小化以适应标准优化问题
+
+$$
+\min_\theta -J(\pi_\theta)
+$$
+
+已知策略梯度
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim P_\theta(\tau)}[\sum_{t=0}^{\infty}f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+损失函数就是
+
+$$
+L_{actor} = -{\mathbb{E}}[\sum_{t=0}^{\infty}f_t \log \pi_\theta (a_t \mid s_t)]
+$$
+
+### Critic（价值网络）
+
+* **功能**： 输入当前状态 $s$,输出状态价值 $V_\phi(s)$ 标量，表示该状态的好坏。
+* **作用**：评估Actor所选动作的价值，为Actor提供即时反馈（替代REINFORCE的“整局回报”），降低策略更新的方差。
+* **更新方式**： 通过时序差分（TD, Temporal-Difference）学习调整参数 $\phi$，目标是最小化预测值与真实值的误差.
+
+价值网络的目标是让TD误差为零
+
+$$
+\delta = (r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t))
+$$
+
+使用`MSE`损失函数，最小化损失函数
+
+$$
+L_{critic} = {\mathbb{E}}[\delta^2] =  {\mathbb{E}}[(r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t))^2]
+$$
+
+### 常用算法
+
+#### 标准的TD Actor-Critic
+
+$$
+\begin{align*}
+  &初始化策略网络 \quad \pi_\theta(a\mid s) \\
+ & 初始化价值网络 \quad V_\phi(s) \\
+& 对每个轨迹中的 \quad t \quad 执行 \\
+&\quad 按照策略 \pi_\theta(a_t \mid s_t) 生成动作\; a_t \\
+&\quad \delta = r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t) \\
+&\quad \phi = \phi + \alpha_\phi \delta \nabla V_\phi(s_t) \\
+&\quad \theta = \theta + \alpha_\theta \nabla \ln \pi_\theta (a_t \mid s_t)
+\end{align*}
+$$
+
+但是，这样轨迹利用率太低了，使用重要性采样转化
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim \pi_{\theta old}}[\sum_{t=0}^{\infty}\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta old}(a_t \mid s_t)}f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$
+
+#### Proximal Policy Optimization PPO
+
+通过重要性采样+限制策略更新幅度，便是PPO算法.
+
+此时的损失函数为,最大化这个函数
+
+$$
+{\mathbb{E}}_{\tau \sim \pi_k}[\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)}A_{\pi_{\theta_k}}(s_t,a_t)]
+$$
+
+PPO算法便是添加了一个裁剪项，防止前后策略变化过大.
+
+$$
+L(s,a,\theta_k,\theta) = \min (\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)}A_{\pi_{\theta_k}}(s_t,a_t),clip(\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)},1-\epsilon,1+\epsilon)A_{\pi_{\theta_k}}(s_t,a_t))
+$$
+
+或者是
+
+$$
+L(s,a,\theta_k,\theta) = \min (\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)}A_{\pi_{\theta_k}}(s_t,a_t),g(\epsilon,A_{\pi_{\theta_k}}(s_t,a_t))) \\
+g(\epsilon,A(s_t,a_t)) =
+\begin{cases}
+  (1+\epsilon), \quad &A_{\pi_{\theta_k}}(s_t,a_t) > 0 \\
+  (1-\epsilon), \quad & A_{\pi_{\theta_k}}(s_t,a_t)(s_t,a_t) < 0
+\end{cases}
+$$
+
+优势函数 $A(s_t,a_t)$ 表示当前动作对在旧策略下的好坏程度，这个表示，新策略只能比就旧策略好 $1+\epsilon$, 或者坏 $1-\epsilon$.
+
+优势函数可以是n步的TD error
+
+$$
+A_t^{(n)} = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + ... \gamma^nr_{t+n} - V(s_t)
+$$
+
+可以用一步的td error表示n步的td error，这个公式更加像动作价值函数的td估计
+
+$$
+\begin{align*}
+  \delta_t &= r_t + \gamma V(s_{t+1}) - V(s_t) \\
+  A_t^{(1)} &=  \delta_t \\
+  A_t^{(2)} &= \delta_t + \gamma \delta_{t+1} \\
+  A_t^{(3)} &= \delta_t + \gamma \delta_{t+1} + \gamma^2 \delta_{t+2}
+\end{align*}
+$$
+
+也可以是 TD($\lambda$).
+
+$$
+\hat A_t = (1-\lambda)\sum_k \lambda^{k-1} A_t^{(k)}
+$$
+
+它的递推公式是
+
+$$
+\hat A_t = \delta_t + \gamma \lambda \hat A_{t+1}
+$$
