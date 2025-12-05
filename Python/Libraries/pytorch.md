@@ -100,6 +100,8 @@
 
     # 改变形状（不复制数据）
     reshaped = x.view(6, 4)        # 6x4 视图
+    reshaped_auto = x.view(-1,1)   # 根据其它维数自动计算大小 24 x 1试图
+
     reshaped_alt = x.reshape(4, 6) # 更灵活的 reshape
 
     # 维度操作
@@ -209,6 +211,27 @@
 
     # 解线性方程组
     solution = torch.linalg.solve(A, torch.tensor([1, 2]))
+    ```
+
+### 其它常用函数
+
+* 用于在指定位置根据索引值填充数据。
+
+    ```python
+    torch.scatter_(dim, index, src, reduce=None) → Tensor
+
+    # dim: 沿着哪个维度进行散布（0=行方向，1=列方向）
+    # index: 索引张量，指定要修改的位置
+    # src: 源张量（包含要填充的值）或标量值
+    # reduce: 可选的归约操作（'add', 'multiply'等）
+
+    out = out.scatter_(dim=1, index=indexes, value=1)
+
+    #index = [2, 0, 1]
+    # 初始张量 [[0,0,0,0], [0,0,0,0], [0,0,0,0]]
+    #样本0 (索引2) → [0,0,1,0]
+    #样本1 (索引0) → [1,0,0,0]
+    #样本2 (索引1) → [0,1,0,0]
     ```
 
 ### 自动求导
@@ -599,6 +622,21 @@ print(model)
     # 前向传播示例
     outputs = model(inputs)  # 模型预测，形状(batch, num_classes)
     loss = criterion(outputs, targets)  # targets为类别索引
+    ```
+
+### 常用函数
+
+* `nn.Sequential​`用于按顺序组合多个神经网络，输入数据流经每个层后输出最终结果
+
+    ```python
+    import torch.nn as nn
+
+    model = nn.Sequential(
+        nn.Linear(784, 256),  # 全连接层
+        nn.ReLU(),            # 激活函数
+        nn.Linear(256, 10),   # 全连接层
+        nn.Softmax(dim=1)     # 分类概率
+    )
     ```
 
 ## 优化器

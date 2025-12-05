@@ -230,6 +230,21 @@ print(arr.T)  # [[1,4], [2,5], [3,6]]（shape=(3,2)）
 print(arr.transpose(1, 0))  # 等价于 arr.T（指定轴0和1交换）
 ```
 
+## 规约
+
+* `np.sum()`,所有元素的和,`np.sum([1, 2, 3]) → 6`
+* `np.prod()`，所有元素的乘积,`np.prod([1, 2, 3]) → 6`
+* `np.mean()`,算术平均值,`np.mean([1, 2, 3]) → 2.0`
+* `np.std()`,标准差（总体）,`np.std([1, 2, 3]) → 0.82`
+* `np.var()`,方差（总体）,`np.var([1, 2, 3]) → 0.67`
+* `np.min()/ np.max()`,最小值/最大值,`np.min([1, 2, 3]) → 1`
+* `np.argmin()/ np.argmax()`,最小值/最大值的索引,`np.argmax([1, 3, 2]) → 1`
+* `np.median()`,中位数,`np.median([1, 2, 3]) → 2.0`
+* `np.all()`,检查所有元素是否为 True,`np.all([True, False]) → False`
+* `np.any()`,检查任意元素是否为 True,`np.any([False, True]) → True`
+* `np.cumsum()`,累积和（非严格规约）,`np.cumsum([1, 2, 3]) → [1, 3, 6]`
+* `np.cumprod()`,累积积（非严格规约）,`np.cumprod([1, 2, 3]) → [1, 2, 6]`
+
 ## random
 
 `NumPy`的`random`模块是生成伪随机数的核心工具.旧版API基于全局状态`API`,新版API基于`Generator`对象，更加灵活
@@ -369,3 +384,9 @@ print("新版 choice（不放回）:", rng.choice([1,2,3,4], size=3, replace=Fal
 ```
 
 概率权重数组`p`需要和数组长度一致.
+
+* `choice`也可以接受`int`，此时会相当于调用了`np.arange(int)`生成一个`[0,int)`的整数序列。
+
+```python
+np.random.choice(5) # [0, 1, 2, 3, 4]
+```
