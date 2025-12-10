@@ -59,3 +59,53 @@ t_deep = copy.deepcopy(t)
 t_deep[1][0] = 99
 print(t)           # (1, [2, 3]) → 原元组未变（因元组本身不可变，但深拷贝复制了内层列表）
 ```
+
+## 虚拟环境
+
+为每个项目配置独立的环境，防止全局环境冲突.
+
+### conda
+
+使用`conda`作为管理软件，下载`Miniconda`
+
+### 创建环境
+
+```shell
+# 创建一个名为 myenv 的环境，并指定 python 版本为 3.9
+conda create -n myenv python=3.9
+```
+
+### 激活环境
+
+```shell
+conda activate myenv
+```
+
+### 安装包
+
+```shell
+# 安装 numpy
+conda install numpy
+
+# 一次安装多个包
+conda install numpy pandas matplotlib
+```
+
+### 查看与退出
+
+```shell
+# 查看当前环境装了哪些包
+conda list
+
+# 退出当前环境（回到 base）
+conda deactivate
+
+# 查看环境
+conda env list
+```
+
+### 删除环境
+
+```shell
+conda env remove -n myenv
+```

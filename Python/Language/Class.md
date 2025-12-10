@@ -42,6 +42,117 @@ fh = FileHandler("test.txt")
 del fh  # 触发 __del__，输出 "File closed"
 ```
 
+### 魔法方法
+
+#### __call__
+
+`__call__`实现函数调用
+
+```python
+class Adder:
+    def __init__(self, n):
+        self.n = n
+        
+    def __call__(self, x):
+        print("正在像函数一样被调用...")
+        return self.n + x
+
+# 1. 实例化 (调用 __init__)
+my_adder = Adder(10)
+
+# 2. 调用实例 (自动触发 __call__)
+result = my_adder(5) 
+# 等同于: result = my_adder.__call__(5)
+
+print(f"结果: {result}")
+```
+
+#### __add__,__sub__,__eq__
+
+`__add__`实现加法运算
+
+`__sub__`实现减法运算
+
+`__eq__`实现等式运算
+
+```python
+class Vector2D:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    # 1. 加法：定义 obj1 + obj2
+    def __add__(self, other):
+        return Vector2D(self.x + other.x, self.y + other.y)
+
+    # 2. 相等性判断：定义 obj1 == obj2
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+    
+    # 为了方便看结果，加个 __str__
+    def __str__(self):
+        return f"({self.x}, {self.y})"
+
+# 使用
+v1 = Vector2D(2, 3)
+v2 = Vector2D(1, 1)
+v3 = Vector2D(2, 3)
+
+v_sum = v1 + v2   # 触发 __add__，结果是 (3, 4)
+is_same = v1 == v3 # 触发 __eq__，结果是 True
+
+print(f"向量和: {v_sum}")
+print(f"v1 等于 v3 吗? {is_same}")
+```
+
+#### __str__
+
+`__str__`实现`print`打印
+
+```python
+class Robot:
+    # 1. 初始化：当 Robot("Wall-E") 被调用时触发
+    def __init__(self, name, battery_level):
+        self.name = name
+        self.battery = battery_level
+
+    # 2. 描述：当 print(robot) 或 str(robot) 被调用时触发
+    def __str__(self):
+        return f"[机器人: {self.name} | 电量: {self.battery}%]"
+
+# 使用
+bot = Robot("Wall-E", 85) # 触发 __init__
+print(bot)                # 触发 __str__
+```
+
+#### __len__
+
+`__len__`实现`len(class)`打印类
+
+`__getitem__`实现`[]`函数
+
+```python
+class RobotSquad:
+    def __init__(self, robot_list):
+        self.robots = robot_list
+
+    # 1. 测长度：当 len(squad) 被调用时触发
+    def __len__(self):
+        return len(self.robots)
+
+    # 2. 取值：当 squad[i] 被调用时触发
+    def __getitem__(self, index):
+        print(f"正在检索第 {index} 号机器人...")
+        return self.robots[index]
+
+# 使用
+squad = RobotSquad(["Robot_A", "Robot_B", "Robot_C"])
+
+print(f"小队数量: {len(squad)}") # 触发 __len__
+leader = squad[0]               # 触发 __getitem__
+print(f"队长是: {leader}")
+```
+
 ### 类属性
 
 类属性就是类成员变量，分为实例属性和类属性，实例属性为每个实例独有，类属性则是每个类共享。

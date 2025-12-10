@@ -234,6 +234,19 @@
     #样本2 (索引1) → [0,1,0,0]
     ```
 
+* 将一个单元素`tensor`转换为标准数值，用于防止`total_loss`保存了过多的计算图，导致显存爆炸
+
+    ```python
+    x = torch.tensor([3.14159]) 
+
+    print(x)        # 输出: tensor([3.1416]) -> 这是一个对象
+
+    # 使用 .item()
+    val = x.item()  
+
+    print(val)      # 输出: 3.14159 -> 这是一个纯 float
+    ```
+
 ### 自动求导
 
 * 反向传播计算
@@ -690,3 +703,71 @@ for epoch in range(10):  # 训练10轮
         weight_decay=0     # L2正则化系数（默认0，建议用AdamW代替）
     )
     ```
+
+## 分布distributions
+
+让神经网络输出概率分布，并且支持反向传播.
+
+```python
+import torch
+from torch.distributions import Normal
+
+# 假设网络输出：建议推力 5.0N，但网络有点不确定，标准差给了 2.0
+mu = torch.tensor([5.0])    # 均值 loc
+sigma = torch.tensor([2.0]) # 标准差 scale (必须 > 0)
+
+# 1. 创建分布
+dist = Normal(loc=mu, scale=sigma)
+
+# 2. 采样 (用于探索)
+action = dist.sample()
+print(f"实际执行推力: {action.item():.2f} N")
+
+# 3. 计算对数概率 (用于反向传播 Loss)
+log_prob = dist.log_prob(action)
+print(f"该动作的 LogProb: {log_prob.item():.4f}")
+
+# 4. 熵 (Entropy) - 在 RL 中很重要
+# 熵越大，代表分布越平坦，探索性越强
+print(f"当前策略的熵 (探索程度): {dist.entropy().item():.4f}")
+```
+
+### 正态分布Normal
+
+接受均值与标准差，生成一个正态分布
+
+* $\mu$:均值
+* $\sigma$:标准差
+
+### 分类分布Categorical
+
+接受一个列向量，向量每个值表示这个index被采样的概率
+
+```python
+import torch
+from torch.distributions import Categorical
+
+# 神经网络通常输出原始分数 (Logits)，还没经过 Softmax
+# 假设网络认为“直行(索引1)”的分数最高
+logits = torch.tensor([1.0, 3.5, 0.5]) 
+
+# 1. 创建分布
+# 注意：可以直接传 logits，PyTorch 会内部帮你做 softmax，数值更稳定
+dist = Categorical(logits=logits) 
+# 或者如果你已经有了概率，也可以用 Categorical(probs=probs)
+
+# 2. 采样
+# 返回的是索引 (index)，不是具体的数值
+action_index = dist.sample()
+print(f"选择的动作索引: {action_index.item()}") 
+# 很大几率输出 1，偶尔输出 0 或 2
+
+# 3. 这里的 LogProb 是 log(p_i)
+print(f"选中该动作的 LogProb: {dist.log_prob(action_index).item():.4f}")
+```
+
+### 伯努利分布Bernoulli
+
+`0,1`的二分类
+
+### 均匀分布Uniform
