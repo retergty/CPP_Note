@@ -611,6 +611,10 @@ $$
 L_{critic} = {\mathbb{E}}[\delta^2] =  {\mathbb{E}}[(r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t))^2]
 $$
 
+#### 注意点
+
+* $r_t + \gamma V_\phi(s_{t+1})$被认为是真值，尽管他是估计出来的，但在这一步的优化中，不应该受到影响，对应到强化学习就是使用`detach`截断梯度.
+
 ### 常用算法
 
 #### 标准的TD Actor-Critic
@@ -690,3 +694,21 @@ $$
 $$
 \hat A_t = \delta_t + \gamma \lambda \hat A_{t+1}
 $$
+
+#### 熵正则化
+
+强化学习中一种用来鼓励探索 (Exploration)、防止模型过早陷入局部最优的技术。
+
+熵公式为
+
+$$
+H(\pi) = - \sum \pi(a|s) \log \pi(a|s)
+$$
+
+修改期望函数$J(\pi_\theta)$添加熵
+
+$$
+J(\theta) = \mathbb{E} [ \text{Reward} + \beta \cdot \text{Entropy} ]
+$$
+
+* $\beta$是系数，通常为`0.01`,越大，表示期望输出策略的熵越大.

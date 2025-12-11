@@ -73,6 +73,20 @@
     detached = original.detach()    # 分离计算图（共享内存）
     ```
 
+* 旧版本
+
+    ```python
+    # 传入整数列表，自动转为 float32
+    data = [1, 2, 3]
+    x = torch.FloatTensor(data)
+
+    print(x)       # tensor([1., 2., 3.])  <-- 注意小数点，变成了浮点数
+
+    # 传入两个整数，意思是创建一个 2行3列 的矩阵
+    # 警告：里面的数据是随机的垃圾值！
+    y = torch.FloatTensor(2, 3)
+    ```
+
 ### 内存布局
 
 * 连续内存布局（Contiguous）:元素在内存中按行优先（C-style）或列优先（Fortran-style）顺序连续存储，无间隔.
@@ -731,6 +745,17 @@ print(f"该动作的 LogProb: {log_prob.item():.4f}")
 # 熵越大，代表分布越平坦，探索性越强
 print(f"当前策略的熵 (探索程度): {dist.entropy().item():.4f}")
 ```
+
+注意，`sample()`后返回的也是一个tensor.
+
+### 常见函数
+
+* `sample(sample_shape=torch.Size())`从分布中随机抽取样本（无梯度）。
+    * `sample_shape`表示要采样的个数，默认是一个
+* `rsample(sample_shape=torch.Size())`重参数化采样（有梯度）。
+* `log_prob(value)`计算给定数值 value 在该分布下的对数概率密度。
+    * `value`想要评估的那个动作/数值。通
+* `entropy()`计算分布的熵（衡量不确定性）
 
 ### 正态分布Normal
 
