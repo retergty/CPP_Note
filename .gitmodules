@@ -4,9 +4,6 @@
 [submodule "Theory/NumericalOptimization/QuadraticProgramming"]
 	path = Theory/NumericalOptimization/QuadraticProgramming
 	url = git@github.com:retergty/QuadProg.git
-[submodule "Theory/Kinamatics/LevenVergMarquartAlgorithm"]
-	path = Theory/Kinamatics/LevenVergMarquartAlgorithm
-	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
 [submodule "Libraries/DDS"]
 	path = Libraries/DDS
 	url = git@github.com:retergty/Motor_DDS.git
@@ -22,3 +19,6 @@
 [submodule "Libraries/Pinocchio/Examples"]
 	path = Libraries/Pinocchio/Examples
 	url = git@github.com:retergty/pinocchio.git
+[submodule "Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm"]
+	path = Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm
+	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
