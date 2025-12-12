@@ -26,3 +26,20 @@ ForwardIt lower_bound( ForwardIt first, ForwardIt last,
 如果在`[first,last)`中有这个元素，返回指向这个元素的迭代器，否则返回`last`.
 
 如果`[first,last)`中的元素没有按照指定比较方法分好区（排好序），函数未定义.
+
+## 使用场景
+
+可以寻找迭代器范围内有没有与`value`相等的元素
+
+```CPP
+vector<int> vec;
+
+auto it = lower_bound(vec.begin(), vec.end(), target);
+
+if (it != vec.end() && *it == target)
+{
+    return true;
+}
+```
+
+只有可能`it`与`target`相等.
