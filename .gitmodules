@@ -19,3 +19,6 @@
 [submodule "Libraries/Pinocchio/Examples"]
 	path = Libraries/Pinocchio/Examples
 	url = git@github.com:retergty/pinocchio.git
+[submodule "Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm"]
+	path = Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm
+	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
