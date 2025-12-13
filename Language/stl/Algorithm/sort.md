@@ -51,7 +51,7 @@ bool comp(const Type1& a, const Type2& b);
 #include <functional>
 #include <iostream>
 #include <string_view>
- 
+
 int main()
 {
     std::array<int, 10> s{5, 7, 4, 2, 8, 6, 1, 9, 0, 3};
