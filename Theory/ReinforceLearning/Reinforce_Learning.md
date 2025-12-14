@@ -637,9 +637,17 @@ $$
 \nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim \pi_{\theta old}}[\sum_{t=0}^{\infty}\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta old}(a_t \mid s_t)}f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
 $$
 
+为了数值稳定性,将除法转化为减法
+
+$$
+\nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim \pi_{\theta old}}[\sum_{t=0}^{\infty}exp(\log \pi_\theta(a_t \mid s_t) - \log \pi_{\theta old}(a_t \mid s_t))f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
+$$ 
+
 #### Proximal Policy Optimization PPO
 
 通过重要性采样+限制策略更新幅度，便是PPO算法.
+
+使用了PPO算法之后，就必须获取整段轨迹之后再进行更新.
 
 此时的损失函数为,最大化这个函数
 
@@ -694,6 +702,34 @@ $$
 $$
 \hat A_t = \delta_t + \gamma \lambda \hat A_{t+1}
 $$
+
+此时`critic`的损失函数，使用$TD(\lambda)$计算为
+
+$$
+L_{critic} = {\mathbb{E}}[(\hat A_t + V_\phi(s_t) - V_\phi(s_t))^2]
+$$
+
+也就是说`critic`的目标是让 $\hat A_t$ 为零.
+
+##### 边界处理
+
+通常`PPO`算法会在一个有限的时间步内进行采样与更新，那么在计算优势函数时，最后一步的 $s_{T}$ 没有 $V(s_{T+1})$，此时可以使用以下两种方法处理
+
+1. **终止状态**： 如果 $s_{T}$ 是一个终止状态（Episode结束），那么可以直接将 $V(s_{T+1})$ 设为零。
+2. **非终止状态**： 如果 $s_{T}$ 不是一个终止状态，可以使用当前策略的价值网络估计 $V(s_{T+1})$
+
+计算最后一步的优势函数$\hat A_{T}$时,只能认为$\hat A_{T+1}=0$
+
+$$
+\begin{align*}
+\hat A_{T} &= \delta_T \\
+\delta_T &= r_T + \gamma V_\phi(s_{T+1}) - V_\phi(s_T)
+\end{align*}
+$$
+
+##### PPO Buffer
+
+通常PPO算法会在一个有限的时间步内进行采样与更新，这个有限的时间步称为`PPO Buffer`，每次采样`PPO Buffer`长度的轨迹，然后进行多次更新.这个长度通常为`2048`或者`4096`.一个Buufer中的轨迹可以包含多个Episode.需要保存done标志位.以防止优势函数计算错误.
 
 #### 熵正则化
 

@@ -366,3 +366,22 @@ print(f"最小值: {minimum}, 最大值: {maximum}")
 state, reward, terminated, truncated, info = env.step(action)
 state, reward, terminated, *rest = env.step(action)
 ```
+
+## 生成器函数
+
+生成器函数使用`yield`语句返回一个迭代器，每次调用都会从上次离开的地方继续执行。适用于处理大量数据或无限序列。
+
+```python
+def count_up_to(n):
+    count = 1
+    while count <= n:
+        yield count  # 暂停并返回当前值
+        count += 1
+# 使用生成器
+for number in count_up_to(5):
+    print(number)
+```
+
+当调用生成器函数时，并不会立即执行函数体，而是返回一个生成器对象。每次迭代时，函数体会从上次`yield`语句处继续执行，直到遇到下一个`yield`或函数结束。
+
+函数结束时，生成器会引发`StopIteration`异常，由`for`循环自动处理。
