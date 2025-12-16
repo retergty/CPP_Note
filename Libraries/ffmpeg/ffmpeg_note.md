@@ -208,9 +208,11 @@ AVStream* stream = format_ctx->streams[i];
 
 `AVPacket`使用了引用计数的内存管理机制，避免频繁的内存拷贝和分配.
 
-当复制`AVPacket`时，实际上只是增加了引用计数，而不是复制数据本身.
+当复制`AVPacket`时，实际上只是增加了引用计数，而不是复制数据本身.需要调用`av_packet_ref`来进行复制增加引用计数.
 
 当不再需要`AVPacket`时，调用`av_packet_unref`释放它，减少引用计数，当引用计数为0时，才真正释放内存.
+
+当需要移动`AVPacket`时，调用`av_packet_move_ref`，将引用计数从一个`AVPacket`移动到另一个`AVPacket`.
 
 ### AVFrame
 
@@ -233,6 +235,7 @@ AVStream* stream = format_ctx->streams[i];
 * `int width, height;`图像宽高
 * `enum AVPixelFormat format;`像素格式，比如`AV_PIX_FMT_YUV420P`
 * `int64_t pts;`显示时间戳(单位是流的 time_base)
+* `AVBufferRef* opaque_ref;`指向与这个`AVFrame`关联的自定义数据缓冲区，用来给用户使用可以用来存储额外的信息.
 
 #### 内存管理
 
@@ -242,9 +245,40 @@ AVStream* stream = format_ctx->streams[i];
 
 当不再需要`AVFrame`时，调用`av_frame_unref`释放它，减少引用计数，当引用计数为0时，才真正释放内存.
 
+### AVFilterContext
+
+`AVFilterContext`是FFmpeg的滤镜上下文，表示一个具体的滤镜实例.
+
+注意和`AVFilter`的区别，`AVFilter`是滤镜的定义，而`AVFilterContext`是滤镜的实例.
+
+#### 常见成员变量
+
+* `void *priv;`指向滤镜的私有数据结构，不同的滤镜有不同的私有数据.
+* `const AVFilter *filter;`指向滤镜的定义对象
+* `AVFilterLink **inputs;`输入链表，指向连接到这个滤镜的输入链接
+* `AVFilterLink **outputs;`输出链表，指向从这个滤镜输出的链接
+
+### AVFilterGraph
+
+`AVFilterGraph`是FFmpeg的滤镜图，管理一组滤镜（Filters）和它们之间的连接关系.
+
+所有的`AVFilterContext`必须属于某个`AVFilterGraph`.
+
+#### 常见成员变量
+
+* `AVFilterContext **filters;`指向滤镜上下文数组的指针
+* `int nb_filters;`滤镜的数量
+
+### AVChannelLayout
+
+`AVChannelLayout`表示音频的声道布局.三个常见的布局：
+* 单声道(Mono): `AV_CHANNEL_LAYOUT_MONO`，只有一个声道，通常用于语音。
+* 立体声(Stereo): `AV_CHANNEL_LAYOUT_STEREO`，有两个声道，左声道和右声道，常用于音乐和电影音频。
+* 环绕声(Surround): `AV_CHANNEL_LAYOUT_5_1`，包含六个声道，分别是左前、右前、中置、低音炮、左环绕和右环绕，常用于影院音效。
+
 ## 常用函数
 
-### `avformat_open_input`
+### avformat_open_input
 
 ```CPP
 int avformat_open_input(AVFormatContext **ps, const char *url, ff_const59 AVInputFormat *fmt, AVDictionary **options);
@@ -438,7 +472,7 @@ int avcodec_send_packet(AVCodecContext *codec_ctx, const AVPacket *pkt);
 int avcodec_receive_frame(AVCodecContext *codec_ctx, AVFrame *frame);
 ```
 
-从解码器获取解码后的`AVFrame`
+从解码器获取解码后的`AVFrame`，可能会阻塞等待.
 
 输入参数
 
@@ -472,6 +506,96 @@ void av_frame_free(AVFrame **frame);
 ```
 
 释放`AVPacket`或`AVFrame`结构体本身的内存，同时也会调用`av_packet_unref`或`av_frame_unref`释放内部数据缓冲区.
+
+### avformat_seek_file
+
+```CPP
+int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+``` 
+
+在媒体文件中进行定位跳转（Seek）操作.
+
+参数
+
+* `AVFormatContext *s`,解封装上下文
+* `int stream_index`,要按照哪个流的时间基准（Timebase）来跳转，`-1`表示使用默认时间基准`AV_TIME_BASE`
+* `int64_t min_ts`,允许跳转的最小时间戳（单位是流的 time_base）
+* `int64_t ts`,目标时间戳（单位是流的 time_base）
+* `int64_t max_ts`,允许跳转的最大时间戳（单位是流的 time_base）
+* `int flags`,跳转选项，`AVSEEK_FLAG_BYTE`（按字节偏移跳转）等.
+
+#### 注意事项
+
+* 跳转后，之前读取的`AVPacket`和`AVFrame`可能不再有效，必须重新读取和解码.
+* 跳转可能不是精确的关键帧位置，解码器需要从最近的关键帧开始解码，直到达到目标时间戳.
+* 跳转后，需要给解码器发送一个空的`AVPacket`来刷新解码器状态.
+
+### av_find_best_stream
+
+```CPP
+int av_find_best_stream(AVFormatContext *ic, enum AVMediaType type, int wanted_stream_nb, int related_stream, AVCodec **decoder_ret, int flags);
+``` 
+
+在`AVFormatContext`中使用启发式算法查找指定类型的最佳流（视频流、音频流等）.
+
+参数
+
+* `AVFormatContext *ic`,解封装上下文
+* `enum AVMediaType type`,要查找的流类型，比如`AVMEDIA_TYPE_VIDEO`视频流，`AVMEDIA_TYPE_AUDIO`音频流
+* `int wanted_stream_nb`,指定想要的流索引，如果不关心可以传`-1`
+* `int related_stream`,相关流索引，通常传`-1`
+* `AVCodec **decoder_ret`,输出参数，返回找到的流对应的解码器
+* `int flags`,查找选项，通常传`0`
+
+### avfilter_graph_create_filter
+
+```CPP
+int avfilter_graph_create_filter(AVFilterContext **filter_ctx, const AVFilter *filter, const char *name, const char *args, void *opaque, AVFilterGraph *graph);
+```
+
+在滤镜图中创建一个滤镜实例（`AVFilterContext`）并将其添加到滤镜图（`AVFilterGraph`）中.
+
+参数
+* `AVFilterContext **filter_ctx`,输出参数，返回创建的滤镜上下文
+* `const AVFilter *filter`,要创建的滤镜定义对象
+* `const char *name`,滤镜实例的名称
+* `const char *args`,滤镜的初始化参数字符串
+* `void *opaque`,用户数据指针，传递给滤镜的私有数据,通常为 NULL，高级硬件上下文用途
+* `AVFilterGraph *graph`,滤镜图对象
+
+### avfilter_graph_alloc_filter
+
+```CPP
+AVFilterContext *avfilter_graph_alloc_filter(AVFilterGraph *graph, const AVFilter *filter, const char *name);
+```
+
+在滤镜图中分配一个滤镜实例（`AVFilterContext`），但不进行初始化和添加到图中.
+
+此时滤镜处于 “未初始化 (Uninitialized)” 状态,必须在后面手动调用`avfilter_init_str`或 `avfilter_init_dict`来初始化.
+
+### avfilter_link
+
+```CPP
+int avfilter_link(AVFilterContext *src, unsigned srcpad, AVFilterContext *dst, unsigned dstpad);
+```
+
+将两个滤镜实例（`AVFilterContext`）通过指定的输入输出端口连接起来，形成滤镜链.
+
+### avfilter_graph_config
+
+```CPP
+int avfilter_graph_config(AVFilterGraph *graph, void *log_ctx);
+```
+
+配置并验证整个滤镜图（`AVFilterGraph`），确保所有滤镜和连接都是有效的.
+
+### av_buffersink_get_frame_rate
+
+```CPP
+AVRational av_buffersink_get_frame_rate(AVFilterContext *ctx);
+```
+
+获取缓冲区接收器滤镜（`buffersink`）的输出帧率.可能与输入帧率不同.
 
 ## 常用场景
 
@@ -575,5 +699,144 @@ while (av_read_frame(format_ctx, packet) >= 0)
 
     // 每次用完 Packet，必须重置引用计数，否则内存泄漏
     av_packet_unref(packet);
+}
+```
+
+### 跳转
+
+```CPP
+// 假设我们要跳到 target_seconds (秒)
+int64_t target_ts = target_seconds * AV_TIME_BASE;
+
+// 1. 调用 Seek
+// 参数解释：使用默认流(-1)，允许极小值到极大值
+int ret = avformat_seek_file(fmt_ctx, -1, INT64_MIN, target_ts, INT64_MAX, 0);
+
+if (ret >= 0) {
+    // 2. 【绝对不能忘】清空 Packet 队列
+    // 否则你会看到旧画面
+    clear_queue(video_queue);
+    clear_queue(audio_queue);
+
+    // 3. 【绝对不能忘】重置解码器
+    // 通常做法是往队列放一个特殊的 "FLUSH_PKT"
+    // 解码线程读到它时执行 avcodec_flush_buffers()
+    put_flush_packet(video_queue);
+    put_flush_packet(audio_queue);
+    
+    // 4. 同步时钟
+    // 将主时钟强制更新为 target_ts
+    sync_clock_to(target_ts);
+}
+```
+
+### 配置滤镜
+
+```CPP
+// 1. 创建滤镜图
+AVFilterGraph* filter_graph = avfilter_graph_alloc();
+// 2. 创建输入输出滤镜
+AVFilterContext* buffersrc_ctx = nullptr;
+AVFilterContext* buffersink_ctx = nullptr;
+const AVFilter* buffersrc = avfilter_get_by_name("buffer");
+const AVFilter* buffersink = avfilter_get_by_name("buffersink");
+// 3. 配置输入滤镜参数
+char args[512];
+snprintf(args, sizeof(args),
+         "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+         width, height, pix_fmt,
+         time_base.num, time_base.den, aspect_ratio.num, aspect_ratio.den);
+avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in", args, nullptr, filter_graph);
+// 4. 配置输出滤镜参数
+avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out", nullptr, nullptr, filter_graph);
+// 5. 连接滤镜
+avfilter_link(buffersrc_ctx, 0, buffersink_ctx, 0);
+// 6. 配置滤镜图
+avfilter_graph_config(filter_graph, nullptr);
+```
+
+#### 配置入口音频滤镜
+
+```CPP
+ret = snprintf(asrc_args, sizeof(asrc_args),
+                "sample_rate=%d:sample_fmt=%s:time_base=%d/%d:channel_layout=%s",
+                is->audio_filter_src.freq, av_get_sample_fmt_name(is->audio_filter_src.fmt),
+                1, is->audio_filter_src.freq, bp.str);
+
+ret = avfilter_graph_create_filter(&filt_asrc,
+                                    avfilter_get_by_name("abuffer"), "ffplay_abuffer",
+                                    asrc_args, NULL, is->agraph);
+```
+
+`abuffer`是音频输入滤镜，参数包括采样率，采样格式，时间基准，声道布局等.
+
+#### 配置出口音频滤镜
+
+```CPP
+ret = avfilter_graph_create_filter(&filt_asink,
+                                    avfilter_get_by_name("abuffersink"), "ffplay_abuffersink",
+                                    NULL, NULL, is->agraph);
+```
+
+`abuffersink`是音频输出滤镜，没有参数.
+
+#### 配置入口视频滤镜
+
+```CPP
+ret = snprintf(vsrc_args, sizeof(vsrc_args),
+                "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+                is->video_filter_src.w, is->video_filter_src.h,
+                is->video_filter_src.fmt,
+                is->video_filter_src.time_base.num, is->video_filter_src.time_base.den,
+                is->video_filter_src.sample_aspect_ratio.num, is->video_filter_src.sample_aspect_ratio.den);
+
+ret = avfilter_graph_create_filter(&filt_vsrc,
+                                    avfilter_get_by_name("buffer"), "ffplay_buffer",
+                                    vsrc_args, NULL, is->agraph);
+```
+
+`buffer`是视频输入滤镜，参数包括分辨率，像素格式，时间基准，像素宽高比等.
+
+#### 配置出口视频滤镜
+
+```CPP
+ret = avfilter_graph_create_filter(&filt_vsink,
+                                    avfilter_get_by_name("buffersink"), "ffplay_buffersink",
+                                    NULL, NULL, is->agraph);
+```
+`buffersink`是视频输出滤镜，没有参数.
+
+### 应用滤镜
+
+```CPP
+int process_frame(AVFrame *input_frame, AVFrame *filtered_frame) {
+    int ret;
+
+    /* A. 推入 (Push)：把解码后的原始帧喂给滤镜图 */
+    // 注意：如果是最后一帧，可以传 NULL 来 flush 滤镜
+    ret = av_buffersrc_add_frame(buffersrc_ctx, input_frame);
+    if (ret < 0) {
+        // 错误处理...
+        return ret;
+    }
+
+    /* B. 拉出 (Pull)：从出口拿处理好的帧 */
+    // 为什么要用循环？因为有些滤镜（如 fps, yadif）可能输入1帧，输出2帧
+    while (1) {
+        ret = av_buffersink_get_frame(buffersink_ctx, filtered_frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+            break; // 暂时没数据了，或者结束了
+        if (ret < 0)
+            return ret; // 真正的错误
+
+        /* --- 此时 filtered_frame 里就是处理好的数据了 --- */
+        
+        // 可以在这里做渲染、编码、或 OpenCV 处理
+        // printf("Got frame: %dx%d\n", filtered_frame->width, filtered_frame->height);
+
+        // 用完记得释放，因为下一次循环 buffersink 又会分配新的
+        av_frame_unref(filtered_frame);
+    }
+    return 0;
 }
 ```
