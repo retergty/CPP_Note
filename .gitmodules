@@ -22,3 +22,6 @@
 [submodule "Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm"]
 	path = Theory/Robotics/Kinamatics/LevenVergMarquartAlgorithm
 	url = git@github.com:retergty/LevenvergMarquartdAlgorithm.git
+[submodule "Linux"]
+	path = Linux
+	url = git@github.com:retergty/LinuxNote.git
