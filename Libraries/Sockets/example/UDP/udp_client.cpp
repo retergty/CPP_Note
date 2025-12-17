@@ -4,7 +4,8 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-int main() {
+int main() 
+{
     // 1. 创建 Socket
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 

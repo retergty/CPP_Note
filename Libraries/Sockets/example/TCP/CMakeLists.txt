@@ -5,3 +5,5 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(tcp_server tcp_server.cpp)
 
 add_executable(tcp_client tcp_client.cpp)
+
+add_executable(tcp_server_epoll tcp_server_epoll.cpp)

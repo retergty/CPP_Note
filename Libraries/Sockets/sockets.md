@@ -133,6 +133,81 @@ int close(int sockfd);
 
 * `sockfd`：要关闭的Socket文件描述符。
 
+### 监听多路复用
+
+#### select函数
+
+```C++
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+```
+
+`select`函数用于监听多个Socket的状态变化，实现多路复用。
+
+* `nfds`：监听的文件描述符数量，通常设置为最大文件描述符加一。
+* `readfds`：监听可读事件的文件描述符集合。
+* `writefds`：监听可写事件的文件描述符集合。
+* `exceptfds`：监听异常事件的文件描述符集合。
+* `timeout`：指定等待的时间，`NULL`表示无限等待。
+
+#### epoll函数
+
+#### epoll_create
+
+```C++
+int epoll_create(int size);
+```
+
+创建一个`epoll`实例。
+
+#### epoll_ctl
+
+```C++
+int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
+```
+
+控制`epoll`实例，添加、修改或删除监听的文件描述符。
+
+* `epfd`：`epoll`实例的文件描述符。
+* `op`：操作类型，如`EPOLL_CTL_ADD`（添加）、`EPOLL_CTL_MOD`（修改）、`EPOLL_CTL_DEL`（删除）。
+* `fd`：要操作的文件描述符。
+* `event`：指向`epoll_event`结构的指针，包含事件类型和用户数据。
+
+核心结构体：
+
+```C++
+struct epoll_event {
+    uint32_t     events;      // 监听什么事件？(掩码)
+    epoll_data_t data;        // 附带数据 (通常存 fd 本身)
+};
+```
+
+* `events`常用的值
+    * `EPOLLIN`：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）。
+    * `EPOLLOUT`：表示对应的文件描述符可以写。
+    * `EPOLLERR`：表示对应的文件描述符发生错误。
+    * `EPOLLHUP`：表示对应的文件描述符被挂断。
+* `data`这是一个联合体 (Union)。最常用的是`data.fd = fd`，这样当事件发生时，内核会把这个`fd`原样还返还。
+
+#### epoll_wait
+
+```C++
+int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
+```
+
+阻塞并等待事件的发生。
+
+* `epfd`：`epoll`实例的文件描述符。
+* `events`：指向`epoll_event`结构数组的指针，用于存储发生的事件。内核会把发生的事件复制到这个数组里给你。
+* `maxevents`：`events`数组的大小。
+* `timeout`：等待的时间，单位为毫秒，`-1`表示无限等待。
+
+返回值，成功时返回发生事件的文件描述符数量，失败时返回`-1`。
+
+#### epool的模式
+
+1. 水平触发（Level-Triggered，`LT`）：默认模式，当文件描述符可读或可写时，`epoll_wait`会持续返回该事件，直到事件被处理。
+2. 边缘触发（Edge-Triggered，`ET`）：高效模式，当文件描述符状态发生变化时，`epoll_wait`只返回一次该事件，需要非阻塞读取或写入数据，直到返回`EAGAIN`错误。
+
 ## TCP连接
 
 ### 服务端
@@ -159,7 +234,6 @@ int close(int sockfd);
 2. 服务端收到`SYN`包后，回复一个`SYN-ACK`包，表示同意建立连接。
 3. 客户端收到`SYN-ACK`包后，回复一个`ACK`包，表示连接建立成功。
 
-
 ### 断开连接过程
 
 四次挥手（Four-way Handshake）过程：
@@ -185,3 +259,53 @@ int close(int sockfd);
 2. 使用`sendto`发送数据到服务端。
 3. 使用`recvfrom`接收服务端的数据。
 4. 传输完成后，调用`close`关闭Socket。
+
+## 常见问题
+
+### 粘包
+
+假设发送端发送了两次数据：
+
+```CPP
+// 发送端
+send(fd, "Hello", 5, 0); // 第一次发 5 字节
+send(fd, "World", 5, 0); // 第二次发 5 字节
+```
+
+接受端可能会一次性接收到10字节的数据：
+
+```CPP
+// 接收端
+char buffer[20];
+int n = recv(fd, buffer, sizeof(buffer), 0); // 可能一次性接收到 "HelloWorld"
+``` 
+
+粘包是指在TCP通信中，多个数据包被合并在一起发送，导致接收方无法正确区分每个数据包的边界。
+
+TCP只保证有序的**字节流**，不保证**消息边界**。因此，接收方需要自行处理粘包问题。
+
+常见的解决方法包括：
+
+* 定长消息：每个消息固定长度，接收方按固定长度读取数据。
+* 消息分隔符：在每个消息末尾添加特殊的分隔符，接收方根据分隔符拆分消息。
+* 消息头：在每个消息前添加消息长度信息，接收方先读取长度，再读取对应长度的数据。
+
+### 拆包
+
+假设发送端发送了一个较大的数据包：
+
+```CPP
+// 发送端
+send(fd, large_data, large_data_size, 0); // 发送一个大数据包
+``` 
+
+接受端可能会分多次接收到数据：
+
+```CPP
+// 接收端
+char buffer[20];
+int n1 = recv(fd, buffer, sizeof(buffer), 0); // 第一次接收部分数据
+int n2 = recv(fd, buffer + n1, sizeof(buffer) - n1, 0); // 第二次接收剩余数据
+```
+
+拆包是指在TCP通信中，一个大数据包被分割成多个小数据包发送，导致接收方需要多次读取才能完整接收到一个消息。
