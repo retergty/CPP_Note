@@ -219,6 +219,16 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 ```
 
+* 参数1：目标纹理类型（Target），例如`GL_TEXTURE_2D`表示二维纹理。
+* 参数2：纹理的细节级别（Level），通常设置为0，
+* 参数3：纹理的内部格式（Internal Format），例如`GL_RGBA`表示每个像素包含红、绿、蓝、透明四个分量。
+* 参数4：纹理的宽度（Width），以像素为单位。
+* 参数5：纹理的高度（Height），以像素为单位。
+* 参数6：边框（Border），通常设置为0。
+* 参数7：纹理数据的格式（Format），例如`GL_RGBA`表示数据包含红、绿、蓝、透明四个分量。
+* 参数8：纹理数据的数据类型（Type），例如`GL_UNSIGNED_BYTE`表示每个分量使用无符号字节存储。
+* 参数9：指向纹理数据的指针（Data），如果为`NULL`，则只分配内存但不初始化数据。
+
 ### 使用对象
 
 #### 纹理使用

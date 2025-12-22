@@ -1385,3 +1385,94 @@ BaseType_t xTaskIncrementTick( void )
 ```
 
 `xTaskIncrementTick`函数增加系统节拍计数器，并检查是否有任务需要被唤醒。如果有任务的延迟时间已到，则将其从阻塞状态移到就绪状态。并根据任务优先级或时间片来决定是否需要进行任务切换。
+
+## 临界区
+
+临界区是指一段代码，在这段代码执行期间，必须防止其他任务或中断打断当前任务的执行，以确保数据的一致性和完整性。FreeRTOS通过禁用中断来实现临界区保护。
+
+不受FreeRTOS管理的中断（即优先级高于`configMAX_SYSCALL_INTERRUPT_PRIORITY`的中断）不会受到临界区保护的影响。这些中断可以在任何时候打断FreeRTOS任务的执行。
+
+```CPP
+void vPortEnterCritical( void )
+{
+    portDISABLE_INTERRUPTS();
+    uxCriticalNesting++;
+
+    /* This is not the interrupt safe version of the enter critical function so
+     * assert() if it is being called from an interrupt context.  Only API
+     * functions that end in "FromISR" can be used in an interrupt.  Only assert if
+     * the critical nesting count is 1 to protect against recursive calls if the
+     * assert function also uses a critical section. */
+    if( uxCriticalNesting == 1 )
+    {
+        configASSERT( ( portNVIC_INT_CTRL_REG & portVECTACTIVE_MASK ) == 0 );
+    }
+}
+/*-----------------------------------------------------------*/
+```
+
+进入临界区，禁用中断并增加临界区嵌套计数器。
+
+```CPP
+void vPortExitCritical( void )
+{
+    configASSERT( uxCriticalNesting );
+    uxCriticalNesting--;
+
+    if( uxCriticalNesting == 0 )
+    {
+        portENABLE_INTERRUPTS();
+    }
+}
+/*-----------------------------------------------------------*/
+```
+
+退出临界区，减少临界区嵌套计数器。如果计数器为零，则重新启用中断。不能在中断中使用，
+
+中断安全版本的临界区保护通过`taskENTER_CRITICAL_FROM_ISR()`和`taskEXIT_CRITICAL_FROM_ISR()`宏实现。
+
+```CPP
+uxSavedInterruptStatus=taskENTER_CRITICAL_FROM_ISR();
+taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
+```
+
+停止中断通过`portDISABLE_INTERRUPTS()`和`portENABLE_INTERRUPTS()`宏实现，这些宏通常通过设置和清除处理器的中断屏蔽寄存器来实现。
+
+```CPP
+#define portDISABLE_INTERRUPTS()                  vPortRaiseBASEPRI()
+portFORCE_INLINE static void vPortRaiseBASEPRI( void )
+{
+    uint32_t ulNewBASEPRI;
+
+    __asm volatile
+    (
+        "   mov %0, %1                                              \n" \
+        "   cpsid i                                                 \n" \
+        "   msr basepri, %0                                         \n" \
+        "   isb                                                     \n" \
+        "   dsb                                                     \n" \
+        "   cpsie i                                                 \n" \
+        : "=r" ( ulNewBASEPRI ) : "i" ( configMAX_SYSCALL_INTERRUPT_PRIORITY ) : "memory"
+    );
+}
+```
+
+```CPP
+#define portENABLE_INTERRUPTS()                   vPortSetBASEPRI( 0 )
+portFORCE_INLINE static void vPortSetBASEPRI( uint32_t ulNewMaskValue )
+{
+    __asm volatile
+    (
+        "   msr basepri, %0 " ::"r" ( ulNewMaskValue ) : "memory"
+    );
+}
+/*-----------------------------------------------------------*/
+```
+
+设置BASEPRI寄存器以屏蔽低于指定优先级的中断，从而实现临界区保护。
+
+`BASEPRI`寄存器用于设置中断优先级屏蔽阈值。通过设置`BASEPRI`寄存器的值，可以屏蔽所有优先级低于该值的中断，从而实现临界区保护。
+
+注意在STM32等Cortex-M系列处理器中，数值越低的优先级越高。例如，优先级0是最高优先级，而优先级31是最低优先级（假设只有4位有效）。因此，当设置`BASEPRI`寄存器时，较高的数值表示较低的中断优先级被屏蔽。
+
+此时，中断优先级高于`configMAX_SYSCALL_INTERRUPT_PRIORITY`的中断仍然可以打断当前任务的执行，从而确保系统的实时响应性。中断优先级低于或等于`configMAX_SYSCALL_INTERRUPT_PRIORITY`的中断会被挂起，（不是忽略），直到临界区结束，`BASEPRI`寄存器被清零，允许CPU响应这些中断。
