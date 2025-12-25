@@ -48,3 +48,21 @@
 
 heap_5 允许你把这些分散的物理内存“缝合”在一起，伪装成一个巨大的堆给`FreeRTOS`使用。
 
+你需要定义一个`HeapRegion_t`数组，描述每个内存区域的起始地址和大小，然后调用`vPortDefineHeapRegions()`函数来注册这些区域。
+
+```CPP
+static HeapRegion_t xHeapRegions[] =
+{
+    { ( uint8_t * ) 0x18020000, 0x00010000 }, // 64KB
+    { ( uint8_t * ) 0x2007C000, 0x00004000 }, // 16KB
+    { ( uint8_t * ) 0x20080000, 0x00008000 }, // 32KB
+    { NULL, 0 } // 终止标志
+};
+void main( void )
+{
+    // 注册堆区域
+    vPortDefineHeapRegions( xHeapRegions );
+
+    // 其他初始化代码...
+}
+```

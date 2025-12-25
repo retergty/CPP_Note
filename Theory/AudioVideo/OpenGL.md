@@ -289,9 +289,10 @@ glUniform1i(glGetUniformLocation(programId, "textureV"), 2);
 ```CPP
 // 设置顶点属性指针
 glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (GLvoid*)offset);
-``` 
+```
 
 * 参数1：属性index（Location），对应着色器中的`layout(location = 0) in vec3 position;`
+
     ```OpenGL Shading Language
     // layout(location = 0) 就是指 index = 0
     layout(location = 0) in vec3 aPos; 
@@ -368,7 +369,7 @@ glDrawArrays(GL_TRIANGLES, 0, vertexCount);
 
 如果是`GL_TRIANGLE_STRIP`模式，顶点顺序如下：
 
-```
+```text
 顶点0
 顶点1 顶点2
 顶点3 顶点4
@@ -423,5 +424,3 @@ void main(void) {
 `texture2D`函数用于从纹理中采样颜色值使用插值算法
 
 `sampler2D`类型用于表示2D纹理采样器.（x-y平面）
-
-
