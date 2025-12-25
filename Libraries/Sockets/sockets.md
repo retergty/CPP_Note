@@ -149,9 +149,39 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
 * `exceptfds`：监听异常事件的文件描述符集合。
 * `timeout`：指定等待的时间，`NULL`表示无限等待。
 
+#### pool函数
+
+```C++
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+```
+
+`poll`函数用于监听多个Socket的状态变化，实现多路复用。
+
+* `fds`：指向`pollfd`结构数组的指针，包含要监听的文件描述符和事件类型。
+* `nfds`：监听的文件描述符数量。
+* `timeout`：指定等待的时间，单位为毫秒，`-1`表示无限等待。
+
+`struct pollfd`结构体：
+
+```C++
+struct pollfd {
+    int   fd;         // 要监听的文件描述符
+    short events;     // 要监听的事件类型 (掩码)
+    short revents;    // 实际发生的事件类型 (由内核填写)
+};
+```
+
+#### poll工作流
+
+1. 拷贝：用户将一个包含所有关注 FD 的数组 (struct pollfd *) 拷贝到内核空间。
+2. 挂起：内核遍历这个数组，如果当前没有 FD 就绪，进程进入睡眠。
+3. 唤醒：当有设备数据到来（如网卡收包），驱动程序唤醒进程。
+4. 再次遍历：内核再次遍历整个数组，标记哪些 FD 有数据（revents 字段），然后把整个数组拷贝回用户态。
+5. 用户检查：用户拿到数组，还是不知道具体谁有数据，必须再遍历一次数组检查 revents。
+
 #### epoll函数
 
-#### epoll_create
+##### epoll_create
 
 ```C++
 int epoll_create(int size);
@@ -188,7 +218,7 @@ struct epoll_event {
     * `EPOLLHUP`：表示对应的文件描述符被挂断。
 * `data`这是一个联合体 (Union)。最常用的是`data.fd = fd`，这样当事件发生时，内核会把这个`fd`原样还返还。
 
-#### epoll_wait
+##### epoll_wait
 
 ```C++
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
@@ -203,10 +233,25 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 
 返回值，成功时返回发生事件的文件描述符数量，失败时返回`-1`。
 
-#### epool的模式
+##### epoll的模式
 
 1. 水平触发（Level-Triggered，`LT`）：默认模式，当文件描述符可读或可写时，`epoll_wait`会持续返回该事件，直到事件被处理。
 2. 边缘触发（Edge-Triggered，`ET`）：高效模式，当文件描述符状态发生变化时，`epoll_wait`只返回一次该事件，需要非阻塞读取或写入数据，直到返回`EAGAIN`错误。
+
+### epoll工作流
+
+1. `epoll_create`： 在内核开辟一块空间，创建一个红黑树（用于存所有监控的`FD`）和一个双向链表（用于存就绪的`FD`）。
+2. `epoll_ctl (Add/Mod/Del)`：当你想要监控某个`FD`时，内核把它插入红黑树中。同时，内核会向该`FD`对应的设备驱动注册一个回调函数 (`Callback`)。
+    * 关键点：这个回调函数是性能的核心。当网卡收到数据，驱动会调用这个回调，把该`FD`直接扔到就绪链表里。
+3. `epoll_wait`： 进程只需要检查就绪链表是否为空。
+    * 如果不空，直接把链表里的`FD`拷贝给用户。
+    * 用户拿到的全是“有数据”的`FD`，不需要挨个找。
+
+#### epoll和select/poll的区别
+
+1. 性能：`epoll`在处理大量文件描述符时性能更好，`select`和`poll`在文件描述符数量增加时性能下降。
+2. 可扩展性：`epoll`没有文件描述符数量的限制，而`select`有最大文件描述符数量的限制（通常为1024）。
+3. 事件通知方式：`epoll`支持边缘触发模式，而`select`和`poll`仅支持水平触发模式。
 
 ## TCP连接
 

@@ -1,6 +1,6 @@
 # QT
 
-## 信号量与槽
+## 信号与槽
 
 QT的信号与槽机制是一种类型安全的回调机制，用于对象之间的通信。
 
@@ -48,6 +48,71 @@ public slots:
 * 参数类型可转换：信号和槽的参数类型不同，但可以通过隐式转换进行转换。
 
 否则，连接会失败，程序在运行时会输出警告信息。
+
+### 底层实现
+
+QT的信号与槽并非C++标准特性，而是通过QT的元对象系统（Meta-Object System）实现的。QT使用`moc`（Meta-Object Compiler）工具在编译时生成额外的代码，以支持信号与槽机制。
+
+本质是,代码生成器(MOC) + 索引查找表 + 回调函数(Callback)
+
+它比传统的回调函数更灵活、更强大，支持类型安全、参数传递和跨线程通信等功能。
+
+#### MOC
+
+在编译代码前，QT的`moc`工具会扫描源代码，查找包含`Q_OBJECT`宏的类，并为这些类生成额外的代码。这些代码包括信号和槽的实现、元对象信息等。
+
+```CPP
+// MyClass.h
+class MyClass : public QObject {
+    Q_OBJECT
+signals:
+    void dataReady(int value); // 信号只是声明，没有实现
+public slots:
+    void processData(int value) { ... }
+};
+```
+
+`MOC`扫描后，会在生成一个名为`moc_MyClass.cpp`的文件，自动实现`dataReady`函数，并生成一张巨大的元数据表 (Meta Data Table)。
+
+在`moc_xxx.cpp`里，`MOC`生成了一组数组，存储了该类所有信号和槽的名字、参数类型、以及它们的索引`ID`
+
+index | type | name          | parameters
+------|------|---------------|----------------
+0     | signal| dataReady     | int
+1     | slot  | processData   | int
+
+在`connect`时，QT会根据信号和槽的名字，在这张表里查找对应的索引`ID`，然后把它们关联起来。
+
+```CPP
+connect(sender, &Sender::dataReady, receiver, &Receiver::processData);
+```
+
+1. 校验： 编译器检查`dataReady`和 `processData` 的参数是否匹配
+2. 注册： Qt 在`sender`对象内部的一个链表（ConnectionList）中记录信息
+
+在`emit`时，调用了实际上就是调用MOC生成的函数
+
+```CPP
+// moc_MyClass.cpp 中自动生成的
+void MyClass::dataReady(int value)
+{
+    // 1. 打包参数
+    // 将参数转换为通用指针数组，以便统一处理
+    void *_a[] = { 
+        nullptr, 
+        const_cast<void*>(reinterpret_cast<const void*>(&value)) 
+    };
+    
+    // 2. 调用父类的 activate 函数
+    // QMetaObject::activate(发送者, 信号的索引ID, 参数包);
+    QMetaObject::activate(this, &staticMetaObject, 0, _a);
+}
+```
+
+接下来，`QMetaObject::activate`函数会根据索引ID，在发送者对象的连接链表中查找所有连接的槽，并判断
+
+* 如果是直接连接（Direct Connection），则直接调用槽函数。
+* 如果是队列连接（Queued Connection），则将槽函数调用打包成一个事件，放入接收者线程的事件队列中。
 
 ### 使用示例
 

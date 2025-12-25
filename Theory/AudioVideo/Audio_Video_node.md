@@ -136,3 +136,37 @@ NAL单元 = `Start Code` + `NALU Header` + `Payload Data`
 * 遇到 `00 00 01` -> 修改为 `00 00 03 01`
 * 遇到 `00 00 02` -> 修改为 `00 00 03 02`
 * 遇到 `00 00 03` -> 修改为 `00 00 03 03`
+
+## AAC
+
+AAC（Advanced Audio Coding，高级音频编码）是一种有损音频压缩格式，旨在提供比MP3更高的音质和更好的压缩效率。AAC广泛应用于各种数字音频应用中，如流媒体、广播和存储。
+
+### 压缩原理
+
+AAC的压缩利用了心理声学模型(Psychoacoustics).
+
+1. 频域掩蔽 (Frequency Masking)，如果在一个频率（比如 1000Hz）上有一个很大的声音，人耳就听不见在这个频率附近（如 1050Hz）的小声音。
+2. 时间掩蔽 (Temporal Masking)，一个很响的声音会掩盖它前后很短时间内的较小声音。
+
+### Profiles
+
+* `AAC-LC` (Low Complexity) —— 最常用的AAC配置文件，适用于大多数应用场景。
+* `HE-AAC` (High Efficiency AAC) —— 适用于低比特率应用，如流媒体和广播。
+* `HE-AAC v2`——在`HE-AAC`的基础上增加了参数立体声编码，进一步提高低比特率下的音质。
+
+### ADTS
+
+ADTS是AAC音频流的一种封装格式，全称为`Audio Data Transport Stream`。ADTS封装了AAC编码的音频数据，使其能够在流媒体传输中被正确解析和播放。
+
+每个ADTS帧由两个部分组成：ADTS头部和AAC音频数据。
+
+`[ADTS Header] + [AAC Data] | [ADTS Header] + [AAC Data] ...`
+
+ADTS头部包含以下关键信息：
+
+* 同步字(Sync Word)：12位，固定为0xFFF，用于标识ADTS帧的开始。
+* MPEG版本(MPEG Version)：1位，表示MPEG-4或MPEG-2。
+* Profile(Profile)：2位，表示AAC的配置文件类型，如AAC-LC、HE-AAC等。
+* 采样率索引(Sampling Frequency Index)：4位，表示音频的采样率。
+* 声道配置(Channel Configuration)：3位，表示音频的声道数。
+* 帧长度(Frame Length)：13位，表示整个ADTS帧的长度，包括头部和音频数据。
