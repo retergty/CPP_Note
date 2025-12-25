@@ -13,7 +13,7 @@ QT的信号与槽机制是一种类型安全的回调机制，用于对象之间
 QT的信号与槽机制是线程安全的。可以在不同线程中发出信号和连接槽，QT会自动处理线程间的通信。
 
 * 直接连接（Direct Connection）：槽在发出信号的线程中执行，发送者和接受者在同一个线程中。此时`emit`信号后，槽函数立即执行。
-* 队列连接（Queued Connection）：槽在接收信号的线程中执行，发送者和接受者在不同的线程中。此时`emit`信号后，槽函数不会立即执行，而是被放入接收线程的事件队列中，等待该线程的事件循环处理。
+* 队列连接（Queued Connection）：槽在接收信号的线程中执行，发送者和接受者在不同的线程中。此时`emit`信号后，槽函数不会立即执行，而是被放入接收线程的事件队列`event loop`中，等待该线程的事件循环处理`exec()`。
 
 ### 声明与实现
 
@@ -114,3 +114,25 @@ connect(btnStop, &QPushButton::clicked, progressBar, &QProgressBar::reset);
 * 跨线程生存能力：通过调用 moveToThread(targetThread)，你可以改变这个对象所在的线程
 * 反射能力: 通过`QObject`的元对象系统，可以在运行时查询类的信息，如类名、属性、信号和槽等。
 * 事件处理能力: `QObject`可以接收和处理事件，如鼠标点击、键盘输入等。
+
+## 事件循环Event Loop
+
+当调用`QCoreApplication::exec()`时，QT会启动一个事件循环（Event Loop）。事件循环会不断地检查事件队列，并分发事件给相应的对象进行处理。
+
+每个QT线程都有自己的事件循环。主线程默认会启动事件循环，而其他线程需要手动调用`exec()`来启动事件循环。
+
+事件循环的主要作用包括：
+
+1. 系统事件（System Events）：
+   * GUI 操作： 鼠标移动、点击、键盘输入、窗口重绘（Paint Event）。
+   * 定时器： QTimer 到期了，Event Loop 负责调用连接的槽函数。
+   * 网络/IO： Socket 收到数据了（ReadyRead），通知对应对象。
+2. 信号与槽（跨线程通信）：
+   * 如果从`Thread B`发送一个信号给`Thread A`中的对象（Queued Connection），这个信号会被打包成一个“事件”放入 `Thread A` 的事件队列中。
+   * `Thread A`的`Event Loop`转到这一圈时，取出事件，执行对应的槽函数。
+3. 自定义事件（Custom Events）：
+   * 可以通过`QCoreApplication::postEvent()`向对象发送自定义事件，这些事件也会被放入事件队列中，由事件循环处理。
+4. 延迟删除（Deferred Deletion）：
+   * 当你调用`obj->deleteLater()`时，对象不会马上销毁，而是向`Event Loop`投递一个删除事件。等当前所有逻辑跑完，回到`Loop`中时再安全删除。
+
+每个QT对象都与一个线程关联，通常是创建它的线程。这个线程负责运行该对象的事件循环，从而处理该对象的事件和信号槽调用。

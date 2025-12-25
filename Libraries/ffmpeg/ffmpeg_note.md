@@ -24,9 +24,9 @@ FFmpeg分为几个层级：
 ```
 
 * Tag Header:包含
-    * 类型：是视频(0x09) 还是 音频(0x08)
-    * Data Size： Data段大小
-    * Timestamp：时间戳
+  * 类型：是视频(0x09) 还是 音频(0x08)
+  * Data Size： Data段大小
+  * Timestamp：时间戳
 
 #### mp4结构
 
@@ -62,22 +62,22 @@ FFmpeg分为几个层级：
 #### 常见成员变量
 
 * `const AVInputFormat *iformat`
-    * 比如打开开的是`MP4`，这里就指向`mov,mp4,m4a...`的解封装器
+  * 比如打开开的是`MP4`，这里就指向`mov,mp4,m4a...`的解封装器
 * `const AVOutputFormat *oformat`
-    * 如果想存FLV，就会指向FLV的封装器
+  * 如果想存FLV，就会指向FLV的封装器
 * `AVIOContext *pb`,底层的 I/O 上下文。它负责真正的读写操作（文件 fread, 网络 socket recv）
 
 * `unsigned int nb_streams`,表示有多少条流
 * `AVStream **streams`,指针数组，成员便是一个流对象.
-    * 比如访问视频流参数`ctx->streams[video_index]->codecpar`
+  * 比如访问视频流参数`ctx->streams[video_index]->codecpar`
 
 * `int64_t duration`文件总时长，单位是`AV_TIME_BASE`,微秒
 * `int64_t bit_rate`总码率(bps)
 * `AVDictionary *metadata`键值对信息
-    * 比如`title="Avengers"`,`artist="Marvel"`,`rotate="90"`
+  * 比如`title="Avengers"`,`artist="Marvel"`,`rotate="90"`
 
 * `AVIOInterruptCB interrupt_callback`中断回调函数，用于网络超时等情况.这个回调函数会在底层`I/O`操作时被周期性调用，如果返回非0值，则中断当前操作.
-    
+
     ```CPP
     typedef struct AVIOInterruptCB {
         int (*callback)(void*); // 回调函数指针
@@ -460,9 +460,9 @@ int avcodec_send_packet(AVCodecContext *codec_ctx, const AVPacket *pkt);
 
 * `0`成功，Packet 已经送入解码器队列
 * `AVERROR(EAGAIN)`解码器内部的输入缓冲区已经满了，或者内部积压了太多的`Frame`等待输出。此时解码器拒绝接收新的 Packet。
-    * 解决方法：调用`avcodec_receive_frame`获取更多的`Frame`，直到返回非`EAGAIN`为止，然后再继续调用`avcodec_send_packet`送入新的 Packet。
+  * 解决方法：调用`avcodec_receive_frame`获取更多的`Frame`，直到返回非`EAGAIN`为止，然后再继续调用`avcodec_send_packet`送入新的 Packet。
 * `AVERROR_EOF`解码器已经被刷新，不能再送入新的 Packet。此时解码器进入了Drain状态。任何非空的 Packet 都会被拒绝。
-    * 解决方法：不要再调用`avcodec_send_packet`，直接调用`avcodec_receive_frame`获取剩余的`Frame`，直到返回`AVERROR_EOF`为止。然后重新初始化解码器。
+  * 解决方法：不要再调用`avcodec_send_packet`，直接调用`avcodec_receive_frame`获取剩余的`Frame`，直到返回`AVERROR_EOF`为止。然后重新初始化解码器。
 * `AVERROR(EINVAL)`解码器没有被正确打开，或者参数无效.
 * `AVERROR(ENOMEM)`内存不足，无法分配`AVFrame`的缓冲区.
 
@@ -483,9 +483,9 @@ int avcodec_receive_frame(AVCodecContext *codec_ctx, AVFrame *frame);
 
 * `0`成功，`frame`里有数据
 * `AVERROR(EAGAIN)`解码器内部没有足够的数据来输出一个完整的`Frame`。通常是因为还没有送入足够的`Packet`。
-    * 解决方法：调用`avcodec_send_packet`送入更多的`Packet`，然后再调用`avcodec_receive_frame`尝试获取`Frame`。
+  * 解决方法：调用`avcodec_send_packet`送入更多的`Packet`，然后再调用`avcodec_receive_frame`尝试获取`Frame`。
 * `AVERROR_EOF`解码器已经被刷新，所有的`Frame`都已经输出完毕，没有更多的`Frame`可以获取。
-    * 解决方法：不要再调用`avcodec_receive_frame`，解码过程已经结束。如果需要重新解码新的数据，需要重新初始化解码器。
+  * 解决方法：不要再调用`avcodec_receive_frame`，解码过程已经结束。如果需要重新解码新的数据，需要重新初始化解码器。
 
 ### av_frame_unref，av_packet_unref
 
@@ -511,7 +511,7 @@ void av_frame_free(AVFrame **frame);
 
 ```CPP
 int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
-``` 
+```
 
 在媒体文件中进行定位跳转（Seek）操作.
 
@@ -556,6 +556,7 @@ int avfilter_graph_create_filter(AVFilterContext **filter_ctx, const AVFilter *f
 在滤镜图中创建一个滤镜实例（`AVFilterContext`）并将其添加到滤镜图（`AVFilterGraph`）中.
 
 参数
+
 * `AVFilterContext **filter_ctx`,输出参数，返回创建的滤镜上下文
 * `const AVFilter *filter`,要创建的滤镜定义对象
 * `const char *name`,滤镜实例的名称
@@ -804,6 +805,7 @@ ret = avfilter_graph_create_filter(&filt_vsink,
                                     avfilter_get_by_name("buffersink"), "ffplay_buffersink",
                                     NULL, NULL, is->agraph);
 ```
+
 `buffersink`是视频输出滤镜，没有参数.
 
 ### 应用滤镜
