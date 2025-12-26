@@ -212,10 +212,10 @@ struct epoll_event {
 ```
 
 * `events`常用的值
-    * `EPOLLIN`：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）。
-    * `EPOLLOUT`：表示对应的文件描述符可以写。
-    * `EPOLLERR`：表示对应的文件描述符发生错误。
-    * `EPOLLHUP`：表示对应的文件描述符被挂断。
+  * `EPOLLIN`：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）。
+  * `EPOLLOUT`：表示对应的文件描述符可以写。
+  * `EPOLLERR`：表示对应的文件描述符发生错误。
+  * `EPOLLHUP`：表示对应的文件描述符被挂断。
 * `data`这是一个联合体 (Union)。最常用的是`data.fd = fd`，这样当事件发生时，内核会把这个`fd`原样还返还。
 
 ##### epoll_wait
@@ -342,7 +342,7 @@ TCP只保证有序的**字节流**，不保证**消息边界**。因此，接收
 ```CPP
 // 发送端
 send(fd, large_data, large_data_size, 0); // 发送一个大数据包
-``` 
+```
 
 接受端可能会分多次接收到数据：
 
