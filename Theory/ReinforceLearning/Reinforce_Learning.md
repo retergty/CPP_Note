@@ -641,7 +641,7 @@ $$
 
 $$
 \nabla_\theta J(\pi_\theta) = {\mathbb{E}}_{\tau \sim \pi_{\theta old}}[\sum_{t=0}^{\infty}exp(\log \pi_\theta(a_t \mid s_t) - \log \pi_{\theta old}(a_t \mid s_t))f_t \nabla_\theta\log \pi_\theta(a_t \mid s_t)]
-$$ 
+$$
 
 #### Proximal Policy Optimization PPO
 
