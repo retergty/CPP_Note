@@ -323,7 +323,7 @@ send(fd, "World", 5, 0); // 第二次发 5 字节
 // 接收端
 char buffer[20];
 int n = recv(fd, buffer, sizeof(buffer), 0); // 可能一次性接收到 "HelloWorld"
-``` 
+```
 
 粘包是指在TCP通信中，多个数据包被合并在一起发送，导致接收方无法正确区分每个数据包的边界。
 
