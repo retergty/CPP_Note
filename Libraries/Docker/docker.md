@@ -39,7 +39,10 @@ docker build \
 ### DockerFile中使用国内源
 
 ```Dockerfile
-# 使用阿里云的Ubuntu源
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.aliyun.com/ubuntu/|g' /etc/apt/sources.list && \
-    apt-get update
+# 换 Ubuntu 系统源 (阿里源)
+# ============================
+RUN sed -i 's@http://.*archive.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list && \
+    sed -i 's@http://.*security.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list
 ```
+
+注意，不会影响宿主机，任何操作均是隔离的。
