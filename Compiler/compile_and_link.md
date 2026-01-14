@@ -294,7 +294,7 @@ PLT/GOT表都是在用户空间中维护的，每个进程每个动态库都有�
 
 任何ELF文件，只要它想调用自己以外的代码，它就需要PLT/GOT表。
 
-#### 内存布局示意图：
+#### 内存布局示意图
 
 ##### 可执行文件
 
@@ -366,3 +366,184 @@ public:
 2. 用户的插件没重新编译： 它的 vtable 里，read_data 依然在 第 2 项。
 
 当主程序调用`sensor->read_data()`（查第 3 项）时，它可能会读到内存里的垃圾数据，或者跳到了错误的代码地址。
+
+### Pimpl (Pointer to Implementation) 模式
+
+使用`Pimpl`模式可以隐藏类的实现细节，减少ABI变化对用户代码的影响。
+
+将代码分为三个部分
+
+1. `Robot.h`：类的声明，包含一个指向实现类的指针。
+2. `Robot.cpp`：类的实现，定义实现类的具体内容。
+3. `main.cpp`：使用类的代码。
+
+#### Robot.h
+
+```CPP
+#pragma once
+#include <memory>
+
+class Robot {
+public:
+    Robot();
+    ~Robot(); // 【关键】析构函数必须在 .cpp 里实现
+
+    // 公开的接口方法
+    void move(double x, double y);
+    void stop();
+    double get_battery_life() const;
+
+    // 禁止拷贝 (因为 unique_ptr 不能拷贝，除非你手动实现深拷贝)
+    Robot(const Robot&) = delete;
+    Robot& operator=(const Robot&) = delete;
+
+private:
+    // 前向声明 (Forward Declaration)
+    class RobotImpl; 
+    
+    // 指向实现的指针
+    // 使用 unique_ptr 自动管理内存，防止内存泄漏
+    std::unique_ptr<RobotImpl> pImpl;
+};
+```
+
+析构函数必须在`.cpp`文件中定义，因为此时`RobotImpl`才是完整类型，`unique_ptr`才能正确调用它的析构函数。
+
+#### Robot.cpp
+
+```CPP
+#include "Robot.h"
+#include <iostream>
+#include <string>
+
+// 这个类的具体结构只有 Robot.cpp 知道，外界完全不可见
+class Robot::RobotImpl {
+public:
+    // 这里可以随意添加、删除成员变量，完全不影响 Robot.h 的二进制兼容性
+    double current_x = 0.0;
+    double current_y = 0.0;
+    double battery_level = 100.0;
+    std::string hardware_id = "REV-1"; // 甚至可以用 std::string 这种复杂对象
+
+    void internal_hardware_check() {
+        std::cout << "Checking hardware: " << hardware_id << "...\n";
+    }
+};
+
+// --- 下面是 Robot 类的实现 ---
+
+// 构造函数：初始化 pImpl
+Robot::Robot() : pImpl(std::make_unique<RobotImpl>()) {
+    std::cout << "[Robot] Constructed.\n";
+}
+
+// 【关键点】析构函数
+// 必须在这里定义。因为此时 RobotImpl 才是完整类型，unique_ptr 才能正确调用它的析构。
+Robot::~Robot() = default;
+
+void Robot::move(double x, double y) {
+    // 通过指针调用具体的实现
+    pImpl->current_x += x;
+    pImpl->current_y += y;
+    pImpl->battery_level -= 1.5;
+    
+    std::cout << "Moving to (" << pImpl->current_x << ", " << pImpl->current_y << ")\n";
+    pImpl->internal_hardware_check();
+}
+
+void Robot::stop() {
+    std::cout << "Robot Stopped.\n";
+}
+
+double Robot::get_battery_life() const {
+    return pImpl->battery_level;
+}
+```
+
+#### main.cpp
+
+```CPP
+#include "Robot.h"
+#include <iostream>
+
+int main() {
+    Robot my_robot;
+    
+    my_robot.move(10.5, 20.0);
+    std::cout << "Battery: " << my_robot.get_battery_life() << "%\n";
+    
+    return 0;
+}
+```
+
+#### 总结
+
+通过使用`Pimpl`模式，我们实现了以下目标：
+
+1. **隐藏实现细节**：用户无法看到`RobotImpl`的定义，减少了对实现细节的依赖。
+2. **减少ABI变化影响**：添加或修改`RobotImpl`的成员变量不会影响`Robot`类的二进制接口，用户代码无需重新编译。
+3. **简化头文件**：头文件中只包含必要的声明，减少了编译依赖，加快编译速度。
+
+#### 性能开销
+
+使用`Pimpl`模式会引入一些性能开销，主要体现在以下几个方面：
+
+1. **间接访问开销**：每次访问实现类的成员变量或方法时，都需要通过指针进行间接访问，这比直接访问成员变量稍慢。
+2. **内存分配开销**：`Pimpl`模式通常使用动态内存分配（如`new`），这会带来一定的内存分配和释放开销。
+3. **缓存局部性降低**：由于实现类的成员变量分散在堆内存中，可能会导致缓存局部性降低，影响性能。
+
+尽管存在这些开销，但在大多数应用场景中，这些性能影响是可以接受的，尤其是当需要频繁修改类的实现时，`Pimpl`模式带来的灵活性和二进制兼容性优势往往超过了性能损失。
+
+#### const传递性
+
+`const`传递性是指当一个对象被声明为`const`时，其成员函数也应该被声明为`const`，以保证在调用这些成员函数时不会修改对象的状态。
+
+```CPP
+// Robot.cpp
+double Robot::get_battery_life() const {
+    // 这里的 this 是 const Robot*
+    // 所以 pImpl 变成了 const std::unique_ptr<RobotImpl>
+    
+    // 【关键点】：
+    // const unique_ptr<T> 等价于 T* const （指针本身是常量，不可改变指向）
+    // 它并不等价于 const T* （指针指向的内容是常量）
+    
+    pImpl->battery_level = 0.0; // 竟然编译通过了！而且修改了数据！
+    
+    return pImpl->battery_level;
+}
+```
+
+解决方法是
+
+```CPP
+class Robot {
+    // ...
+private:
+    class RobotImpl;
+    std::unique_ptr<RobotImpl> pImpl;
+
+    // 【核心技巧】定义两个私有访问器
+    RobotImpl* impl() { return pImpl.get(); }
+    const RobotImpl* impl() const { return pImpl.get(); }
+};
+```
+
+定义两个私有访问器函数`impl()`，一个用于非`const`对象，另一个用于`const`对象。这样，在`const`成员函数中调用`impl()`时，会返回一个指向`const RobotImpl`的指针，从而防止修改实现类的成员变量。
+
+或者是C++17引入的
+
+```CPP
+#include <memory>
+#include <experimental/propagate_const> // 需要包含这个头文件
+
+class Robot {
+    // ...
+private:
+    class RobotImpl;
+    // 用 propagate_const 包裹你的智能指针
+    std::experimental::propagate_const<std::unique_ptr<RobotImpl>> pImpl;
+};
+```
+
+使用`std::experimental::propagate_const`可以自动处理`const`传递性问题。当`Robot`对象是`const`时，`pImpl`会被视为指向`const RobotImpl`的指针，防止修改实现类的成员变量。
