@@ -170,3 +170,63 @@ ADTS头部包含以下关键信息：
 * 采样率索引(Sampling Frequency Index)：4位，表示音频的采样率。
 * 声道配置(Channel Configuration)：3位，表示音频的声道数。
 * 帧长度(Frame Length)：13位，表示整个ADTS帧的长度，包括头部和音频数据。
+
+## WAV格式
+
+`WAV`（Waveform Audio File Format）是一种用于存储音频数据的文件格式，存储的是原始的PCM数据+文件头。WAV文件由多个块（Chunk）组成，每个块包含特定类型的信息。
+
+### WAV Chunk
+
+WAV文件由三个核心块组成:
+
+1. RIFF Header Chunk文件头
+    * Chunk ID: 固定为字符串"RIFF" (4 bytes)
+    * Chunk Size: 文件大小减去8字节 (4 bytes)
+    * Format: 固定为字符串"WAVE" (4 bytes)
+2. fmt Chunk格式块
+    * Chunk ID: 固定为字符串"fmt " (4 bytes)注意有空格.
+    * Chunk Size: 格式块的大小，通常为16或18或40 (4 bytes)
+    * Audio Format: 音频格式代码，1表示PCM无压缩 (2 bytes)
+    * Num Channels: 声道数，1表示单声道，2表示立体声 (2 bytes)
+    * Sample Rate: 采样率，如44100Hz (4 bytes)
+    * Byte Rate: 每秒数据字节数 = SampleRate \* NumChannels \* BitsPerSample/8 (4 bytes)
+    * Block Align: 每个采样块的字节数 = NumChannels * BitsPerSample/8 (2 bytes)
+    * Bits Per Sample: 每个样本的位数，如16位 (2 bytes)
+3. data Chunk数据块
+    * Chunk ID: 固定为字符串"data" (4 bytes)
+    * Chunk Size: 音频数据的大小字节数 (4 bytes)
+    * Audio Data: 实际的音频样本数据 (variable size)
+
+由于WAV格式限制，只能存储小于4GB的音频数据。如果需要存储更大的音频文件，可以使用`RF64`格式，它是WAV格式的扩展，支持超过4GB的文件大小。
+
+### WAV文件头C++结构体
+
+```CPP
+#include <cstdint>
+
+// 强制 1 字节对齐，防止编译器自动填充导致读取错位
+#pragma pack(push, 1)
+
+struct WAVHeader {
+    // --- RIFF Chunk ---
+    char     riff_tag[4];        // "RIFF"
+    uint32_t riff_length;        // 文件大小 - 8
+    char     wave_tag[4];        // "WAVE"
+
+    // --- fmt Chunk ---
+    char     fmt_tag[4];         // "fmt "
+    uint32_t fmt_length;         // 通常是 16
+    uint16_t audio_format;       // 1 = PCM
+    uint16_t num_channels;       // 通道数
+    uint32_t sample_rate;        // 采样率
+    uint32_t byte_rate;          // 每秒字节数
+    uint16_t block_align;        // 每次采样的大小 (Channels * Bits/8)
+    uint16_t bits_per_sample;    // 位深 (8, 16, 32)
+
+    // --- data Chunk ---
+    char     data_tag[4];        // "data"
+    uint32_t data_length;        // 音频数据总字节数
+};
+
+#pragma pack(pop)
+```
