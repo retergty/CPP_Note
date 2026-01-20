@@ -15,7 +15,7 @@
 int socket(int domain, int type, int protocol);
 ```
 
-* `domain`：指定协议族，如`AF_INET`（IPv4）、`AF_INET6`（IPv6）等。
+* `domain`：指定协议族，如`AF_INET`（IPv4）、`AF_INET6`（IPv6）等,`AF_UNIX`（本地通信）。
 * `type`：指定Socket类型，如`SOCK_STREAM`（流式套接字）、`SOCK_DGRAM`（数据报套接字）等。
 * `protocol`：通常设置为`0`，让系统自动选择合适的协议。
 
@@ -253,6 +253,12 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 2. 可扩展性：`epoll`没有文件描述符数量的限制，而`select`有最大文件描述符数量的限制（通常为1024）。
 3. 事件通知方式：`epoll`支持边缘触发模式，而`select`和`poll`仅支持水平触发模式。
 
+### AF_UNIX本地通信
+
+`AF_UNIX`（也称为`AF_LOCAL`）是一种用于同一台主机上进程间高速通信的Socket类型。它使用文件系统中的路径作为地址标识符，而不是IP地址和端口号。
+
+`AF_UNIX`由内核直接处理，不经过网络协议栈，因此通信速度更快，延迟更低，适用于同一台机器上的进程间通信。
+
 ## TCP连接
 
 ### 服务端
@@ -354,3 +360,22 @@ int n2 = recv(fd, buffer + n1, sizeof(buffer) - n1, 0); // 第二次接收剩余
 ```
 
 拆包是指在TCP通信中，一个大数据包被分割成多个小数据包发送，导致接收方需要多次读取才能完整接收到一个消息。
+
+### 截断
+
+假设发送端发送了一个2000字节的`UDP`数据包：
+
+```CPP
+// 发送端
+sendto(fd, large_data, 2000, 0, (struct sockaddr *)&addr, sizeof(addr));
+```
+
+接收端的缓冲区只有1024字节：
+
+```CPP
+// 接收端
+char buffer[1024];
+int n = recvfrom(fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&addr, &addrlen); // 只能接收前1024字节
+```
+
+这时，接收端只能接收到前1024字节的数据，剩余的部分会被直接**丢弃**。
