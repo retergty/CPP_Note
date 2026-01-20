@@ -265,3 +265,204 @@ void pa__done(pa_module *m) {
     pa_xfree(u);
 }
 ```
+
+## 参数系统
+
+`Pulseaudio`的参数系统允许模块在加载时接收配置参数。这些参数可以通过模块加载命令行传递，也可以通过配置文件指定
+
+相关函数定义在`<pulsecore/modargs.h>`中。
+
+读取参数流程为：
+
+1. 定义参数白名单：列出所有可以识别的参数名
+2. 解析字符串：将`m->argument`字符串转化为`pa_modargs`对象
+3. 读取数值：从`pa_modargs`对象中按照类型提取数据
+4. 释放内存：销毁`pa_modargs`对象
+
+### 定义识别的参数
+
+通过一个以`NULL`结尾的字符串数组定义参数白名单。例如：
+
+```C
+static const char* const valid_modargs[] = {
+    "device",       // 字符串类型
+    "rate",         // 整数类型
+    "enable_ai",    // 布尔类型
+    NULL
+};
+```
+
+### 解析参数字符串
+
+在`pa__init`函数中使用`pa_modargs_new()`解析参数字符串：
+
+```C
+pa_modargs *pa_modargs_new(const char *argument, const char* const valid_modargs[]);
+```
+
+示例为：
+
+```C
+pa_modargs *ma = pa_modargs_new(m->argument, valid_modargs);
+if (!ma) {
+    pa_log("无效的模块参数！");
+    return -1;
+}
+```
+
+### 按照类型读取参数值
+
+使用`pa_modargs_get_*`函数从`pa_modargs`对象中提取参数值：
+
+```C
+// A. 读取字符串 (String)
+// 直接返回指针，如果没有该参数则返回 NULL
+const char *dev_name = pa_modargs_get_value(ma, "device", "default"); // 第3个参数是默认值
+pa_log_info("设备名: %s", dev_name);
+
+// B. 读取整数 (Unsigned Integer)
+uint32_t rate = 44100; // 默认值
+// 注意：返回值是错误码，而不是结果！结果通过指针传出。
+if (pa_modargs_get_value_u32(ma, "rate", &rate) < 0) {
+    pa_log_error("rate 参数格式错误 (不是数字)");
+    goto fail;
+}
+pa_log_info("采样率: %u", rate);
+
+// C. 读取布尔值 (Boolean)
+// 支持 "1", "true", "yes", "on" 为真
+// 支持 "0", "false", "no", "off" 为假
+bool ai_enabled = false;
+if (pa_modargs_get_value_boolean(ma, "enable_ai", &ai_enabled) < 0) {
+    pa_log_error("enable_ai 参数格式错误");
+    goto fail;
+}
+pa_log_info("AI 功能: %s", ai_enabled ? "开启" : "关闭");
+```
+
+### 释放参数对象
+
+使用`pa_modargs_free()`释放`pa_modargs`对象：
+
+```C
+void pa_modargs_free(pa_modargs *ma);
+```
+
+示例为：
+
+```C
+pa_modargs_free(ma);
+```
+
+## 异步消息队列
+
+Pulseaudio使用异步消息队列(`pa_asyncmsgq`)在不同模块和组件之间传递消息。这种机制允许模块在不阻塞主循环的情况下进行通信和协调。
+
+`pa_asyncmsgq`定义在`<pulsecore/asyncmsgq.h>`中。
+
+### 核心特性
+
+* 多生产者单消费者(MPSC)模型：允许多个线程安全地向队列发送消息，而只有一个线程负责接收和处理消息。
+* 支持异步也支持同步消息：可以选择发送异步消息（不等待处理结果）或同步消息（等待处理结果）。
+* 基于对象的路由：队列里的每一个消息都包含`pa_msgobject`指针，指明消息的接收者对象，消息代码`OpCode`，以及可选的参数和回调函数。
+* 使用引用计数管理内存：消息和对象使用引用计数来确保在使用过程中不会被意外释放。
+
+### 创建消息队列
+
+```C
+pa_asyncmsgq* pa_asyncmsgq_new(unsigned size);
+```
+
+创建一个新的异步消息队列。
+
+* `size`：指定队列的大小（消息数量）。`0`表示默认值
+
+返回值
+
+* 返回一个指向新创建的`pa_asyncmsgq`对象的指针。如果创建失败，返回`NULL`。
+
+### 销毁消息队列
+
+```C
+void pa_asyncmsgq_unref(pa_asyncmsgq *q);
+```
+
+将消息队列的引用计数减1，如果引用计数为0，则销毁队列。
+
+### 异步投递
+
+```C
+void pa_asyncmsgq_post(
+    pa_asyncmsgq *q,           // 目标队列
+    pa_msgobject *object,      // 接收该消息的对象 (比如 sink, source)
+    int code,                  // 消息 ID (你自己定义的枚举)
+    const void *data,          // 数据指针 (可选)
+    int64_t offset,            // 辅助数据 (可选)
+    const pa_memchunk *chunk,  // 内存块 (可选，用于传递音频数据片段)
+    pa_free_cb_t free_cb       // 释放回调 (关键！)
+);
+```
+
+将一条异步消息投递到消息队列。
+
+参数
+
+* `q`：目标消息队列。
+* `object`：接收该消息的对象，通常是一个`pa_msgobject`的子类实例，如`sink`或`source`。
+* `code`：消息 ID，用于标识消息的类型。可以是自定义的枚举值。
+* `data`：指向消息数据的指针，可以传递任何类型的数据。如果不需要传递数据，可以传递`NULL`。
+* `offset`：辅助数据，可以用于传递额外的信息，如时间戳等。如果不需要，可以传递`0`。
+* `chunk`：指向一个`pa_memchunk`对象的指针，用于传递音频数据片段。如果不需要传递音频数据，可以传递`NULL`。
+* `free_cb`：释放回调函数，当消息处理完成后调用该函数释放相关资源。
+
+### 同步发送
+
+```C
+int pa_asyncmsgq_send(
+    pa_asyncmsgq *q,
+    pa_msgobject *object,
+    int code,
+    const void *data,
+    int64_t offset,
+    const pa_memchunk *chunk
+);
+```
+
+将一条同步消息发送到消息队列，并等待处理结果。
+
+参数
+
+* `q`：目标消息队列。
+* `object`：接收该消息的对象，通常是一个`pa_msgobject`的子类实例，如`sink`或`source`。
+* `code`：消息 ID，用于标识消息的类型。可以是自定义的枚举值。
+* `data`：指向消息数据的指针，可以传递任何类型的数据。如果不需要传递数据，可以传递`NULL`。
+* `offset`：辅助数据，可以用于传递额外的信息，如时间戳等。如果不需要，可以传递`0`。
+* `chunk`：指向一个`pa_memchunk`对象的指针，用于传递音频数据片段。如果不需要传递音频数据，可以传递`NULL`。
+
+返回值
+
+* 返回`0`表示消息发送和处理成功，返回负值表示发生错误。
+
+### 接收
+
+```C
+int pa_asyncmsgq_read(pa_asyncmsgq *q);
+```
+
+查看消息队列中是否有可用的消息，并处理它们。
+
+参数
+
+* `q`：目标消息队列。
+
+返回值
+
+* 返回`0`表示成功处理了一条消息，返回负值表示发生错误，返回正值表示没有可用的消息。
+
+通常配合`pa_rtpoll`使用.
+
+### pa_msgobject结构体
+
+`pa_msgobject`是Pulseaudio中用于消息传递的基础对象。它定义在`<pulsecore/msgobject.h>`中。
+
+类似于`C++`中的继承，`sink`,`source`,`module`等结构体都包含了一个`pa_msgobject`作为它们的第一个成员，从而实现了多态行为。
