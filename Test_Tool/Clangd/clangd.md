@@ -21,7 +21,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 通过给 `CMake` 添加上述指令，可以在构建目录中生成 `compile_commands.json` 文件.
 
-使用命令行参数`--compile-commands-dir=<路径>`就可以指定`compile_commands.json`文件的位置。
+使用命令行参数`--compile-commands-dir=<路径>`就可以指定`compile_commands.json`文件所在的文件夹。
 
 ## VSCode配置Clangd
 
