@@ -789,3 +789,357 @@ void pa_memblockq_flush_write(pa_memblockq *bq, bool silence);
 ```
 
 清空队列里的所有数据.
+
+## pa_thread
+
+`pa_thread`是Pulseaudio中用于管理线程的结构体。它定义在`<pulsecore/thread.h>`中。是对操作系统底层线程的封装，提供了跨平台的线程创建、管理和同步功能。
+
+### 创建线程
+
+```C
+pa_thread* pa_thread_new(
+    const char *name,        // 线程名字 (top/htop 里能看到)
+    pa_thread_func_t thread_func, // 线程主函数
+    void *userdata           // 传给主函数的参数
+);
+```
+
+创建并立即启动一个新线程。
+
+* `name`：线程的名称，用于调试和日志记录。
+* `thread_func`：线程的主函数，当线程启动时会调用该函数。
+* `userdata`：传递给线程主函数的参数。
+
+返回一个指向新创建的`pa_thread`对象的指针。如果创建失败，返回`NULL`。
+
+`pa_thread_func_t`的回调定义为
+
+```C
+typedef void (*pa_thread_func_t)(void *userdata);
+```
+
+### 销毁线程
+
+```C
+void pa_thread_free(pa_thread *t);
+```
+
+等待线程结束并释放线程资源。
+
+* `t`：指向要销毁的线程的指针。
+
+### 实时优先级控制
+
+```C
+int pa_thread_make_realtime(int priority);
+```
+
+尝试将当前线程提升为实时优先级。
+
+* `priority`：实时优先级的数值，范围通常为`1`到`99`，数值越大表示优先级越高。
+
+返回`0`表示提升成功，返回负值表示提升失败（例如权限不足）。
+
+### 辅助控制
+
+```C
+void pa_thread_yield(void);
+```
+
+让出当前线程的执行权，允许其他线程运行。
+
+## pa_thread_mq
+
+`pa_thread_mq`是Pulseaudio中用于在线程之间传递消息的结构体。它定义在`<pulsecore/thread-mq.h>`中。基于`pa_asyncmsgq`实现，提供了线程间通信的机制。
+
+实现主函数与工作线程的双向通信，内部包含了两个`pa_asyncmsgq`.
+
+* inq,主线程发送消息到工作线程
+* outq,工作线程发送消息到主线程
+
+### 创建线程消息队列
+
+```C
+int pa_thread_mq_init(
+    pa_thread_mq *q,             // 你的结构体对象指针
+    pa_mainloop_api *mainloop,   // 主线程的事件循环 (u->core->mainloop)
+    pa_rtpoll *rtpoll            // 子线程的轮询器 (u->rtpoll)
+);
+```
+
+构建双向通信管道，并建立物理连接。创建`inq`把他绑定在`rtpoll`上，创建`outq`把它绑定在`mainloop`上。
+
+* `q`：指向要初始化的线程消息队列的指针。
+* `mainloop`：指向主线程的事件循环的指针。
+* `rtpoll`：指向工作线程的轮询器的指针。
+
+返回`0`表示初始化成功，返回负值表示初始化失败。
+
+### 销毁线程消息队列
+
+```C
+void pa_thread_mq_done(pa_thread_mq *q);
+```
+
+断开双向通信管道，释放相关资源。需要在工作线程`pa_thread_free()`后调用。
+
+### 线程内激活
+
+```C
+void pa_thread_mq_install(pa_thread_mq *q);
+```
+
+将 q 注册到当前线程的 TLS (Thread Local Storage) 中。
+
+这个函数必须在子线程内部调用。
+
+### 发送消息
+
+`pa_thread_mq`内部包含了两个`pa_asyncmsgq`，需要使用`pa_asyncmsgq`的接口进行消息发送和接收。
+
+## pa_rtpoll
+
+`pa_rtpoll`是Pulseaudio中用于管理事件轮询的结构体。它定义在`<pulsecore/rtpoll.h>`中。提供了跨平台的事件轮询机制，允许模块和组件在单一线程中处理多个I/O事件。
+
+`pr_rtpool`使线程进入休眠等待唤醒的模式，线程会挂起，直到以下任意事件发生：
+
+* 文件描述符 (FD)有信号
+* 定时器到期
+* 收到消息:主线程通过`pa_asyncmsgq`发来了指令.
+
+### 创建
+
+```C
+pa_rtpoll *pa_rtpoll_new(void);
+```
+
+创建一个新的事件轮询对象。底层通常是`poll`或`epoll`。
+
+返回一个指向新创建的`pa_rtpoll`对象的指针。如果创建失败，返回`NULL`。
+
+### 销毁
+
+```C
+void pa_rtpoll_free(pa_rtpoll *p);
+```
+
+销毁事件轮询对象，释放相关资源。确保在销毁前，所有挂载在上面的 Item（如消息队列、Socket）都已经处理完毕或移除。
+
+### 事件循环
+
+```C
+int pa_rtpoll_run(pa_rtpoll *p);
+```
+
+启动事件轮询循环，等待并处理事件。线程进入阻塞状态.
+
+* `p`：指向要运行的事件轮询对象的指针。
+
+返回值`<0`表示发生错误，返回值`>0`表示有事件发生，返回值`0`表示没有事件发生。
+
+### 定时器控制
+
+```C
+void pa_rtpoll_set_timer_absolute(pa_rtpoll *p, pa_usec_t t);
+```
+
+设置绝对定时器，指定一个时间点，当系统时间达到该时间点时，轮询器会被唤醒。
+
+* `p`：指向目标事件轮询对象的指针。
+* `t`：绝对时间点，以微秒为单位。
+
+通过`pa_rtclock_now()`获取当前时间，然后加上一个延迟值即可得到绝对时间点。
+
+```C
+void pa_rtpoll_set_timer_relative(pa_rtpoll *p, pa_usec_t t);
+```
+
+上一个函数的封装，设置相时间。
+
+```C
+void pa_rtpoll_set_timer_disabled(pa_rtpoll *p);
+```
+
+关闭定时器
+
+## pa_source
+
+`pa_source`是Pulseaudio中用于表示音频输入设备（如麦克风）的结构体。它定义在`<pulsecore/source.h>`中。
+
+扮演生产者的角色，将音频数据采集并提供给系统中的其他组件使用。
+
+### 状态机
+
+`pa_source_state_t`定义了`pa_source`的各种状态：
+
+* `PA_SOURCE_INIT`：初始化状态，源正在创建过程中。
+* `PA_SOURCE_RUNNING`：运行状态，源正在采集音频数据。
+* `PA_SOURCE_SUSPENDED`：暂停状态，源暂时停止采集音频数据。
+* `PA_SOURCE_IDLE`：空闲状态，源没有音频数据可供。
+* `PA_SOURCE_UNLINKED`：已断开状态，源已被卸载或断开连接。
+
+### pa_source_new_data
+
+`pa_source_new_data`是用于创建和初始化`pa_source`对象的辅助结构体。它定义在`<pulsecore/source.h>`中。
+
+#### 常用字段
+
+```C
+char *name;                     // 源的名称 (唯一标识符)
+pa_model *module;               // 所属模块的指针
+pa_proplist *proplist;         // 属性列表 (key-value 对)
+```
+
+* `char *name;`：指定源的名称，必须是唯一的标识符。
+* `pa_module *module;`：指向创建该源的模块的指针。通常就是`pa__init()`函数中的`m`参数。
+* `pa_proplist *proplist;`：属性列表，用于存储源的各种属性信息，以键值对的形式存储。
+* `char* driver;`：驱动名称，通常用于标识底层实现。通常设置为`__FILE__`宏的值，表示当前源代码文件名。
+
+#### API函数
+
+```C
+void pa_source_new_data_init(pa_source_new_data *data);
+```
+
+初始化`pa_source_new_data`结构体，将其成员设置为默认值。
+
+```C
+void pa_source_new_data_set_name(pa_source_new_data *data, const char *name);
+void pa_source_new_data_set_sample_spec(pa_source_new_data *data, const pa_sample_spec *ss);
+void pa_source_new_data_set_channel_map(pa_source_new_data *data, const pa_channel_map *map);
+void pa_source_new_data_set_alternate_sample_rate(pa_source_new_data *data, uint32_t rate);
+```
+
+有一系列的`set*`函数用于设置`pa_source_new_data`的各个成员，如名称、采样规格、通道映射和备用采样率等
+
+```C
+void pa_source_new_data_done(pa_source_new_data *data);
+```
+
+销毁`pa_source_new_data`结构体，释放相关资源。
+
+### 创建pa_source对象
+
+```C
+pa_source* pa_source_new(
+    pa_core *core,
+    pa_source_new_data *data,
+    pa_source_flags_t flags
+);
+```
+
+创建一个新的`pa_source`对象。
+
+* `core`：指向Pulseaudio核心对象的指针。
+* `data`：指向已初始化的`pa_source_new_data`结构体的指针。
+* `flags`：源的标志，指定源的行为和特性。
+  * `PA_SOURCE_HARDWARE`：表示源是一个硬件设备。
+  * `PA_SOURCE_LATENCY`：表示源支持延迟报告。
+  * `PA_SOURCE_DYNAMIC_LATENCY`：表示源的延迟是动态变化的。
+
+返回一个指向新创建的`pa_source`对象的指针。如果创建失败，返回`NULL`。
+
+### 配置
+
+```C
+void pa_source_set_asyncmsgq(pa_source *s, pa_asyncmsgq *q);
+```
+
+设置`pa_source`的异步消息队列，用于线程间通信。
+
+* `s`：指向目标`pa_source`对象的指针。
+* `q`：指向要设置的异步消息队列的指针。
+
+```C
+void pa_source_set_rtpoll(pa_source *s, pa_rtpoll *p);
+```
+
+绑定一个`pa_rtpoll`对象到`pa_source`，用于事件轮询.当 Source 需要处理音量变化或状态改变时，PA 会通过这个 rtpoll 唤醒该线程。
+
+### 上线启动
+
+```C
+void pa_source_put(pa_source *s);
+```
+
+正式将`pa_source`对象上线并启动采集音频数据的过程。进入`IDLE`状态或`RUNNING`状态，具体取决于源的配置和当前系统状态。触发`hook`,`PA_CORE_HOOK_SOURCE_PUT`.
+
+### 推送音频数据
+
+```C
+void pa_source_post(pa_source *s, const pa_memchunk *chunk);
+```
+
+将`chunk`分发给所有连接的`source_output`。这是`pa_source`向系统提供音频数据的主要方式。
+
+### 处理消息
+
+```C
+int pa_source_process_msg(pa_msgobject *o, int code, void *data, int64_t offset, pa_memchunk *chunk);
+```
+
+模块或其他组件通过消息机制与`pa_source`进行通信时调用的函数。处理各种消息代码，并执行相应的操作。如果模块通过`pa_asyncmsgq_post()`或`pa_asyncmsgq_send()`发送消息给`pa_source`，最终会调用这个函数进行处理。
+
+### 销毁
+
+```C
+void pa_source_unlink(pa_source *s);
+```
+
+将`pa_source`对象下线。触发`hook`,`PA_CORE_HOOK_SOURCE_UNLINK`.
+
+```C
+void pa_source_unlink(pa_source *s);
+```
+
+销毁`pa_source`对象，释放相关资源。确保在销毁前，所有连接的`source_output`都已经断开连接。
+
+### 设置回调函数
+
+直接给`u->source`赋值即可
+
+```C
+// 状态改变回调 (IDLE <-> RUNNING)
+s->set_state = my_set_state_cb; 
+
+// 获取延迟回调 (用于音画同步)
+// 如果你不实现，PA 会根据你 post 的字节数大概估算
+s->update_requested_latency = my_update_latency_cb;
+```
+
+## pa_source_output
+
+`pa_source_output`接收`pa_source`推送的音频数据，并将其传递给下游处理模块或组件。它定义在`<pulsecore/source-output.h>`中。
+
+### 内部结构
+
+内部分为三个部分
+
+* 重采样器`pa_resampler`：用于将输入音频数据转换为目标采样规格。
+* 缓冲队列`pa_memblockq`：用于存储和管理音频数据流。
+* 状态机：管理`pa_source_output`的生命周期和状态转换。
+
+### pa_source_output_new_data
+
+```C
+void pa_source_output_new_data_init(pa_source_output_new_data *data);
+```
+
+配置初始化结构体
+
+```C
+void pa_source_output_new_data_set_source(
+    pa_source_output_new_data *data, 
+    pa_source *s, 
+    bool save,   // 是否保存这个选择（用于下次自动恢复）
+    bool fix     // 是否强制绑定（禁止被移动到其他 Source）
+);
+```
+
+设置关联的`pa_source`对象。
+
+```C
+void pa_source_output_new_data_set_sample_spec(pa_source_output_new_data *data, const pa_sample_spec *ss);
+```
+
+设置数据格式
