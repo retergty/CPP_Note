@@ -467,6 +467,13 @@ int pa_asyncmsgq_read(pa_asyncmsgq *q);
 
 类似于`C++`中的继承，`sink`,`source`,`module`等结构体都包含了一个`pa_msgobject`作为它们的第一个成员，从而实现了多态行为。
 
+```C
+struct pa_msgobject {
+    pa_object parent; // 基类对象，包含引用计数等基本功能
+    int (*process_msg)(pa_msgobject *o, int code, void *data, int64_t offset, pa_memchunk *chunk); // 消息处理函数指针
+};
+```
+
 ## 内存块管理pa_memblock
 
 `pa_memblock`是Pulseaudio中用于管理内存块的结构体。它定义在`<pulsecore/memblock.h>`中。
@@ -1056,6 +1063,15 @@ void pa_source_set_rtpoll(pa_source *s, pa_rtpoll *p);
 
 绑定一个`pa_rtpoll`对象到`pa_source`，用于事件轮询.当 Source 需要处理音量变化或状态改变时，PA 会通过这个 rtpoll 唤醒该线程。
 
+```C
+void pa_source_set_max_rewind(pa_source *s, size_t nbytes);
+```
+
+设置`pa_source`的最大回卷长度。
+
+* `s`：指向目标`pa_source`对象的指针。
+* `nbytes`：最大回卷长度（以字节为单位）。
+
 ### 上线启动
 
 ```C
@@ -1080,6 +1096,28 @@ int pa_source_process_msg(pa_msgobject *o, int code, void *data, int64_t offset,
 
 模块或其他组件通过消息机制与`pa_source`进行通信时调用的函数。处理各种消息代码，并执行相应的操作。如果模块通过`pa_asyncmsgq_post()`或`pa_asyncmsgq_send()`发送消息给`pa_source`，最终会调用这个函数进行处理。
 
+在`pa_source`的实现中，通常会重写这个函数以处理特定的消息类型。
+
+```C
+int source_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t offset, pa_memchunk *chunk) {
+    pa_source *s = PA_SOURCE(o);
+    switch (code) {
+        case MY_CUSTOM_MESSAGE:
+            // 处理自定义消息
+            break;
+        default:
+            return pa_source_process_msg(o, code, data, offset, chunk);
+    }
+    return 0;
+}
+```
+
+然后通过修改`pa_source`对象的`parent.process_msg`指针来使用这个回调函数。
+
+```C
+u->source->parent.process_msg = my_source_process_msg;
+```
+
 ### 销毁
 
 ```C
@@ -1093,6 +1131,7 @@ void pa_source_unlink(pa_source *s);
 ```
 
 销毁`pa_source`对象，释放相关资源。确保在销毁前，所有连接的`source_output`都已经断开连接。
+
 
 ### 设置回调函数
 
@@ -1119,6 +1158,15 @@ s->update_requested_latency = my_update_latency_cb;
 * 缓冲队列`pa_memblockq`：用于存储和管理音频数据流。
 * 状态机：管理`pa_source_output`的生命周期和状态转换。
 
+### 状态机
+
+`pa_source_output_state_t`定义了`pa_source_output`的各种状态：
+
+* `PA_SOURCE_OUTPUT_INIT`：初始化状态，源输出正在创建过程中。
+* `PA_SOURCE_OUTPUT_RUNNING`：运行状态，源输出正在传输音频数据。
+* `PA_SOURCE_OUTPUT_CORKED`：暂停状态，源输出暂时停止传输音频数据。
+* `PA_SOURCE_OUTPUT_UNLINKED`：已断开状态，源输出已被卸载或断开连接。
+
 ### pa_source_output_new_data
 
 ```C
@@ -1142,4 +1190,99 @@ void pa_source_output_new_data_set_source(
 void pa_source_output_new_data_set_sample_spec(pa_source_output_new_data *data, const pa_sample_spec *ss);
 ```
 
-设置数据格式
+设置数据格式.
+
+* `data`：指向要设置的`pa_source_output_new_data`结构体的指针。
+* `ss`：指向要设置的采样规格的指针。
+
+### 创建pa_source_output对象
+
+```C
+int pa_source_output_new(
+    pa_source_output **o,   // [输出] 返回创建好的对象指针
+    pa_core *core, 
+    pa_source_output_new_data *data, 
+    pa_source_output_flags_t flags
+);
+```
+
+* `o`：指向用于存储新创建的`pa_source_output`对象指针的指针。
+* `core`：指向Pulseaudio核心对象的指针。
+* `data`：指向已初始化的`pa_source_output_new_data`结构体的指针。
+* `flags`：源输出的标志，指定源输出的行为
+  * `PA_SOURCE_OUTPUT_VARIABLE_RATE`：表示源输出支持可变采样率。
+  * `PA_SOURCE_OUTPUT_DONT_MOVE`：表示源输出不允许被移动到其他源。
+
+返回`0`表示创建成功，返回负值表示创建失败。
+
+### 设置回调函数
+
+挂上hook函数,设置`u->source_output`的回调函数指针即可.
+
+```C
+void (*push)(pa_source_output *o, const pa_memchunk *chunk);
+```
+
+运行在目标`pa_source`的线程上下文中。当`pa_source`推送音频数据时调用该函数。负责处理和传递音频数据。
+
+* `o`：指向目标`pa_source_output`对象的指针。
+* `chunk`：指向要处理的音频数据片段的指针。
+
+```C
+void (*kill)(pa_source_output *o);
+```
+
+运行在主线程上下文中。当`pa_source`被强制删除时调用.
+
+* `o`：指向目标`pa_source_output`对象的指针。
+
+```C
+void (*state_change)(pa_source_output *o, pa_source_output_state_t state);
+```
+
+运行在主线程上下文中。当`pa_source_output`的状态发生变化时调用该函数。负责处理状态变化的逻辑。
+
+* `o`：指向目标`pa_source_output`对象的指针。
+* `state`：新的状态值，表示`pa_source_output`的当前状态。
+
+```C
+void (*attach)(pa_source_output *o);
+```
+
+运行在主线程上下文中。当`pa_source_output`被连接到`pa_source`时调用该函数。负责处理连接逻辑。
+
+* `o`：指向目标`pa_source_output`对象的指针。
+
+```C
+void (*detach)(pa_source_output *o);
+```
+
+运行在主线程上下文中。当`pa_source_output`从`pa_source`断开连接时调用该函数。负责处理断开连接的逻辑。
+
+```C
+void (*moved)(pa_source_output *o);
+```
+
+运行在主线程上下文中。当`pa_source_output`被移动到另一个`pa_source`时调用该函数。负责处理移动逻辑。
+
+### 上线
+
+```C
+void pa_source_output_put(pa_source_output *o);
+```
+
+将`pa_source_output`对象上线并开始接收音频数据。触发`hook`,`PA_CORE_HOOK_SOURCE_OUTPUT_PUT`.
+
+### 销毁
+
+```C
+void pa_source_output_unlink(pa_source_output *o);
+```
+
+断开连接，将`pa_source_output`对象下线。触发`hook`,`PA_CORE_HOOK_SOURCE_OUTPUT_UNLINK`.
+
+```C
+void pa_source_output_unref(pa_source_output *o);
+```
+
+销毁`pa_source_output`对象，释放相关资源。确保在销毁前，已经调用了`pa_source_output_unlink()`断开连接。

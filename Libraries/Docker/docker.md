@@ -247,7 +247,7 @@ CMD ["bash"]
     Environment="HTTP_PROXY=http://172.17.0.1:7890"
     Environment="HTTPS_PROXY=http://172.17.0.1:7890"
     #这行很重要，设置不走代理的地址，防止连接本地仓库出问题
-    Environment="NO_PROXY=localhost,127.0.0.1,docker-registry.somecorporation.com"
+    Environment="NO_PROXY=localhost,127.0.0.1,::1,.local"
     ```
 
 4. 重新加载配置并重启docker
