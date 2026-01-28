@@ -244,8 +244,8 @@ CMD ["bash"]
 
     ```ini
     [Service]
-    Environment="HTTP_PROXY=http://172.17.0.1:7890"
-    Environment="HTTPS_PROXY=http://172.17.0.1:7890"
+    Environment="HTTP_PROXY=http://127.0.0.1:7890"
+    Environment="HTTPS_PROXY=http://127.0.0.1:7890"
     #这行很重要，设置不走代理的地址，防止连接本地仓库出问题
     Environment="NO_PROXY=localhost,127.0.0.1,::1,.local"
     ```
@@ -257,6 +257,36 @@ CMD ["bash"]
     sudo systemctl restart docker
     ```
 
+### 将当前用户加入docker
+
+```shell
+sudo usermod -aG docker $USER
+# 重新登录生效
+```
+
+### 配置所有容器内默认代理
+
+```shell
+mkdir -p ~/.docker
+vim ~/.docker/config.json
+```
+
+填入
+
+```json
+{
+ "proxies": {
+   "default": {
+     "httpProxy": "http://172.17.0.1:7890",
+     "httpsProxy": "http://172.17.0.1:7890",
+     "noProxy": "localhost,127.0.0.1,::1,.local,192.168.0.0/16,10.0.0.0/8"
+   }
+ }
+}
+```
+
+其中`127.17.0.1`是宿主机在docker网桥中的地址，可以通过`ip addr show docker0`查看。
+
 ### 传递主机代理
 
 ```shell
@@ -267,13 +297,21 @@ docker build \
     -t my-robot .
 ```
 
+### 运行apt时无法找到包
+
+```shell
+apt-get update
+```
+
+首先需要运行`apt-get update`更新包列表，否则会提示找不到包。
+
 ### DockerFile中使用国内源
 
 ```Dockerfile
 # 换 Ubuntu 系统源 (阿里源)
-# ============================
-RUN sed -i 's@http://.*archive.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list && \
-    sed -i 's@http://.*security.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list
+sed -i 's@http://.*archive.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list && \
+sed -i 's@http://.*security.ubuntu.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list
+apt-get update
 ```
 
 注意，不会影响宿主机，任何操作均是隔离的。

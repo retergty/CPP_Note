@@ -266,6 +266,26 @@ void pa__done(pa_module *m) {
 }
 ```
 
+## 按名字查找目标
+
+```C
+void* pa_namereg_get(
+    pa_core *c,                 // 全局核心对象
+    const char *name,           // 要查找的名字 (字符串)
+    pa_namereg_type_t type      // 要查找的类型 (枚举)
+);
+```
+
+在模块代码中使用`pa_namereg_get()`按名字查找目标对象。
+
+参数
+
+* `c`：指向Pulseaudio核心对象的指针，通常可以通过`m->core`获取。
+* `name`：要查找的对象名称，通常是一个字符串。
+* `type`：要查找的对象类型，使用`pa_namereg_type_t`枚举值，如`PA_NAMEREG_SINK`、`PA_NAMEREG_SOURCE`等。
+
+返回指向目标对象的指针，如果未找到则返回`NULL`。
+
 ## 参数系统
 
 `Pulseaudio`的参数系统允许模块在加载时接收配置参数。这些参数可以通过模块加载命令行传递，也可以通过配置文件指定
@@ -985,6 +1005,22 @@ void pa_rtpoll_set_timer_disabled(pa_rtpoll *p);
 * `PA_SOURCE_IDLE`：空闲状态，源没有音频数据可供。
 * `PA_SOURCE_UNLINKED`：已断开状态，源已被卸载或断开连接。
 
+`paulseaudio`会根据连接到`pa_source`的`source_output`数量和系统状态，在`RUNNING`和`IDLE`,`SUSPENDED`状态之间切换。
+
+* 如果没有任何`source_output`连接到该`pa_source`，或者连接的所有`source_output`都处于`CORKED`状态，`pa_source`会进入`IDLE`状态.
+* 如果有至少一个`source_output`连接且未`CORKED`，`pa_source`会进入`RUNNING`状态.
+* 如果默认设备处于`IDLE`状态一段时间后，Pulseaudio会自动将其切换为`SUSPENDED`状态。
+
+#### 例子
+
+假设有一个APP连接到底层的ALSA Source设备.
+
+* 初始状态：`SOURCE`处于`Suspended`状态.
+* APP连接，`pa_stream_connect_record`,`APP`创建了一个`pa_source_output`连接到`SOURCE`，`SOURCE`进入`IDLE`,随后进入`RUNNING`状态，开始采集音频数据.
+* APP调用`pa_stream_cork(TRUE)`,`SOURCE`进入`IDLE`状态，停止采集音频数据.
+* 暂停了一段时间后，Pulseaudio自动将`SOURCE`切换为`SUSPENDED`状态。
+* APP恢复录音，`pa_stream_cork(FALSE)`,`SOURCE`重新进入`IDLE`，随后进入`RUNNING`状态，继续采集音频数据.
+
 ### pa_source_new_data
 
 `pa_source_new_data`是用于创建和初始化`pa_source`对象的辅助结构体。它定义在`<pulsecore/source.h>`中。
@@ -1118,6 +1154,50 @@ int source_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t offset,
 u->source->parent.process_msg = my_source_process_msg;
 ```
 
+### 切换状态
+
+```C
+int pa_source_suspend(
+    pa_source *s,            // 目标 Source 对象
+    bool suspend,            // true = 去睡觉 (挂起), false = 醒醒 (恢复)
+    pa_suspend_cause_t cause // 挂起/恢复的原因 (非常重要!)
+);
+```
+
+* `s`：指向目标`pa_source`对象的指针。
+* `suspend`：如果为`true`，则表示将源挂起（暂停采集音频数据）；如果为`false`，则表示恢复源（继续采集音频数据）。
+* `cause`：表示挂起或恢复的原因。
+
+返回`0`表示操作成功，返回负值表示操作失败。
+
+`pa_source`通过位掩码机制管理挂起原因，`source`可能会因为多个原因被挂起，只有当所有挂起原因都被清除后，`source`才会真正恢复运行。
+
+常见的挂起原因包括：
+
+* `PA_SUSPEND_USER`：用户请求挂起。
+* `PA_SUSPEND_IDLE`：源处于空闲状态。
+* `PA_SUSPEND_AVAILABILITY`：设备不可用。
+* `PA_SUSPEND_INTERNAL`：内部原因。
+
+```C
+int pa_source_set_mute
+(
+    pa_source *s,    // 目标 Source 对象
+    bool mute        // true = 静音, false = 取消静音
+);
+```
+
+设置`pa_source`的静音状态。
+
+```C
+int pa_source_set_port(
+    pa_source *s,          // 目标 Source 对象
+    const char *port_name  // 端口名称
+);
+```
+
+切换端口
+
 ### 销毁
 
 ```C
@@ -1131,7 +1211,6 @@ void pa_source_unlink(pa_source *s);
 ```
 
 销毁`pa_source`对象，释放相关资源。确保在销毁前，所有连接的`source_output`都已经断开连接。
-
 
 ### 设置回调函数
 
