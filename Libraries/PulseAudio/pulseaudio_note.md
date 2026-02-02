@@ -63,6 +63,39 @@ Pulseaudio是一个跨平台的声音服务器，常用于Linux系统中。它�
 * 监听(Callbacks)事件，如果回调函数被触发，执行相应的处理逻辑。
 * 卸载(done)模块，释放资源，注销回调函数等。
 
+### sample
+
+`sample`是最原子的单位,代表了某一个声道在某一个时刻的振幅值.
+
+它的数据类型取决于格式。
+
+* `PA_SAMPLE_U8`：无符号8位整数，范围0-255，128为静音。
+* `PA_SAMPLE_S16LE`：有符号16位整数，小端字节序，范围-32768到32767，0为静音。
+* `PA_SAMPLE_S16BE`：有符号16位整数，大端字节序，范围-32768到32767，0为静音。
+* `PA_SAMPLE_FLOAT32LE`: 32位浮点数，小端字节序，范围-1.0到1.0，0.0为静音。
+
+### channel
+
+`channel`表示音频流中的一个独立声道。例如，在立体声音频中，有两个通道：左声道和右声道。每个通道包含一系列的样本(sample)，这些样本表示了该通道在不同时间点的音频信号强度。
+
+* 单声道(Mono)：只有一个通道，通常用于语音或单一音源。
+* 立体声(Stereo)：有两个通道，分别为左声道和右声道，常用于音乐和多媒体内容。
+* 5.1环绕声：包含六个通道，分别为左前、右前、中置、低音炮、左后和右后，常用于家庭影院系统。
+
+### frame
+
+`frame`是时间上的最小单位，它包含了该时刻所有通道的样本(sample)。
+
+* 如果是单声道(S16LE),1 frame = 1 sample = 2 bytes.
+* 如果是立体声(S16LE),1 frame = 2 samples = 4 bytes.
+
+### sampling rate
+
+`sampling rate`表示每秒钟采集的样本数量，单位为赫兹(Hz)。常见的采样率有：
+
+* 44100 Hz：CD音质，常用于音乐播放。
+* 48000 Hz：专业音频和视频制作常用的采样率。
+
 ## Hooks
 
 `pulseaudio`的`hooks`定义在`<pulsecore/core.h>`中，常用的`hooks`包括：
@@ -373,6 +406,18 @@ void pa_modargs_free(pa_modargs *ma);
 ```C
 pa_modargs_free(ma);
 ```
+
+## 采样规格pa_sample_spec
+
+```CPP
+typedef struct pa_sample_spec {
+    pa_sample_format_t format; // 数据格式 (类型、位深、字节序)
+    uint32_t rate;             // 采样率 (每秒多少帧)
+    uint8_t channels;          // 通道数 (几条车道)
+} pa_sample_spec;
+```
+
+表示采样规格的结构体，定义在`<pulse/sample.h>`中。
 
 ## 异步消息队列pa_asyncmsgq
 

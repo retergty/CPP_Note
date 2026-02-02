@@ -258,7 +258,7 @@ namespace pmr {
 
   `1`和`2`会把`other`里的所有元素转移到`*this`中，插入的位置是`pos`前。
 
-  `3`和`4`会把`other`里`it`指向的元素转移到`*this`中，插入的位置是`pos`前。
+  `3`和`4`会把`other`里`it`指向的元素转移到`*this`中，插入的位置是`pos`前。这个函数可以把原来在`*this`内的元素移动到新的位置。比如`list.splice(list.begin(), list, it);`会把`it`指向的元素移动到`list`的最前面。
 
   `5`和`6`会把`other`里`[first,last)`指向的元素转移到`*this`中，插入的位置是`pos`前。
 

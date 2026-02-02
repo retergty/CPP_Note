@@ -68,6 +68,22 @@ template< class T > struct default_delete<T[]>;
 
 为了定义删除器，我们只需定义一个可调用对象，这个可调用对象可以接受`T*`类型的参数，并在这个函数里做析构对象和特定的销毁任务。
 
+最常见的就是定义一个`struct`或`class`，并重载其`operator()`。这个`operator()`可以是
+
+* `operator()(T* ptr)`
+* `operator()(T[] ptr)`
+* `operator()(const T* ptr)`
+* `operator()(void* ptr)`
+* `operator()(A* ptr)`,`T`可以隐式转换为`A`，比如`Derived*`转换为`Base*`
+
+总之，所有的在在上下文调用
+
+```CPP
+deleter_instance(ptr);
+```
+
+合法的`deleter_instance`都可以作为删除器使用。
+
 ### 例子
 
 在网络连接中，当控制流复杂时或异常发生时，可能没有释放网络资源。
