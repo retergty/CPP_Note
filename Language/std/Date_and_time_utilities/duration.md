@@ -98,7 +98,32 @@ template<
 
   对两个`duration`进行比较，比大小.
 
-## 例子
+### 类型转换
+
+* [duration_cast](https://en.cppreference.com/w/cpp/chrono/duration/duration_cast)
+
+  ```CPP
+  template< class ToDuration, class Rep, class Period >
+  constexpr ToDuration duration_cast( const duration<Rep, Period>& d );
+  ```
+
+  把一个`duration`转换为另一个`duration`类型。如果两个`duration`的`Period`不同，那么会进行相应的缩放。如果`Rep`是整数类型，那么可能会丢失精度.
+
+## 常见用法
+
+### 时间单位转换
+
+```CPP
+template <typename Rep, typename Period>
+    size_t durationToFFTFrames(const std::chrono::duration<Rep, Period>& time_duration) const 
+    {
+        // 1. 将任意输入时间 (ms, s, us, min) 统一转换为 "double 类型的秒"
+        //    std::chrono::duration<double> 会自动处理分子分母转换
+        double seconds = std::chrono::duration<double>(time_duration).count();
+    }
+```
+
+## 完整例子
 
 ```CPP
 #include <chrono>

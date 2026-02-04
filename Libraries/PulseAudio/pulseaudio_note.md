@@ -57,6 +57,18 @@ Pulseaudio是一个跨平台的声音服务器，常用于Linux系统中。它�
 
 `Pulseaudio`是单线程事件循环架构，这意味着模块代码(初始化，回调函数)和`Pulseaudio`处理其他命令的代码是在同一个线程里排队执行。如果要做复杂的操作需要新开一个线程或者使用`Mainloop API`来避免阻塞`Pulseaudio`的主循环。
 
+### IO线程
+
+`IO线程`是Pulseaudio中用于处理音频数据传输的专用线程。这是一个逻辑概念，本质上就是一个高优先级的线程。只有`pa_source`和`pa_sink`会创建IO线程，而`pa_source_output`和`pa_sink_input`则运行在它们所属的`pa_source`和`pa_sink`的IO线程中。
+
+### thread_info
+
+`thread_info`是Pulseaudio中用于描述音频流线程信息的结构体。它定义在`<pulsecore/thread-info.h>`中.
+
+每个`pa`结构体，比如`pa_source`,`pa_sink`,`pa_sink_input`,`pa_source_output`等，都有一个`thread_info`成员变量.
+
+只有IO线程可以操作thread_info,如果主线程需要修改，需要通过`pa_asyncmsgq_post()`发送消息到IO线程，由IO线程来修改.由消息处理回调修改，比如`pa_sink_process_msg()`.标准的修改逻辑pulseaudio已经给出。
+
 ### 模块开发流程
 
 * 加载(init)模块，初始化相关数据结构，注册回调函数等。
@@ -1122,7 +1134,7 @@ pa_source* pa_source_new(
 * `data`：指向已初始化的`pa_source_new_data`结构体的指针。
 * `flags`：源的标志，指定源的行为和特性。
   * `PA_SOURCE_HARDWARE`：表示源是一个硬件设备。
-  * `PA_SOURCE_LATENCY`：表示源支持延迟报告。
+  * `PA_SOURCE_LATENCY`：表示源支持延迟报告。可以根据`pa_source_output`的需求动态调整延迟。
   * `PA_SOURCE_DYNAMIC_LATENCY`：表示源的延迟是动态变化的。
 
 返回一个指向新创建的`pa_source`对象的指针。如果创建失败，返回`NULL`。
@@ -1152,6 +1164,18 @@ void pa_source_set_max_rewind(pa_source *s, size_t nbytes);
 
 * `s`：指向目标`pa_source`对象的指针。
 * `nbytes`：最大回卷长度（以字节为单位）。
+
+### 创建IO线程
+
+```C
+pa_thread* pa_thread_new(
+    const char *name,        // 线程名字 (top/htop 里能看到)
+    pa_thread_func_t thread_func, // 线程主函数
+    void *userdata           // 传给主函数的参数
+);
+```
+
+创建IO线程和创建普通线程没有区别，IO线程就是普通线程，这是一个编程模型，只有IO线程可以访问当前流的实时数据,也就是`thread_info`的数据.
 
 ### 上线启动
 
@@ -1265,8 +1289,8 @@ void pa_source_unlink(pa_source *s);
 // 状态改变回调 (IDLE <-> RUNNING)
 s->set_state = my_set_state_cb; 
 
-// 获取延迟回调 (用于音画同步)
-// 如果你不实现，PA 会根据你 post 的字节数大概估算
+// 当请求的laetency发生变化时调用
+// 比如pa_source_output连接上来或断开时,pa_source_output有时会设置请求的延迟.
 s->update_requested_latency = my_update_latency_cb;
 ```
 
@@ -1410,3 +1434,23 @@ void pa_source_output_unref(pa_source_output *o);
 ```
 
 销毁`pa_source_output`对象，释放相关资源。确保在销毁前，已经调用了`pa_source_output_unlink()`断开连接。
+
+## 常见场景
+
+### pa_source_output设置latency
+
+当一个`pa_source_output`连接到一个`pa_source`时，它可能会请求特定的延迟（latency）值。这通常通过调用`pa_source_output_set_requested_latency()`函数来实现。
+
+```C
+int pa_source_output_set_requested_latency(pa_source_output *o, pa_usec_t latency);
+int pa_source_output_set_requested_latency_within_thread(pa_source_output *o, pa_usec_t latency);
+```
+
+第一个函数用于在主线程上下文中设置请求的延迟，而第二个函数用于在`pa_source`的线程上下文中设置请求的延迟。实际上就是第一个函数给IO线程发消息，而第二个函数直接修改`thread_info`的数据.
+
+* `o`：指向目标`pa_source_output`对象的指针。
+* `latency`：请求的延迟值，以微秒为单位。
+
+返回`0`表示设置成功，返回负值表示设置失败。
+
+当`pa_source_output`请求延迟时，`pa_source`会调用其`update_requested_latency`回调函数，以便根据新的请求延迟调整其内部缓冲区和处理逻辑。
