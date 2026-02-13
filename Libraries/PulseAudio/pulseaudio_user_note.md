@@ -219,6 +219,32 @@ pa_mainloop_api* pa_threaded_mainloop_get_api(pa_threaded_mainloop* m);
 
 获取与`pa_threaded_mainloop`关联的`pa_mainloop_api`接口，用于创建和管理`pa_context`和`pa_stream`等对象。
 
+### 操作句柄pa_operation
+
+pa_operation 是 PulseAudio 异步编程模型中重要的控制句柄，每个控制操作都会返回一个 pa_operation 对象。这个对象可以
+
+* 查询状态(get_state).
+* 取消操作(cancel).
+* 等待完成(sync).
+
+`pa_operation`对象的状态如下
+
+* `PA_OPERATION_RUNNING`：操作正在进行中，指令已经发过去了，但还没有收到服务器的响应。
+* `PA_OPERATION_DONE`：操作已经完成，服务器已经处理完请求并返回了结果。
+* `PA_OPERATION_CANCELED`：操作被取消，客户端调用了取消函数
+
+可以用函数检查状态
+
+```C
+pa_operation_state_t s = pa_operation_get_state(o);
+```
+
+每次都需要释放`pa_operation`对象
+
+```C
+void pa_operation_unref(pa_operation *o);
+```
+
 ### 连接层pa_context
 
 `pa_context`代表`APP`与`PulseAudio`服务器之间的连接上下文。
@@ -511,3 +537,136 @@ int pa_stream_connect_record(
 * `PA_STREAM_START_UNMUTED/MUTED`强制流在连接后处于 UNMUTED/MUTED 状态，忽略当前 Sink/Source 的静音状态.
 * `PA_STREAM_NO_REMIX_CHANNELS`禁止自动混音通道数，如果采样规格和目标设备不匹配，连接会失败.
 * `PA_STREAM_FIX_FORMAT / FIX_RATE / FIX_CHANNELS`：强制采样规格的格式/采样率/通道数必须和目标设备匹配，否则连接会失败.
+
+#### 读写音频数据
+
+```C
+int pa_stream_write(
+    pa_stream *s,
+    const void *data,
+    size_t bytes,
+    pa_free_cb_t free_cb,
+    int64_t offset,
+    pa_seek_mode_t seek
+);
+```
+
+向`pa_stream`对象写入音频数据，适用于播放音频。通常在`write_callback`中调用。
+
+* `s`：指向`pa_stream`对象的指针。
+* `data`：指向包含要写入音频数据的缓冲区。
+* `bytes`：要写入的字节数。
+* `free_cb`：数据释放回调函数，当数据不再需要时调用。如果为`NULL`，则表示数据在调用时已经被复制，不需要释放。
+* `offset`：数据写入的偏移位置，通常为`PA_SEEK_RELATIVE`.
+* `seek`：偏移模式，通常为`PA_SEEK_RELATIVE`.
+
+返回`0`表示成功，非`0`表示失败。
+
+```C
+int pa_stream_begin_write(
+    pa_stream *s,
+    void **data,
+    size_t *nbytes
+);
+```
+
+开始写入音频数据，获取一个指向可写缓冲区的指针。适用于播放音频。减少数据复制开销。之后自行填充数据，然后调用`pa_stream_write()`提交。
+
+* `s`：指向`pa_stream`对象的指针。
+* `data`：指向用于存储写入音频数据的缓冲区
+* `nbytes`：输入时表示请求的字节数，返回时表示实际可写的字节数。
+
+返回`0`表示成功，非`0`表示失败。
+
+```C
+int pa_stream_peek(pa_stream *s, const void **data, size_t *length);
+```
+
+获取指向可读音频数据的指针。
+
+* `s`：指向`pa_stream`对象的指针。
+* `data`：指向用于存储读取音频数据的缓冲区指针。
+* `length`：指向存储可读字节数的指针。
+
+返回`0`表示成功，非`0`表示失败。
+
+还需要根据data和length判断数据
+
+* `data!= NULL && *length > 0`：有数据可读.
+* `data== NULL && *length == 0`：没有数据可读，但流还在运行,可能是网络丢包等，应该在`buffer`里填入`length`长度的 0 (静音)。
+* `data== NULL && *length == 0`: 无数据，退出等待下一次回调
+
+```C
+int pa_stream_drop(pa_stream *s);
+```
+
+丢弃刚刚通过`pa_stream_peek()`获取的音频数据，表示已经处理完这些数据，可以释放缓冲区。
+
+* `s`：指向`pa_stream`对象的指针。
+
+返回`0`表示成功，非`0`表示失败。
+
+#### 控制流
+
+```C
+/*
+ * s: 流对象
+ * b: 1 = 暂停 (Cork), 0 = 恢复 (Uncork)
+ * cb: 完成后的回调 (不需要传 NULL)
+ */
+pa_operation* pa_stream_cork(pa_stream *s, int b, pa_stream_success_cb_t cb, void *userdata);
+```
+
+暂停或恢复`pa_stream`对象的音频流。
+
+```C
+// 立即丢弃服务端缓冲区的所有数据。
+// 用于：用户拖动进度条 (Seek)、切歌、停止播放。
+pa_operation* pa_stream_flush(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
+```
+
+清空`pa_stream`对象的缓冲区，丢弃所有未处理的音频数据。
+
+```C
+// 等待缓冲区里的数据全部播放完毕。
+// 用于：播放列表结束时，或者程序退出前，确保最后一句歌词唱完。
+// 注意：只有当 buffer 空了，cb 回调才会被触发。
+pa_operation* pa_stream_drain(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
+```
+
+等待`pa_stream`对象的缓冲区中的所有音频数据都被处理完毕。
+
+```C
+/*
+ * attr: 新的缓冲区属性
+ * 如果你只想改 tlength，其他不想改，就把其他的设为 (uint32_t)-1
+ */
+pa_operation* pa_stream_set_buffer_attr(pa_stream *s, 
+                                        const pa_buffer_attr *attr, 
+                                        pa_stream_success_cb_t cb, 
+                                        void *userdata);
+```
+
+动态调整`pa_stream`对象的缓冲区属性。
+
+```C
+/*
+ * rate: 新的采样率 (Hz)
+ * 比如原流是 44100，你改成 48000，声音会变快且变尖（像花栗鼠）。
+ * 改成 22050，声音会变慢且变粗。
+ */
+pa_operation* pa_stream_update_sample_rate(pa_stream *s, uint32_t rate, 
+                                           pa_stream_success_cb_t cb, void *userdata);
+```
+
+动态重采样
+
+```C
+pa_operation* pa_stream_proplist_update(pa_stream *s, 
+                                        PA_UPDATE_REPLACE, 
+                                        pl, 
+                                        NULL, NULL);
+```
+
+元数据更新
+

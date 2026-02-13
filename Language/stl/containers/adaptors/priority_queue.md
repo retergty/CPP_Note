@@ -77,7 +77,7 @@ template<
   void push( value_type&& value );
   ```
 
-  将指定元素加入到优先队列中
+  将指定元素加入到优先队列中，时间复杂度为对数时间。
 
 * [emplace](https://en.cppreference.com/w/cpp/container/priority_queue/emplace)
 
@@ -94,7 +94,7 @@ template<
   void pop();
   ```
 
-  将优先队列中的队头元素推出，也就是最大的元素。调用函数`c.pop_back()`
+  将优先队列中的队头元素推出，也就是最大的元素。调用函数`c.pop_back()`,时间复杂度为对数时间。
 
 * [swap](https://en.cppreference.com/w/cpp/container/priority_queue/swap)
 

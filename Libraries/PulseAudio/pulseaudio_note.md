@@ -57,6 +57,8 @@ Pulseaudio是一个跨平台的声音服务器，常用于Linux系统中。它�
 
 `Pulseaudio`是单线程事件循环架构，这意味着模块代码(初始化，回调函数)和`Pulseaudio`处理其他命令的代码是在同一个线程里排队执行。如果要做复杂的操作需要新开一个线程或者使用`Mainloop API`来避免阻塞`Pulseaudio`的主循环。
 
+如果主线程阻塞，不会立即影响音频处理，因为音频数据传输是在IO线程中进行的。
+
 ### IO线程
 
 `IO线程`是Pulseaudio中用于处理音频数据传输的专用线程。这是一个逻辑概念，本质上就是一个高优先级的线程。只有`pa_source`和`pa_sink`会创建IO线程，而`pa_source_output`和`pa_sink_input`则运行在它们所属的`pa_source`和`pa_sink`的IO线程中。
@@ -1434,6 +1436,44 @@ void pa_source_output_unref(pa_source_output *o);
 ```
 
 销毁`pa_source_output`对象，释放相关资源。确保在销毁前，已经调用了`pa_source_output_unlink()`断开连接。
+
+### pa_resampler重采样器
+
+`pa_resampler`是Pulseaudio中用于音频重采样的结构体。它定义在`<pulsecore/resampler.h>`中。用于在不同采样率之间转换音频数据。
+
+如果`pa_source_output`的采样规格与连接的`pa_source`的采样规格不匹配，Pulseaudio会自动创建一个`pa_resampler`对象来进行重采样。
+
+当`pa_source`调用`pa_source_post`分发数据时，会先在`pa_source_output_push`把数据送入`pa_resampler_run()`进行重采样，然后再放入`pa_memblockq`缓冲队列中。
+
+如果需要支持变采样率，还需要在创建`pa_source_output`时设置`PA_SOURCE_OUTPUT_VARIABLE_RATE`标志。
+
+`move`后需要手动重建`pa_resampler`,在PA的主线程中，
+
+```C
+if (u->resampler) {
+            pa_resampler_free(u->resampler);
+            u->resampler = NULL;
+        }
+// 如果需要，重新初始化重采样器
+u->resampler = pa_resampler_new(..., &u->my_spec, ...);
+```
+
+### 移动pa_source_output
+
+```C
+int pa_source_output_move_to(
+    pa_source_output *o,   // 目标 Source Output 对象
+    pa_source *new_source  // 目标 Source 对象
+);
+```
+
+将`pa_source_output`对象移动到另一个`pa_source`对象。
+
+通常在主线程上下文中调用。当一个设备插入到系统时，可能需要将现有的`pa_source_output`移动到新的`pa_source`上。
+
+但是，需要删除旧的`pa_resampler`,删除旧的`pa_memblockq`,重新创建新的`pa_resampler`和`pa_memblockq`，注意并发问题.
+
+可以注册`moving`回调函数，在这个函数里面进行操作。
 
 ## 常见场景
 
