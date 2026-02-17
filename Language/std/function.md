@@ -25,6 +25,8 @@ class function<R(Args...)>;
 
 `std::function`满足复制可构造以及复制可赋值。
 
+`std::function`的实现是进行了类型擦除，编译器有时候无法获得类型值，优化的时候无法进行内联，可能拖慢速度.
+
 ## 成员类型
 
 * `result_type`返回类型`R`.

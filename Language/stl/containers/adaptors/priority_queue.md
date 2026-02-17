@@ -4,7 +4,7 @@
 
 * CPP REFERENCE[std::priority_queue](https://en.cppreference.com/w/cpp/container/priority_queue)
 
-定义在头文件`<priority_queue>`.
+定义在头文件`<queue>`.
 
 ## 类原型
 
@@ -103,3 +103,28 @@ template<
   ```
 
   交换两个优先队列的元素。
+
+## 自定义比较器
+
+```CPP
+static bool more(const unordered_map<int, int>::iterator& l, const unordered_map<int, int>::iterator& r)
+{
+  return l->second > r->second;
+}
+priority_queue<unordered_map<int, int>::iterator, vector<unordered_map<int, int>::iterator>, decltype(&more)> pri_queue(more);
+```
+
+使用函数指针自定义比较器
+
+```CPP
+struct cmp
+{
+  bool operator()(const unordered_map<int, int>::iterator& l, const unordered_map<int, int>::iterator& r)
+  {
+    return l->second > r->second;
+  }
+};
+priority_queue<unordered_map<int, int>::iterator, vector<unordered_map<int, int>::iterator>, cmp> pri_queue;
+```
+
+使用函数对象自定义比较器

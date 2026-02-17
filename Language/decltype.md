@@ -45,6 +45,8 @@ decltype(foo()) d = foo();      // d is an "int"    [(foo()) is a prvalue]
 
 decltype(foo()) && r1 = foo();  // int &&
 decltype((n)) && r2 = n;        // int & [& && collapses to &]
+decltype(&foo) a = &foo;        // a的类型是 int (*) ()函数指针
+using foo2 = decltype(foo)      // foo2是foo的函数别名
 ```
 
 ## 接受“两个”参数的`decltype`
