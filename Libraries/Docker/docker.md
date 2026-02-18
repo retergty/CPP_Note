@@ -405,3 +405,60 @@ apt-get update
     sudo systemctl daemon-reload
     sudo systemctl start docker
     ```
+
+### 连接图形界面
+
+使用docker连接图形界面，比如ROS2,Gazebo，同时调用GPU进行渲染，可以通过以下方式：
+
+```shell
+# 以X11为例，运行容器时添加以下参数
+docker run -it \
+    -e DISPLAY=$DISPLAY \  # 传递显示环境变量
+    -v /tmp/.X11-unix:/tmp/.X11-unix \  # 挂载X11套接字
+    --name my_ros_sim \
+    --gpus all \  # 允许访问所有GPU
+    --net=host \ # 使用主机网络模式，简化网络配置
+    -e QT_X11_NO_MITSHM=1 \ # 解决Qt应用在Docker中的显示问题
+    -e NVIDIA_DRIVER_CAPABILITIES=all \ # 允许访问所有GPU功能
+    -e NVIDIA_VISIBLE_DEVICES=all \ # 允许访问所有GPU设备
+    my_ros_image:latest
+```
+
+此外，还需要在宿主机上安装NVIDIA Container Toolkit，并确保正确配置了GPU驱动和Docker的GPU支持。
+
+配置软件源仓库
+
+```shell
+# 1. 导入 GPG 密钥
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+# 2. 添加软件源
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+```
+
+安装工具包
+
+```shell
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+```
+
+配置 Docker 运行时
+
+```shell
+# 自动修改 /etc/docker/daemon.json 增加 NVIDIA 配置
+sudo nvidia-ctk runtime configure --runtime=docker
+
+# 重启 Docker 使配置生效
+sudo systemctl restart docker
+```
+
+验证
+
+```shell
+sudo docker run --rm --gpus all nvidia/cuda:12.0.1-base-ubuntu22.04 nvidia-smi
+```
+
+如果输出显示了 NVIDIA GPU 的信息，说明配置成功，可以在 Docker 容器中使用 GPU 进行计算和渲染了。
