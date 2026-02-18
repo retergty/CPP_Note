@@ -75,6 +75,18 @@ docker build -t my-ubuntu:1.0 .
 
 按照`docker build`命令所在目录下的`Dockerfile`文件构建镜像。
 
+#### 创建自己的镜像
+
+```shell
+docker commit <容器ID或名称> <新镜像名>:<标签>
+# 例子
+docker commit my_container my_custom_image:1.0
+```
+
+将一个正在运行的容器保存为一个新的镜像，可以用来备份或分享当前容器的状态。
+
+不会保存`-v`挂载的卷数据，因为卷是独立于容器文件系统的。
+
 ### 容器操作
 
 #### 运行容器
@@ -226,6 +238,8 @@ CMD ["bash"]
 
 ### 配置docker守护进程全局代理
 
+#### 对于版本号低于23.03的docker
+
 让`docker pull`等命令，所有的容器都默认走代理
 
 1. 修改配置目录
@@ -248,6 +262,39 @@ CMD ["bash"]
     Environment="HTTPS_PROXY=http://127.0.0.1:7890"
     #这行很重要，设置不走代理的地址，防止连接本地仓库出问题
     Environment="NO_PROXY=localhost,127.0.0.1,::1,.local"
+    ```
+
+4. 重新加载配置并重启docker
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker
+    ```
+
+#### 对于版本号高于23.03的docker
+
+1. 修改配置目录
+
+    ```shell
+    sudo mkdir -p /etc/docker
+    ```
+
+2. 创建代理文件
+
+    ```shell
+    sudo vim /etc/docker/daemon.json
+    ```
+
+3. 填入内容
+
+    ```json
+    {
+      "proxies": {
+        "http-proxy": "http://127.0.0.1:7890",
+        "https-proxy": "http://127.0.0.1:7890",
+        "no-proxy": "localhost,127.0.0.1,::1,.local"
+      }
+    }
     ```
 
 4. 重新加载配置并重启docker
@@ -315,3 +362,46 @@ apt-get update
 ```
 
 注意，不会影响宿主机，任何操作均是隔离的。
+
+### 更改默认的docker存储位置
+
+默认情况下，Docker将镜像、容器和数据存储在`/var/lib/docker`目录下。如果需要更改这个位置，可以按照以下步骤操作：
+
+1. 停止Docker服务：
+
+    ```shell
+    sudo systemctl stop docker
+    ```
+
+2. 创建新的存储目录：
+
+    ```shell
+    sudo mkdir -p /home/docker-data
+    ```
+
+3. 修改Docker配置文件：
+
+    ```shell
+    sudo vim /etc/docker/daemon.json
+    ```
+
+4. 在配置文件中添加以下内容：
+
+    ```json
+    {
+      "data-root": "/home/docker-data"
+    }
+    ```
+
+5. 将现有数据迁移到新目录：
+
+    ```shell
+    sudo rsync -aP /var/lib/docker/ /home/docker-data/
+    ```
+
+6. 重新加载Docker配置并启动服务：
+
+    ```shell
+    sudo systemctl daemon-reload
+    sudo systemctl start docker
+    ```
