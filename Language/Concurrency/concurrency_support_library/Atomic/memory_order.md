@@ -59,7 +59,7 @@ typedef enum memory_order {
 
 ### 宽松顺序`Relaxed ordering`
 
-标记为`memory_order_relaxed`的原子操作不是同步操作,它不会为并发的内存访问行为添加顺序约束。它只保证原子性和修改顺序的一致性。
+标记为`memory_order_relaxed`的原子操作不是同步操作,它不会为并发的内存访问行为添加顺序约束。不提供内存屏障，它只保证原子性和修改顺序的一致性。
 
 比如，以下例子，其中`x`和`y`初始化为`0`.
 
