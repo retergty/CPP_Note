@@ -33,6 +33,8 @@ template< class R, class F, class... Args >
 
 `args`可以是`std::placeholders`中的`_1`,`_2`表示未绑定的参数。
 
+`std::placeholers`中的`_1`,`_2`指的是`std::bind`返回的函数对象的参数列表中的第一个，第二个参数，不是原来函数`f`的参数列表中的第一个，第二个参数。
+
 ## 例子
 
 ### 绑定普通函数

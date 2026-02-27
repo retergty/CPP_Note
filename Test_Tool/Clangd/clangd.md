@@ -65,3 +65,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 3. 解压，将`bin`目录拷贝至`/usr/local/bin`或其他系统路径中,将`lib`目录拷贝至`/usr/local/lib`中。
 4. 给予可执行权限`chmod +x /usr/local/bin/clangd`。
 5. 在终端中运行`clangd --version`，确认安装成功。
+
+### 使用包管理器安装clangd
+
+```shell
+# 1. 安装必要的下载工具
+apt-get update && apt-get install -y wget lsb-release wget software-properties-common gnupg
+
+# 2. 运行官方脚本（这会默认安装最新的稳定版，比如 17 或 18）
+bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+
+# 3. 安装对应的 clangd
+# 注意：上面的脚本跑完会告诉你安装了哪个版本，比如 llvm-18
+# 你需要手动再装一下对应的 clangd，例如：
+apt-get install -y clangd-18
+
+# 4. 创建符号链接（如果需要）
+ln -s /usr/bin/clangd-18 /usr/local/bin/clangd
+```
+
