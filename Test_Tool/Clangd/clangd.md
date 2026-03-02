@@ -83,3 +83,82 @@ apt-get install -y clangd-18
 # 4. 创建符号链接（如果需要）
 ln -s /usr/bin/clangd-18 /usr/local/bin/clangd
 ```
+
+### 在Linux下配置交叉编译环境
+
+#### 进行Linux驱动开发
+
+1. 安装生成`compile_commands.json`的工具，例如`Bear`：
+
+    ```shell
+    apt-get install -y bear
+    ```
+
+2. 写一个简单的`Makefile`，使用`Bear`来生成`compile_commands.json`：
+
+    ```Makefile
+    KERNELDIR := /container/data/rk3568_linux_sdk/linux_sdk/kernel
+    CURRENT_PATH := $(shell pwd)
+    obj-m := chrdevbase.o
+
+    # 你的交叉编译器前缀 (根据实际情况修改)
+    CROSS_COMPILE := /container/data/rk3568_linux_sdk/linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+
+    all:
+        $(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILE) modules
+    clean:
+        $(MAKE) -C $(KERNELDIR) M=$(CURRENT_PATH) clean
+
+    # 新增：专门用来生成/更新 clangd 配置的快捷命令
+    vscode: clean
+        bear make all
+    ```
+
+3. 运行`make vscode`命令，这会先清理旧的构建文件，然后使用`Bear`来监视构建过程，生成新的`compile_commands.json`文件。
+4. 在`VSCode`中，创建`.vscode/settings.json`文件，并添加以下配置：
+
+    ```json
+    {
+        "clangd.arguments": [
+            "--background-index",
+            "--compile-commands-dir=${workspaceFolder}",
+            "-j=4",
+            "--header-insertion=never",
+            "--fallback-style=llvm",
+            // 下面这一行非常重要！请替换为你实际使用的交叉编译器路径
+            "--query-driver=/container/data/rk3568_linux_sdk/linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc,/container/data/rk3568_linux_sdk/linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-g++" 
+        ],
+        // 禁用微软 C/C++ 插件的 IntelliSense，防止冲突
+        "C_Cpp.intelliSenseEngine": "disabled",
+        "files.exclude": {
+            "**/*.o": true,
+            "**/*.ko": true,
+            "**/*.mod": true,
+            "**/*.mod.c": true,
+            "**/*.mod.o": true,
+            "**/modules.order": true,
+            "**/Module.symvers": true,
+            "**/.*.cmd": true,
+            "**/.tmp_versions": true
+        }
+    }
+    ```
+
+5. 创建`.clangd`文件，添加以下内容：
+
+    ```yaml
+    CompileFlags:
+    Remove:
+        # 过滤掉 clangd 不认识的 GCC 专属参数
+        - "-fno-var-tracking-assignments"
+        - "-fconserve-stack"
+        - "-falign-jumps=*"
+        - "-fno-allow-store-data-races"
+        - "-mabi=lp64"
+    ```
+
+6. 在内核中复制`.clang_formats`文件到当前目录：
+
+    ```shell
+    cp /container/data/rk3568_linux_sdk/linux_sdk/kernel/.clang_formats ./
+    ```
