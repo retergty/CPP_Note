@@ -24,7 +24,7 @@ ForwardIt remove_if( ExecutionPolicy&& policy,
                      ForwardIt first, ForwardIt last, UnaryPred p );
 ```
 
-在指定的迭代器范围`[first,last)`内删除满足条件的项,并返回指向删除后的尾后迭代器，比如如果没有删除元素，则返回`last`.
+在指定的迭代器范围`[first,last)`内删除所有满足条件的项,并返回指向删除后的尾后迭代器，比如如果没有删除元素，则返回`last`.
 
 `remove`删除与`value`相等的元素。
 
@@ -36,15 +36,17 @@ ForwardIt remove_if( ExecutionPolicy&& policy,
 
 删除是通过移动范围内的元素实现的，使得不被删除的元素出现在容器的开头。
 
-* 移动元素是通过移动赋值实现的。
+* 移动元素是通过移动赋值实现的，会把所有不被删除的元素移动到前面，覆盖被删除的元素。
 * 移动操作是稳定的，没有被删除的元素保持原来的顺序。
 * 底层容器实际上并没有缩短，假设代码返回`result`,那么`[result,last)`内的元素仍然存在，是可解引用的，但处于一个未指定的状态，因为移动赋值的关系。
 
-由于`remove/remove_if`实际上并没有删除底层容器的元素，通常还需要调用容器的`erase`成员函数。
+由于`remove/remove_if`实际上并没有删除底层容器的元素，通常还需要调用容器的`erase`成员函数。通常是`eraee.(result, container.end())`来删除这些元素。
 
 注意,`remove/remove_if`不能用在关联容器中，比如`std::set`或`std::map`因为它们迭代器解引用到的类型不是移动可赋值的，容器节点关键字不能被改变。
 
 由于`remove`按照引用方式接受`value`，如果`value`是`[first,last)`的元素，可能会带来意想不到的的结果。相同的情况也可能发生在`remove_if`.
+
+哪怕有多个元素满足条件，`remove/remove_if`也只会遍历一次范围，所以它们的时间复杂度是线性的。相比`find`和`erase`的组合，`remove/remove_if`的效率更高，因为它们只需要遍历一次范围，而不是多次。
 
 ## 可能实现
 

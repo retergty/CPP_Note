@@ -107,6 +107,23 @@ class optional;
 
   当`std::optional`对象包含值时返回`true`，否则返回`false`。
 
+## 常见使用方法
+
+### 使用std::in_place构造函数直接构造值
+
+```CPP
+std::optional<std::string> opt(std::in_place, "Hello, World!");
+```
+
+可以用于在函数内部构造一个`std::optional`对象并返回，利用编译期的NRVO优化：
+
+```CPP
+std::optional<std::string> createOptionalString() {
+    std::optional<std::string> opt(std::in_place, "Hello, World!");
+    return opt; // NRVO优化，避免不必要的拷贝或移动
+}
+```
+
 ## 示例
 
 使用 std::optional 最核心的场景是：当一个函数可能无法返回有效结果时，用来代替“错误码”或“空指针”。

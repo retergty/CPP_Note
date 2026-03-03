@@ -57,6 +57,40 @@ QT的信号与槽并非C++标准特性，而是通过QT的元对象系统（Meta
 
 它比传统的回调函数更灵活、更强大，支持类型安全、参数传递和跨线程通信等功能。
 
+### connect函数
+
+```CPP
+static QMetaObject::Connection connect(
+    const QObject *sender,           // 发送者指针
+    PointerToMemberFunction signal,  // 信号的地址 (例如 &QPushButton::clicked)
+    const QObject *receiver,         // 接收者指针
+    PointerToMemberFunction method,  // 槽函数的地址 (例如 &MyClass::onClicked)
+    Qt::ConnectionType type = Qt::AutoConnection // 连接类型
+);
+```
+
+* `sender`：发出信号的对象。
+* `signal`：信号的地址，通常使用成员函数指针的语法，例如`&QPushButton::clicked`。
+* `receiver`：接收信号的对象。
+* `method`：槽函数的地址，通常使用成员函数指针的语法，例如`&MyClass::onClicked`。
+* `type`：连接类型，默认是`Qt::AutoConnection`，表示自动选择连接类型（直接连接或队列连接）。
+
+#### lambda表达式连接
+
+在现代`QT`中，可以使用`Lambda`表达式连接槽函数，此时`receiver`参数用于connect的生命周期管理，运行的事件循环，逻辑归属。
+
+```CPP
+connect(sender, &Sender::dataReady, this, [this](int value) {
+    // 处理信号
+});
+```
+
+#### connect的生命周期
+
+`connect`函数返回一个`QMetaObject::Connection`对象，可以用来管理连接的生命周期。通过调用`QObject::disconnect`函数，可以断开连接。
+
+此外，当`sender`或`receiver`对象被销毁时，QT会自动断开所有与该对象相关的连接，避免了悬挂指针和内存泄漏的问题。
+
 #### MOC
 
 在编译代码前，QT的`moc`工具会扫描源代码，查找包含`Q_OBJECT`宏的类，并为这些类生成额外的代码。这些代码包括信号和槽的实现、元对象信息等。
@@ -201,3 +235,18 @@ connect(btnStop, &QPushButton::clicked, progressBar, &QProgressBar::reset);
    * 当你调用`obj->deleteLater()`时，对象不会马上销毁，而是向`Event Loop`投递一个删除事件。等当前所有逻辑跑完，回到`Loop`中时再安全删除。
 
 每个QT对象都与一个线程关联，通常是创建它的线程。这个线程负责运行该对象的事件循环，从而处理该对象的事件和信号槽调用。
+
+## 生命周期管理
+
+`QT`通过对象树（Object Tree）来管理对象的生命周期。每个`QObject`对象可以有一个父对象和多个子对象。当父对象被销毁时，所有子对象也会被自动销毁。
+
+```CPP
+QObject *parent = new QObject();
+QObject *child1 = new QObject(parent); // child1 的父对象是 parent
+QObject *child2 = new QObject(parent); // child2 的父对象也是 parent
+delete parent; // 删除 parent 会自动删除 child1 和 child2
+```
+
+在这个例子中，我们创建了一个父对象`parent`，并创建了两个子对象`child1`和`child2`，它们的父对象都是`parent`。当我们删除`parent`时，`child1`和`child2`也会被自动删除，无需手动管理它们的内存。
+
+子类先于父类被销毁，父类的析构函数会在子类的析构函数之后被调用。这确保了在父类析构时，子类已经被销毁，不会访问到已经销毁的子类对象。
