@@ -25,3 +25,6 @@
 [submodule "Linux"]
 	path = Linux
 	url = git@github.com:retergty/LinuxNote.git
+[submodule "Git"]
+	path = Git
+	url = git@github.com:retergty/git_note.git
