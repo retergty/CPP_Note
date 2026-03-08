@@ -547,3 +547,18 @@ private:
 ```
 
 使用`std::experimental::propagate_const`可以自动处理`const`传递性问题。当`Robot`对象是`const`时，`pImpl`会被视为指向`const RobotImpl`的指针，防止修改实现类的成员变量。
+
+### 未定义符号
+
+链接器在生成动态链接库的时候，默认允许存在未定义符号（Undefined Symbols）.
+
+与生成可执行文件（Executable）不同，动态库被设计为可以在运行时灵活加载的模块。链接器在打包`.so`文件时，如果遇到找不到实现的函数，它不会报错，而是会把这个符号标记为“未定义”。
+
+它默认假设：这个缺失的函数实现，会在程序最终运行的时候，由加载这个`.so`的主程序（Executable）或者其他被一同加载的动态库来提供。 这种机制使得插件式架构或循环依赖的动态库成为可能。
+
+但是，有的时候会导致由于CMake遗漏了某个cpp文件，导致生成的动态库缺少了某个函数的实现，最终在运行时才发现这个问题。为了避免这种问题在运行时才暴露（甚至导致服务崩溃），最佳实践是在编译阶段就强制链接器检查所有符号。
+
+```CMakeLists
+# 假设你的动态库 target 名字叫 my_shared_lib
+target_link_options(my_shared_lib PRIVATE "-Wl,--no-undefined")
+```
