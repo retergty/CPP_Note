@@ -570,6 +570,10 @@ bar(boring());
 
   展示当前设置。
 
+### 不停止模式
+
+
+
 ### 设置具体线程断点
 
 当程序有多个线程时，可以选择设置一个特定线程的断点。
@@ -579,6 +583,72 @@ bar(boring());
   设置特定线程的断点，只有这个线程遇到这个断点时，程序才停止。`thread-id`是`GDB`分配给每个线程的`id`，可以使用`info threads`查看。
 
   具体线程断点会在对应线程不再存在时自动删除。
+
+### 调试多线程的程序
+
+`GDB`提供了这些用于调试多线程程序的工具,如下
+
+* 当新线程创建时自动通知。
+* `thread thread-id`切换线程
+* `info threads`显示线程的信息
+* `thread apply [thread-id-list | all] args`将命令应用于线程列表的命令
+* 线程特定的断点
+* `set print thread-events`设置当线程启动或者是退出时，打印的信息
+* `set libthread-db-search-path path`让用户设置要使用的`libthread_db`.
+
+`GDB`允许用户在程序运行时观测所有的线程，但是，`GDB`假设用户总是关注一个特定的线程，就是当前线程(current thread).`GDB`以当前线程的角度显示信息。
+
+每当 GDB 在程序中检测到新线程时，它都会显示该线程的目标系统标识，`[New systag]`,`systag`是特定系统的线程标识符。比如
+
+```shell
+[New Thread 0x41e02940 (LWP 25582)]
+```
+
+处于`debug`的方便，`GDB`会给`inferior`的每个线程一个线程号，用于标识相同`inferior`下线程.但是在不同的`inferior`中，线程号可能重复。
+
+可以使用`inferior-num.thread-num`来指定`inferior-num`下的`thread-num`线程，如果省略`inferior-num`则指的是当前`inferior`.
+
+一些命令可以接受一系列线程，比如`info threads`,指定一系列线程的方法如下
+
+1. 使用线程号指明一个特定的线程
+2. 使用`-`指定一个范围的线程，`1.2-4`
+3. 使用`*`指定所有的线程，`1.*`.
+
+* `info threads [-gid] [thread-id-list]`
+
+  显示指定线程的信息，默认是全部线程。
+
+  `GDB`给每个线程显示的信息如下
+
+  1. `GDB`分配给线程的线程号，如果没有多`inferior`，也不会显示`inferior`号。
+  2. `GDB`全局的线程号，如果没有多多`inferior`，也不会显示全局的线程号。
+  3. 目标系统的线程标识号
+  4. 线程名，线程可以由用户命名，或者在某些情况下由程序本身命名。
+  5. 每个线程当前栈帧摘要
+
+  同时还会有`*`表示当前线程。
+
+  ```gdb
+  (gdb) info threads
+    Id   Target Id             Frame
+  * 1    process 35 thread 13  main (argc=1, argv=0x7ffffff8)
+    2    process 35 thread 23  0x34e5 in sigpause ()
+    3    process 35 thread 27  0x34e5 in sigpause ()
+      at threadtest.c:68
+  ```
+
+* `thread thread-id`
+
+  切换当前线程为`thread-id`.
+
+  `GDB`使用`thread-id`的标识号与当前栈帧回复
+
+  ```gdb
+  (gdb) thread 2
+  [Switching to thread 2 (Thread 0xb7fdab70 (LWP 12747))]
+  #0  some_function (ignore=0x0) at example.c:8
+  8     printf ("hello\n");
+  ```
 
 ### 中断的系统调用
 
@@ -1417,72 +1487,6 @@ register_libstdcxx_printers(None)
 
   `kill inferior`,注意，这个`inferior`还保留在`info inferiors`中，但是它的描述变为`<null>`
 
-## 调试多线程的程序
-
-`GDB`提供了这些用于调试多线程程序的工具,如下
-
-* 当新线程创建时自动通知。
-* `thread thread-id`切换线程
-* `info threads`显示线程的信息
-* `thread apply [thread-id-list | all] args`将命令应用于线程列表的命令
-* 线程特定的断点
-* `set print thread-events`设置当线程启动或者是退出时，打印的信息
-* `set libthread-db-search-path path`让用户设置要使用的`libthread_db`.
-
-`GDB`允许用户在程序运行时观测所有的线程，但是，`GDB`假设用户总是关注一个特定的线程，就是当前线程(current thread).`GDB`以当前线程的角度显示信息。
-
-每当 GDB 在程序中检测到新线程时，它都会显示该线程的目标系统标识，`[New systag]`,`systag`是特定系统的线程标识符。比如
-
-```shell
-[New Thread 0x41e02940 (LWP 25582)]
-```
-
-处于`debug`的方便，`GDB`会给`inferior`的每个线程一个线程号，用于标识相同`inferior`下线程.但是在不同的`inferior`中，线程号可能重复。
-
-可以使用`inferior-num.thread-num`来指定`inferior-num`下的`thread-num`线程，如果省略`inferior-num`则指的是当前`inferior`.
-
-一些命令可以接受一系列线程，比如`info threads`,指定一系列线程的方法如下
-
-1. 使用线程号指明一个特定的线程
-2. 使用`-`指定一个范围的线程，`1.2-4`
-3. 使用`*`指定所有的线程，`1.*`.
-
-* `info threads [-gid] [thread-id-list]`
-
-  显示指定线程的信息，默认是全部线程。
-
-  `GDB`给每个线程显示的信息如下
-
-  1. `GDB`分配给线程的线程号，如果没有多`inferior`，也不会显示`inferior`号。
-  2. `GDB`全局的线程号，如果没有多多`inferior`，也不会显示全局的线程号。
-  3. 目标系统的线程标识号
-  4. 线程名，线程可以由用户命名，或者在某些情况下由程序本身命名。
-  5. 每个线程当前栈帧摘要
-
-  同时还会有`*`表示当前线程。
-
-  ```gdb
-  (gdb) info threads
-    Id   Target Id             Frame
-  * 1    process 35 thread 13  main (argc=1, argv=0x7ffffff8)
-    2    process 35 thread 23  0x34e5 in sigpause ()
-    3    process 35 thread 27  0x34e5 in sigpause ()
-      at threadtest.c:68
-  ```
-
-* `thread thread-id`
-
-  切换当前线程为`thread-id`.
-
-  `GDB`使用`thread-id`的标识号与当前栈帧回复
-
-  ```gdb
-  (gdb) thread 2
-  [Switching to thread 2 (Thread 0xb7fdab70 (LWP 12747))]
-  #0  some_function (ignore=0x0) at example.c:8
-  8     printf ("hello\n");
-  ```
-
 ## 指定调试目标
 
 通常，目标通过`file`，`core`命令的自动指明，但是，当使用`GDB`远程调试，或者是通过`TCP/IP`调试一个嵌入式设备，就需要指明目标。
@@ -1536,3 +1540,6 @@ register_libstdcxx_printers(None)
 * `target extended-remote udp6:[host]:port`
 
   通过`UDP`连接远程程序到`GDB`.
+
+### gdbserver
+

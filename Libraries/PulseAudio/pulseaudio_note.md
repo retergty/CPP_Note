@@ -17,6 +17,8 @@ Pulseaudio是一个跨平台的声音服务器，常用于Linux系统中。它�
 * `module-native-protocol-tcp`：允许通过TCP协议远程连接到Pulseaudio服务器。
 * `module-zeroconf-publish`：用于通过Zeroconf发布Pulseaudio服务，方便网络发现。
 
+模块通常在`usr/lib/pulse/modules/`目录下以`*.so`文件的形式存在，在`/etc/pulse/default.pa`配置文件中通过`load-module`命令加载，或者是通过命令行工具`pactl`动态加载，程序里`pa_module_load()`函数加载。
+
 ### Sink
 
 `Sink`是Pulseaudio中的音频输出设备。它接收来自源（Source）的音频数据并将其发送到物理设备（如扬声器或耳机）。
