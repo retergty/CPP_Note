@@ -462,3 +462,7 @@ sudo docker run --rm --gpus all nvidia/cuda:12.0.1-base-ubuntu22.04 nvidia-smi
 ```
 
 如果输出显示了 NVIDIA GPU 的信息，说明配置成功，可以在 Docker 容器中使用 GPU 进行计算和渲染了。
+
+### 使用服务器进行远程开发
+
+#### 连通ssh
