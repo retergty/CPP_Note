@@ -147,8 +147,8 @@ AVStream* stream = format_ctx->streams[i];
 
 * `name`,`long_name`,名字，一个是简写，一个是全称
 * `int capabilities;`表示这个编解码器能力的掩码.
-    * `AV_CODEC_CAP_DR1`支持 "Direct Rendering"（零拷贝解码，性能很高）。
-    * `AV_CODEC_CAP_DELAY`表示有延迟的，给它`Packet`，可能不会立刻吐出`Frame`，最后需要 `Flush`
+  * `AV_CODEC_CAP_DR1`支持 "Direct Rendering"（零拷贝解码，性能很高）。
+  * `AV_CODEC_CAP_DELAY`表示有延迟的，给它`Packet`，可能不会立刻吐出`Frame`，最后需要 `Flush`
 * `const enum AVPixelFormat *pix_fmts`; 支持的像素格式
 
 #### 软解硬解
@@ -173,8 +173,8 @@ AVStream* stream = format_ctx->streams[i];
 
 * `int thread_count;`线程数.默认是单线程
 * `int thread_type;`多线程类型
-    * `FF_THREAD_FRAME`同时编解码多个帧（延迟高，吞吐量大）
-    * `FF_THREAD_SLICE`将一个帧分成多块，（延迟低，适合直播）
+  * `FF_THREAD_FRAME`同时编解码多个帧（延迟高，吞吐量大）
+  * `FF_THREAD_SLICE`将一个帧分成多块，（延迟低，适合直播）
 
 格式控制
 
@@ -227,9 +227,9 @@ AVStream* stream = format_ctx->streams[i];
 
     对于`YUV420P`格式：
 
-    * `data[0]`指向 Y 平面数据
-    * `data[1]`指向 U 平面数据
-    * `data[2]`指向 V 平面数据
+  * `data[0]`指向 Y 平面数据
+  * `data[1]`指向 U 平面数据
+  * `data[2]`指向 V 平面数据
 
 * `int linesize[AV_NUM_DATA_POINTERS];`每个平面的行大小(单位字节)，用于计算每一行数据的起始位置.为了内存对齐，行大小可能大于图像宽度.大于宽度的部分是填充字节.
 * `int width, height;`图像宽高
@@ -272,6 +272,7 @@ AVStream* stream = format_ctx->streams[i];
 ### AVChannelLayout
 
 `AVChannelLayout`表示音频的声道布局.三个常见的布局：
+
 * 单声道(Mono): `AV_CHANNEL_LAYOUT_MONO`，只有一个声道，通常用于语音。
 * 立体声(Stereo): `AV_CHANNEL_LAYOUT_STEREO`，有两个声道，左声道和右声道，常用于音乐和电影音频。
 * 环绕声(Surround): `AV_CHANNEL_LAYOUT_5_1`，包含六个声道，分别是左前、右前、中置、低音炮、左环绕和右环绕，常用于影院音效。

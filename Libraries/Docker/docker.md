@@ -465,4 +465,101 @@ sudo docker run --rm --gpus all nvidia/cuda:12.0.1-base-ubuntu22.04 nvidia-smi
 
 ### 使用服务器进行远程开发
 
-#### 连通ssh
+#### 在容器内安装sshd
+
+安装sshd
+
+```shell
+apt-get update
+apt-get install -y openssh-server
+```
+
+安装运行所需核心目录
+
+```shell
+mkdir -p /var/run/sshd
+```
+
+设置初始密码
+
+```shell
+echo "root:your_password" | chpasswd
+```
+
+允许root用户登录（不安全，建议后续配置公钥登录）
+
+```shell
+sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+```
+
+安装公钥
+
+```shell
+# 1. 创建存放公钥的文件夹
+mkdir -p /root/.ssh
+
+# 2. 把你刚才复制的公钥写进去（请把下面引号里的内容换成你复制的真实公钥）
+echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... 你本地的公钥" > /root/.ssh/authorized_keys
+
+# 3. 极其重要：设置绝对安全的权限，否则 SSH 会嫌弃它不安全而拒绝读取！
+chmod 700 /root/.ssh
+chmod 600 /root/.ssh/authorized_keys
+```
+
+如果需要可以取消密码登陆，只留公钥
+
+```shell
+# 1. 确保允许 root 登录（即使无密码也允许公钥登录）
+sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+
+# 2. 彻底关闭密码验证功能
+sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+# 3. 确保公钥验证功能是开启的
+sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+```
+
+手动启动sshd
+
+```shell
+/usr/sbin/sshd
+```
+
+在宿主机启动容器时，需要设置端口转发
+
+```shell
+docker run -it -p 127.0.0.1:20045:22 --name my_remote_dev
+```
+
+### 在宿主机安装sshd
+
+在宿主机安装sshd，允许远程连接到宿主机，然后再通过`docker exec`进入容器进行开发。
+
+```shell
+sudo apt-get update
+sudo apt-get install -y openssh-server
+sudo systemctl enable ssh
+sudo systemctl start ssh
+```
+
+我们创建ssh隧道，把宿主机的`20045`端口转发到容器的`22`端口：
+
+```shell
+ssh -L 2222:127.0.0.1:20045 宿主机用户名@10.0.205.19
+```
+
+连上宿主机（22端口），并在我本地开一个`2222`端口。任何发到本地`2222`的数据，请宿主机帮我转交给它的`127.0.0.1:20045`.
+
+之后通过
+
+```shell
+ssh -p 2222 容器用户名@127.0.0.1
+```
+
+或者是
+
+```shell
+ssh -p 20045 容器用户名@10.0.205.19
+```
+
+这样需要我们之前`-p 127.0.0.1:20045:22`去掉`127.0.0.1`
