@@ -409,6 +409,8 @@ if (pa_modargs_get_value_boolean(ma, "enable_ai", &ai_enabled) < 0) {
 pa_log_info("AI 功能: %s", ai_enabled ? "开启" : "关闭");
 ```
 
+`pa_modargs_get_value_boolean`只有当参数不为数值类型时才返回错误码，找不到参数不会修改结果变量。
+
 ### 释放参数对象
 
 使用`pa_modargs_free()`释放`pa_modargs`对象：
@@ -1476,6 +1478,33 @@ int pa_source_output_move_to(
 但是，需要删除旧的`pa_resampler`,删除旧的`pa_memblockq`,重新创建新的`pa_resampler`和`pa_memblockq`，注意并发问题.
 
 可以注册`moving`回调函数，在这个函数里面进行操作。
+
+### 自动重混音
+
+如果`pa_source_output`的通道映射与连接的`pa_source`的通道映射不匹配，Pulseaudio会自动进行重混音处理。它会创建一个内部的重混音器来调整音频数据的通道布局，以确保数据能够正确地传递和处理。
+
+只需要设置`pa_source_output_new_data_set_sample_spec()`和`pa_source_output_new_data_set_channel_map()`，PA会自动处理重混音的逻辑。
+
+如果不设置`pa_source_output_new_data_set_channel_map()`，PA会默认使用`pa_channel_map_init_auto()`生成一个通道映射，这个映射会根据采样规格和系统配置自动确定通道布局。
+
+#### 底层处理
+
+第一步：处理 Channel Map（只看通道数量）
+PulseAudio 核心引擎在检查你的 data 配置时，发现你没有设置 Channel Map，它只比较通道数：
+
+```C
+// 底层逻辑
+if (data->sample_spec.channels == data->source->sample_spec.channels) {
+    // 只要数量一样（比如都是 2），管你格式是什么，直接拷贝底层的映射表！
+    data->channel_map = data->source->channel_map; 
+}
+```
+
+第二步：处理Format和sample_rate
+
+`Channel Map`补全之后，`PulseAudio`接着往下检查`sample_spec`的具体内容。这时候它发现了差异：
+
+`PulseAudio`就会触发我们在前面讨论过的重采样器（Resampler）机制：它会在底层 `Source` 和你的`source_output`之间安插一个`pa_resampler`。这个`resampler`会负责把底层`Source`的采样率和格式转换成你在`source_output_new_data`里设置的采样率和格式。
 
 ## 常见场景
 

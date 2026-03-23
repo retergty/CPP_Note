@@ -2,6 +2,11 @@
 
 `GStreamer` 是一个流媒体框架，提供了一个管道（Pipeline）机制来处理多媒体数据。
 
+参考文档
+
+* [GStreamer Architecture](https://gstreamer.freedesktop.org/documentation/gstreamer/gstreamer-architecture.html)
+* [官方的tutorials](https://gstreamer.freedesktop.org/documentation/tutorials/index.html)
+
 ## 架构
 
 `GStreamer`的设计是极其经典的解耦架构，自上而下分为三层:
