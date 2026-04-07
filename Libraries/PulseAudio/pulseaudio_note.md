@@ -1377,7 +1377,7 @@ int pa_source_output_new(
 void (*push)(pa_source_output *o, const pa_memchunk *chunk);
 ```
 
-运行在目标`pa_source`的线程上下文中。当`pa_source`推送音频数据时调用该函数。负责处理和传递音频数据。
+运行在目标`pa_source`的`IO`线程上下文中，准确地来说是`pa_rtpoll`运行的线程。当`pa_source`推送音频数据时调用该函数。负责处理和传递音频数据。
 
 * `o`：指向目标`pa_source_output`对象的指针。
 * `chunk`：指向要处理的音频数据片段的指针。
