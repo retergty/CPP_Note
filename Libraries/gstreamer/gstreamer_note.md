@@ -39,6 +39,62 @@
 
 ## 数据结构
 
+### GObject
+
+`GObject` 是 `GStreamer` 中所有对象的基类，它主要提供了以下功能
+
+* **引用计数模型**： 提供`g_object_ref`和`g_object_unref`。这就相当于`C++`中的`std::shared_ptr`控制块，用于追踪对象的生命周期，防止内存泄漏或野指针。
+* **动态属性系统**： 提供了按字符串名字去读写对象属性的能力（`g_object_set/get`）。
+
+### GstObject
+
+`GStreamer`继承了`GObject`并派生出`GstObject`,它主要提供了以下功能
+
+* **对象锁 (LOCK)**： 内部直接封装了互斥锁(类似`std::mutex`). 在多线程并发修改元件属性或改变管道拓扑时，保证状态的安全。
+* **命名与层级**： 赋予了对象一个字符串名字（Name），并且引入了父子指针关系（Parent/Child），为构建拓扑树打下基础。
+
+### GstMiniObject
+
+`GstMiniObject`是一个轻量级的对象基类，主要用于表示数据流中的媒体数据比如GstBuffer（如音频帧、视频帧）以及控制事件（如Seek、EOS）。它主要提供了以下功能
+
+* **引用计数模型**： 与`GObject`类似，提供了`gst_mini_object_ref`和`gst_mini_object_unref`，用于管理数据对象的生命周期。
+* **内存管理**： 由于`GstMiniObject`通常用于高频率的数据流中，它的内存管理机制被优化为更高效的分配和释放，适合大量短生命周期对象的使用场景。
+
+### GstElement
+
+`GstElement`是`GstObject`的子类，代表一个具体的处理单元。它主要提供了以下功能
+
+* **状态机 (State Machine)**： 拥有四个严格的状态：`NULL`（空闲）、`READY`（资源就绪）、`PAUSED`（暂停，数据预跑）、`PLAYING`（播放中）
+* **pad管理 (Pad Management)**： 它可以拥有多个输入（Sink Pad）和输出（Source Pad）端口，允许它与其他`GstElement`连接。
+
+### GstBin
+
+`GstBin`是`GstElement`的子类，代表一个容器，可以包含多个`GstElement`。它主要提供了以下功能
+
+* **打包封装**： 把一堆内部互相连接的`GstElement`进行封装，对外只暴露出几个pad。外界把它当成一个普通的单一元件来用。
+* **状态转发**： 当把一个`Bin`设置为`PLAYING`时，它负责遍历其内的所有子元件，把它们也设置为`PLAYING`。
+
+### GstPipeline
+
+`GstPipeline`是`GstBin`的子类，代表整个媒体处理流程的顶层容器。它主要提供了以下功能
+
+* **全局时钟 (Global Clock)**： 管道提供一个全局时钟，所有的`Element`都以这个时钟为基准进行时间戳的计算和同步。
+* **消息总线 (Bus)**： 维护一个总线队列，收集管道内所有底层元件发出的消息（如错误、播放完毕），统一向上层应用层汇报。
+
+### GstPad
+
+`GstPad`是`GstElement`的输入/输出接口，代表数据流动的通道。它主要提供了以下功能
+
+* **能力集 (Caps)**： 每个`Pad`都附带一个能力集（Caps），描述了流经该`Pad`的数据格式（如视频分辨率、音频采样率）。相邻的两个`Pad`必须通过“Caps 协商”达成一致，数据才能流通。
+* **数据流动 (Data Flow)**： 数据从前一个`Element`的`Src Pad`流出，进入后一个`Element`的`Sink Pad`。`Pad`负责管理数据的流动和格式转换，确保不同`Element`之间的数据兼容。
+
+### GstCaps
+
+`GstCaps`是一个描述数据格式的结构，附加在`Pad`上。它主要提供了以下功能
+
+* **格式描述**： 描述了流经`Pad`的数据格式，如`audio/x-raw,format=S16LE,rate=44100`。这就相当于一个“格式说明书”，告诉下一个`Element`它能接受什么样的数据。
+* **Caps 协商**： 两个相邻的`Pad`通过协商来确定数据传输的格式，确保数据能够正确流动。
+
 ### GstBuffer
 
 `GstBuffer（数据缓冲）`是`GStreamer`中最核心的数据结构，代表一块媒体数据（如音频帧或视频帧）。它包含内存指针和时间戳（PTS/DTS）。
@@ -53,11 +109,16 @@
 
 **方向**：既可以顺流而下，也可以逆流而上（Upstream）。
 
+* **下行事件**： 比如`EOS` (`End Of Stream`，播放结束标记)，顺着数据流传遍所有元件。
+* **上行事件**： 比如`SEEK` (拖动进度条)，从最末端的渲染器逆流而上，一直传给最源头的文件读取器，让它改变读取位置。
+
 ### GstMessage
 
 `GstMessage（消息）`是从`Element`到应用层的通信机制。比如错误消息、状态变化、EOS通知等。
 
 **方向**：从流水线抛向应用程序的主线程（Application Thread）。
+
+`GstMessage`通过管道的消息总线（Bus）传递，应用层可以监听总线来获取这些消息并做出响应。
 
 ## 状态机
 

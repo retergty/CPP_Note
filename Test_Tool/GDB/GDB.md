@@ -1547,3 +1547,22 @@ register_libstdcxx_printers(None)
 
 ### gdbserver
 
+`gdbserver`是一个在远程系统上运行的程序，它允许`GDB`连接到它来调试远程系统上的程序。
+
+`gdbserver`的使用方法如下
+
+```shell
+gdbserver [options] host:port program [args...]
+```
+
+其中`host:port`指定了`gdbserver`监听的地址和端口，`program`指定了要调试的程序，`args...`指定了要传递给程序的参数。
+
+例如
+
+```shell
+# 在远程系统上运行gdbserver，监听1234端口，并调试myprogram程序
+gdbserver :2345 ./myprogram
+
+# 附加到远程系统上正在运行的程序，监听1234端口，并调试pid为5678的程序
+gdbserver --attach :2345 5678
+```
