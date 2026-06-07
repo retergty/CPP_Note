@@ -175,7 +175,7 @@ $$
 
 $$
 \begin{align*}
-p_i &= \nabla_{x}\tilde J_i(x_i,u_i) + \nabla_{ux}^2 \tilde J_i(x_i,u_i)^Td_i \\
+p_i &= \nabla_{x}\tilde J_i(x_i,u_i) + \nabla_{ux}^2 \tilde J_i(x_i,u_i)d_i \\
 P_i &= \nabla_{xx}^2 \tilde J_i(x_i,u_i) +  \nabla_{xu}^2 \tilde J_i(x_i,u_i)K_i
 \end{align*}
 $$

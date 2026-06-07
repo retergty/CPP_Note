@@ -171,3 +171,23 @@ perf report
 如果是使用了`-g`编译的文件，那么还会显示源代码.
 
 ![perf_annotate2](./picture/perf_annotate2.png)
+
+## 可视化
+
+可以转换为json格式使用浏览器打开
+
+```bash
+# 采集 perf 数据
+perf record -e cycles:u -F 2000 --call-graph fp \
+  -o /tmp/thrust_vector_perf.data \
+  ./out/build/gcc-release/Tests/ThrustVectorPerfTest
+
+# 导出 perf script
+perf script -i /tmp/thrust_vector_perf.data > /tmp/perf.script
+
+# 安装 speedscope
+npm install -g speedscope
+
+# 转换成 speedscope JSON
+speedscope --format perf-script /tmp/perf.script --out /tmp/
+```
