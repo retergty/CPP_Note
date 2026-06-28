@@ -937,3 +937,182 @@ main (int   argc,
 * 外部连接只能面向`bin`自身接口，不能把内部pad直接当作`bin`接口使用。
 * `ghost pad`就是把内部真实pad“映射”为`bin`的对外pad，这是标准做法。
 
+## 实例
+
+```CPP
+#include <gst/gst.h>
+#include <glib.h>
+
+
+static gboolean
+bus_call (GstBus     *bus,
+          GstMessage *msg,
+          gpointer    data)
+{
+  GMainLoop *loop = (GMainLoop *) data;
+
+  switch (GST_MESSAGE_TYPE (msg)) {
+
+    case GST_MESSAGE_EOS:
+      g_print ("End of stream\n");
+      g_main_loop_quit (loop);
+      break;
+
+    case GST_MESSAGE_ERROR: {
+      gchar  *debug;
+      GError *error;
+
+      gst_message_parse_error (msg, &error, &debug);
+      g_free (debug);
+
+      g_printerr ("Error: %s\n", error->message);
+      g_error_free (error);
+
+      g_main_loop_quit (loop);
+      break;
+    }
+    default:
+      break;
+  }
+
+  return TRUE;
+}
+
+
+static void
+on_pad_added (GstElement *element,
+              GstPad     *pad,
+              gpointer    data)
+{
+  GstPad *sinkpad;
+  GstElement *decoder = (GstElement *) data;
+
+  /* We can now link this pad with the vorbis-decoder sink pad */
+  g_print ("Dynamic pad created, linking demuxer/decoder\n");
+
+  sinkpad = gst_element_get_static_pad (decoder, "sink");
+
+  gst_pad_link (pad, sinkpad);
+
+  gst_object_unref (sinkpad);
+}
+
+
+
+int
+main (int   argc,
+      char *argv[])
+{
+  GMainLoop *loop;
+
+  GstElement *pipeline, *source, *demuxer, *decoder, *conv, *sink;
+  GstBus *bus;
+  guint bus_watch_id;
+
+  /* Initialisation */
+  gst_init (&argc, &argv);
+
+  loop = g_main_loop_new (NULL, FALSE);
+
+
+  /* Check input arguments */
+  if (argc != 2) {
+    g_printerr ("Usage: %s <Ogg/Vorbis filename>\n", argv[0]);
+    return -1;
+  }
+
+
+  /* Create gstreamer elements */
+  pipeline = gst_pipeline_new ("audio-player");
+  source   = gst_element_factory_make ("filesrc",       "file-source");
+  demuxer  = gst_element_factory_make ("oggdemux",      "ogg-demuxer");
+  decoder  = gst_element_factory_make ("vorbisdec",     "vorbis-decoder");
+  conv     = gst_element_factory_make ("audioconvert",  "converter");
+  sink     = gst_element_factory_make ("autoaudiosink", "audio-output");
+
+  if (!pipeline || !source || !demuxer || !decoder || !conv || !sink) {
+    g_printerr ("One element could not be created. Exiting.\n");
+    return -1;
+  }
+
+  /* Set up the pipeline */
+
+  /* we set the input filename to the source element */
+  g_object_set (G_OBJECT (source), "location", argv[1], NULL);
+
+  /* we add a message handler */
+  bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
+  bus_watch_id = gst_bus_add_watch (bus, bus_call, loop);
+  gst_object_unref (bus);
+
+  /* we add all elements into the pipeline */
+  /* file-source | ogg-demuxer | vorbis-decoder | converter | alsa-output */
+  gst_bin_add_many (GST_BIN (pipeline),
+                    source, demuxer, decoder, conv, sink, NULL);
+
+  /* we link the elements together */
+  /* file-source -> ogg-demuxer ~> vorbis-decoder -> converter -> alsa-output */
+  gst_element_link (source, demuxer);
+  gst_element_link_many (decoder, conv, sink, NULL);
+  g_signal_connect (demuxer, "pad-added", G_CALLBACK (on_pad_added), decoder);
+
+  /* note that the demuxer will be linked to the decoder dynamically.
+     The reason is that Ogg may contain various streams (for example
+     audio and video). The source pad(s) will be created at run time,
+     by the demuxer when it detects the amount and nature of streams.
+     Therefore we connect a callback function which will be executed
+     when the "pad-added" is emitted.*/
+
+
+  /* Set the pipeline to "playing" state*/
+  g_print ("Now playing: %s\n", argv[1]);
+  gst_element_set_state (pipeline, GST_STATE_PLAYING);
+
+
+  /* Iterate */
+  g_print ("Running...\n");
+  g_main_loop_run (loop);
+
+
+  /* Out of the main loop, clean up nicely */
+  g_print ("Returned, stopping playback\n");
+  gst_element_set_state (pipeline, GST_STATE_NULL);
+
+  g_print ("Deleting pipeline\n");
+  gst_object_unref (GST_OBJECT (pipeline));
+  g_source_remove (bus_watch_id);
+  g_main_loop_unref (loop);
+
+  return 0;
+}
+```
+
+这段代码实现了一个简单的`Ogg/Vorbis`音频播放器。
+
+整体pipeline结构如下：
+
+```text
+filesrc -> oggdemux ~> vorbisdec -> audioconvert -> autoaudiosink
+```
+
+其中`~>`表示动态连接。
+
+执行流程：
+
+* `gst_init()`初始化GStreamer，`g_main_loop_new()`创建主循环。
+* 创建元素：`filesrc`读取文件，`oggdemux`解析`Ogg`容器，`vorbisdec`解码`Vorbis`音频，`audioconvert`转换音频格式，`autoaudiosink`自动选择音频输出。
+* 通过`g_object_set()`设置`filesrc`的`location`属性。
+* 通过`gst_pipeline_get_bus()`获取pipeline的`bus`，再用`gst_bus_add_watch()`监听`EOS`和`ERROR`消息。
+* 使用`gst_bin_add_many()`把元素加入pipeline。
+* 静态连接`filesrc -> oggdemux`与`vorbisdec -> audioconvert -> autoaudiosink`。
+* `oggdemux -> vorbisdec`不能提前连接，因为`oggdemux`的输出pad是动态创建的；因此用`g_signal_connect()`监听`pad-added`信号，在`on_pad_added()`中连接到`vorbisdec:sink`。
+* 设置pipeline为`GST_STATE_PLAYING`后，`g_main_loop_run()`开始阻塞运行。
+* 收到`EOS`或`ERROR`时，`bus_call()`调用`g_main_loop_quit()`退出主循环。
+* 退出后将pipeline切回`GST_STATE_NULL`，释放pipeline、bus watch和main loop。
+
+关键学习点：
+
+* `demuxer`类元素的输出pad经常是动态pad，必须在`pad-added`回调中连接。
+* `bus`用于把pipeline中的异步消息传给应用层。
+* `GMainLoop`负责驱动bus watch回调；没有主循环，`gst_bus_add_watch()`注册的回调不会持续工作。
+* 示例中的`on_pad_added()`较简化，实际代码应检查pad类型、是否已连接，以及`gst_pad_link()`返回值。
