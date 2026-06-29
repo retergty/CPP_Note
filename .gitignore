@@ -1,4 +1,6 @@
 build
 install
 log
-.vscode
+.vscode.cache/
+.cache/
+.vscode/browse.vc.db

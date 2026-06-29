@@ -563,3 +563,14 @@ ssh -p 20045 容器用户名@10.0.205.19
 ```
 
 这样需要我们之前`-p 127.0.0.1:20045:22`去掉`127.0.0.1`
+
+### 在容器中安装sudo
+
+```shell
+apt-get update
+apt-get install -y sudo
+echo 'ALL ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/nopasswd
+chmod 440 /etc/sudoers.d/nopasswd
+```
+
+可以在容器中安装sudo，通常容器中默认是root用户.

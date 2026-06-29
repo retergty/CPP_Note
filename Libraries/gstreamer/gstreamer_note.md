@@ -124,6 +124,29 @@
 
 `GstMessage`通过管道的消息总线（Bus）传递，应用层可以监听总线来获取这些消息并做出响应。
 
+### GstClock
+
+`GstClock`是`GStreamer`中的时钟系统，用于同步和管理时间戳（PTS/DTS）。它主要提供了以下功能
+
+* **时间戳管理**： 管理数据流中的时间戳，确保音视频同步播放。
+* **时钟同步**： 同步多个`GstClock`，确保时间戳的一致性。
+* **时钟控制**： 控制时钟的运行和停止。
+
+### GstSegment
+
+`GstSegment`是`GStreamer`中的时间轴段，是`GStreamer`用来描述当前播放/处理的是媒体时间线中的哪一段，以及如何把`buffer`时间戳映射到`running-time`的结构体。
+
+`GstSegment`通常来自`SEGMENT event`.
+
+`GstSegment`里常见字段为：
+
+* `format`：时间单位，比如`GST_FORMAT_TIME`
+* `start`：`segment`开始位置
+* `stop`：`segment`结束位置，可选
+* `time`：映射到`running-time`的基准
+* `rate`：播放速率，比如`1.0、2.0、-1.0`
+* `base`：前面`segment`已累计的`running-time`偏移
+
 ## 状态机
 
 `gstreamer`通过状态机来管理`Element`的生命周期。每个`Element`都有以下五种状态：
