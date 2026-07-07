@@ -423,6 +423,28 @@ loss.backward()  # 计算梯度（存入 model 参数的 .grad）
 optimizer.step()  # 优化器根据梯度更新参数
 ```
 
+### 梯度计算方法
+
+`backward()`函数中，使用链式法则计算梯度，对于每个叶子节点，它将上游梯度和本地梯度相乘，得到该叶子节点的梯度，并累加到`.grad`属性中。而本地梯度内部则是通过上游的`backward()`函数递归计算得出。
+
+设一个节点是
+
+$$
+z = f(x_1,x_2,...,x_n)
+$$
+
+那么对第$i$个输入的本地导数定义为
+
+$$
+d_i = \frac{\partial z}{\partial x_i}
+$$
+
+反向传播时，若上游梯度为 $g_z = \frac{\partial L}{\partial z}$，则叶子节点的梯度为
+
+$$
+g_{x_i} = \frac{\partial L}{\partial x_i} = g_z \cdot \frac{\partial z}{\partial x_i}
+$$
+
 ## 神经网络
 
 `pytorch.nn`是一个模块化的神经网络，有着丰富的预定义的层，激活函数，损失函数等.
@@ -525,7 +547,7 @@ print(model)
 
 ### 常用层
 
-* 线性层，执行线性变换 $y = xW^T + b$，层的参数就是 $W^T$ 与 $b$
+* 线性层，执行线性变换 $y = xW^T + b$，层的参数就是 $W^T$ 与 $b$，其中 $W$ 是 $R^{(out\_features \times in\_features)}$ , $b$ 的维度是 $R^{(out\_features)}$
 
     ```python
     nn.Linear(in_features, out_features, bias=True)
