@@ -414,6 +414,30 @@ $$
 
 然后广播到每个 batch 和每个 head 上。
 
+### 5. Sliding Window Attention
+
+工程实现中，有些模型会限制每个 token 的注意力窗口大小 `window_size`。此时第 $i$ 个 token 不再关注所有历史 token，而是只关注最近 $w$ 个 token。
+
+对应的 mask 可以写成：
+
+$$
+M_{i,j} =
+\begin{cases}
+0, & j \le i \text{ 且 } i - j < w \\
+-\infty, & \text{otherwise}
+\end{cases}
+$$
+
+其中 $w$ 表示 `window_size`。
+
+此时第 $i$ 个 token 的输出可以理解为：
+
+$$
+O_i = Attention(q_i, K_{\max(1, i-w+1):i}, V_{\max(1, i-w+1):i})
+$$
+
+`Sliding Window Attention` 可以降低长序列的计算量和 `KV Cache` 显存占用，但窗口之外的更早 token 不能被当前 token 直接关注。
+
 ## GQA 多头注意力机制 Grouped Query Attention
 
 单独只有一个注意力矩阵无法捕捉序列中不同子空间的特征，因此引入多头注意力机制。
@@ -810,7 +834,7 @@ $$
 V_{\text{cache}} = [v_1, v_2, \cdots, v_i]
 $$
 
-当前 token 的注意力只需要使用当前 query 和缓存中的所有 `Key/Value`：
+默认情况下，当前 token 的注意力会使用当前 query 和缓存中的所有 `Key/Value`：
 
 $$
 S_i = \frac{q_iK_{\text{cache}}^T}{\sqrt{d_k}}
@@ -832,11 +856,20 @@ $$
 
 这等价于完整因果注意力矩阵中的第 $i$ 行。区别是推理时不会重复计算历史 token 的 $K$ 和 $V$，而是直接复用缓存。
 
-### 3. 和训练时的区别
+如果模型使用 `Sliding Window Attention`，推理时通常只使用最近窗口内的 `KV Cache`：
+
+$$
+O_i = Attention(q_i, K_{\max(1, i-w+1):i}, V_{\max(1, i-w+1):i})
+$$
+
+其中 $w$ 表示 `window_size`。
+
+### 和训练时的区别
 
 - 训练时：一次性计算完整的 $QK^T$，得到 $T \times T$ 注意力矩阵，并使用 causal mask 屏蔽未来位置。
 - 推理时：每一步只计算当前 token 的一行注意力，历史 token 的 `Key/Value` 来自 `KV Cache`。
-- `KV Cache` 节省的是历史 $K$ 和 $V$ 的重复计算，但当前 token 仍然需要和全部缓存位置做 attention。
+- 如果模型使用 `window_size`，训练和推理都会遵守相同的窗口限制。
+- `KV Cache` 节省的是历史 $K$ 和 $V$ 的重复计算；如果没有窗口限制，当前 token 仍然需要和全部缓存位置做 attention。
 
 ## Transformer 结构
 
@@ -934,3 +967,275 @@ logits \in \mathbb{R}^{B \times T \times V}
 $$
 
 其中 $V$ 表示词表大小。推理时通常取最后一个位置的 logits，用来预测下一个 token。
+
+## 词嵌入 Token Embedding
+
+文本经过 tokenizer 后会变成 token id 序列。给定输入：
+
+$$
+x \in \mathbb{Z}^{B \times T}
+$$
+
+其中 $B$ 是 batch size，$T$ 是序列长度，每个元素都是词表中的 token id。
+
+词嵌入层本质上是一个查表操作。设词表大小为 $V$，隐藏维度为 $C$，则 embedding table 为：
+
+$$
+E \in \mathbb{R}^{V \times C}
+$$
+
+对于位置 $(b, t)$ 上的 token id $x_{b,t}$，对应的向量为：
+
+$$
+X_{b,t} = E[x_{b,t}]
+$$
+
+因此嵌入后的输入形状为：
+
+$$
+X \in \mathbb{R}^{B \times T \times C}
+$$
+
+词嵌入把离散的 token id 转换成连续向量，后续的 `Transformer Block` 都在这些向量表示上计算。
+
+### 和位置编码的关系
+
+词嵌入只表示 token 本身的语义，不包含位置信息。
+
+如果模型使用绝对位置编码，通常会把 token embedding 和 position embedding 相加：
+
+$$
+X_0 = TokenEmbedding(x) + PositionEmbedding(pos)
+$$
+
+如果模型使用 `RoPE`，通常不会把位置向量直接加到输入 embedding 上，而是在 attention 中对 $Q$ 和 $K$ 注入位置信息。
+
+### 和 LM Head 的关系
+
+模型最后会把隐藏状态映射回词表空间：
+
+$$
+logits = X_N W_{vocab}
+$$
+
+其中：
+
+$$
+W_{vocab} \in \mathbb{R}^{C \times V}
+$$
+
+有些模型会使用权重共享：
+
+$$
+W_{vocab} = E^T
+$$
+
+这样输入端的 token embedding 和输出端的词表分类权重使用同一组参数。
+
+## LM Head
+
+`LM Head` 是语言模型最后的输出层，用来把隐藏状态映射到词表空间。
+
+经过 $N$ 层 `Transformer Block` 后，隐藏状态为：
+
+$$
+X_N \in \mathbb{R}^{B \times T \times C}
+$$
+
+其中 $C$ 是隐藏维度。设词表大小为 $V$，`LM Head` 的权重为：
+
+$$
+W_{vocab} \in \mathbb{R}^{C \times V}
+$$
+
+则输出 logits 为：
+
+$$
+logits = X_N W_{vocab}
+$$
+
+输出形状为：
+
+$$
+logits \in \mathbb{R}^{B \times T \times V}
+$$
+
+其中 $logits_{b,t}$ 表示第 $b$ 个样本、第 $t$ 个位置对整个词表的预测分数。
+
+### 训练时
+
+训练自回归语言模型时，第 $t$ 个位置的输出用来预测第 $t+1$ 个 token。
+
+$$
+logits_{b,t} \rightarrow x_{b,t+1}
+$$
+
+设输入 token id 为：
+
+$$
+x \in \mathbb{Z}^{B \times T}
+$$
+
+`logits` 的形状为：
+
+$$
+logits \in \mathbb{R}^{B \times T \times V}
+$$
+
+其中 $logits_{b,t,:}$ 是第 $b$ 个样本、第 $t$ 个位置对全部 $V$ 个 token 的原始预测分数。它不是概率，也不需要事先做 `softmax`。
+
+### 1. 构造 targets
+
+目标 token 就是输入序列右移一位：
+
+$$
+targets_{b,t} = x_{b,t+1}
+$$
+
+因此实际参与损失计算的张量为：
+
+$$
+shift\_logits = logits[:, :-1, :] \in \mathbb{R}^{B \times (T-1) \times V}
+$$
+
+$$
+targets = x[:, 1:] \in \mathbb{Z}^{B \times (T-1)}
+$$
+
+例如输入为：
+
+```text
+[BOS, 我, 喜欢, 学习]
+```
+
+则各位置的预测目标为：
+
+```text
+BOS   -> 我
+我    -> 喜欢
+喜欢  -> 学习
+```
+
+最后一个位置没有下一个 token，因此通常不参与本段序列的 loss。
+
+`targets` 中的每个元素只是正确 token 的 id，取值范围为 $[0, V-1]$，不需要转换成长度为 $V$ 的 one-hot 向量。
+
+### 2. 单个位置的交叉熵
+
+交叉熵会在词表维度上计算 `softmax`，并取正确 target 对应概率的负对数：
+
+$$
+\ell_{b,t} =
+-\log \left(softmax(logits_{b,t,:})_{targets_{b,t}}\right)
+$$
+
+模型给正确 token 分配的概率越高，$\ell_{b,t}$ 越小。
+
+### 3. 整个 batch 的 loss
+
+对所有有效 token 位置的损失取平均：
+
+$$
+Loss =
+\frac{1}{N}\sum_{(b,t) \in \mathcal{V}} \ell_{b,t}
+$$
+
+其中 $\mathcal{V}$ 表示有效位置集合，$N$ 是有效位置数。padding、prompt 中不需要训练的位置等通常会标记为 `ignore_index`，不参与 loss。
+
+### 推理时
+
+推理生成时，通常只取最后一个位置的 logits：
+
+$$
+logits_{last} \in \mathbb{R}^{B \times V}
+$$
+
+然后根据采样策略选择下一个 token，例如 `argmax`、`top-k`、`top-p` 或 `temperature sampling`。
+
+### 权重共享
+
+有些模型会让 `LM Head` 和输入端的 token embedding 共享权重：
+
+$$
+W_{vocab} = E^T
+$$
+
+这样可以减少参数量，也让输入 token 表示和输出词表分类使用同一套语义空间。
+
+## 监督微调 Supervised Fine-Tuning
+
+`SFT` 使用高质量的指令与回答数据继续训练预训练模型，使模型学会理解指令并按照期望的格式回答。
+
+### 1. 训练数据
+
+一条 SFT 数据通常包含：
+
+```text
+System: 你是一个有帮助的助手。
+User: 请解释什么是自注意力。
+Assistant: 自注意力是一种……
+```
+
+经过 chat template 和 tokenizer 处理后，整段对话会被拼接成一个 token 序列：
+
+$$
+x = [x_1, x_2, \cdots, x_T]
+$$
+
+模型仍然使用自回归方式，根据前面的 token 预测下一个 token。
+
+### 2. Targets 和 Loss Mask
+
+targets 仍然由输入序列右移一位得到：
+
+$$
+targets_t = x_{t+1}
+$$
+
+但 SFT 通常只计算 `Assistant` 回答部分的 loss，`System`、`User` 和 padding 位置不参与损失计算：
+
+$$
+m_t =
+\begin{cases}
+1, & targets_t \text{ 属于 Assistant 回答} \\
+0, & \text{otherwise}
+\end{cases}
+$$
+
+最终损失为：
+
+$$
+Loss =
+\frac{\sum_t m_t \ell_t}
+{\sum_t m_t}
+$$
+
+其中 $\ell_t$ 是第 $t$ 个位置的 token 交叉熵损失。
+
+只计算回答部分的 loss，可以让模型利用完整对话作为上下文，同时主要学习如何生成期望的回答。
+
+### 3. Teacher Forcing
+
+训练时，模型每个位置接收到的都是数据中的真实历史 token，而不是模型自己生成的 token。这种方式称为 `Teacher Forcing`。
+
+因此一条长度为 $T$ 的样本可以并行计算所有有效位置的 next-token loss，而不需要像推理时一样逐 token 生成。
+
+### 4. 多轮对话
+
+对于多轮对话，可以只训练最后一轮回答，也可以训练所有 `Assistant` 回答：
+
+```text
+System  -> 不计算 loss
+User    -> 不计算 loss
+Assistant -> 计算 loss
+User    -> 不计算 loss
+Assistant -> 计算 loss
+```
+
+具体哪些位置参与 loss 由训练数据的 mask 策略决定。
+
+### 5. 和预训练的区别
+
+- 预训练主要使用大规模文本学习语言知识和 next-token prediction。
+- SFT 使用规模更小、质量更高的指令回答数据，学习指令遵循和回答格式。
+- 两者通常使用相同的自回归交叉熵目标，主要区别在于训练数据和参与 loss 的 token 范围。
