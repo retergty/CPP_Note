@@ -291,7 +291,7 @@ $$
 
 ## 因果注意力 Causal Attention
 
-`Causal Attention` 在自注意力的注意力分数上加入因果 mask，使第 $i$ 个 token 只能关注第 $1$ 到第 $i$ 个 token，不能关注第 $i+1$ 到第 $T$ 个 token。
+`Causal Attention` 用在自回归模型中，用来保证第 $i$ 个 token 只能关注自己和之前的 token，不能看到未来 token。
 
 给定：
 
@@ -309,23 +309,11 @@ $$
 S = \frac{QK^T}{\sqrt{d_k}}
 $$
 
-其中：
+其中 $S \in \mathbb{R}^{T \times T}$，$S_{i,j}$ 表示第 $i$ 个 token 对第 $j$ 个 token 的注意力分数。
 
-$$
-S \in \mathbb{R}^{T \times T}
-$$
+### 1. 因果 Mask
 
-元素 $S_{i,j}$ 表示第 $i$ 个 token 对第 $j$ 个 token 的注意力分数。
-
-### 1. 构造因果 mask
-
-定义因果 mask 矩阵：
-
-$$
-M \in \mathbb{R}^{T \times T}
-$$
-
-其中：
+定义因果 mask 矩阵 $M \in \mathbb{R}^{T \times T}$：
 
 $$
 M_{i,j} =
@@ -335,7 +323,7 @@ M_{i,j} =
 \end{cases}
 $$
 
-矩阵形式为：
+也就是保留下三角区域，屏蔽上三角区域：
 
 $$
 M =
@@ -348,64 +336,38 @@ M =
 \end{bmatrix}
 $$
 
-其中 $j > i$ 的位置表示未来 token，对应的注意力分数被屏蔽。
+其中 $j > i$ 表示未来 token，对应的注意力分数会被置为 $-\infty$。
 
-### 2. 加入 mask
-
-将 mask 加到注意力分数上：
+### 2. Masked Softmax
 
 $$
-S^{mask} = S + M
+A = softmax(S + M)
 $$
 
-因此：
-
-$$
-S^{mask}_{i,j} =
-\begin{cases}
-S_{i,j}, & j \le i \\
--\infty, & j > i
-\end{cases}
-$$
-
-### 3. masked softmax
-
-对 $S^{mask}$ 的最后一维做 `softmax`：
-
-$$
-A = softmax(S^{mask})
-$$
-
-对于 $j > i$ 的位置：
+由于：
 
 $$
 e^{-\infty} = 0
 $$
 
-因此：
+所以未来 token 的注意力权重为：
 
 $$
 A_{i,j} = 0,\quad j > i
 $$
 
-每个 token 的注意力权重只分布在自身和历史 token 上：
+第 $i$ 个 token 的注意力权重只会分布在第 $1$ 到第 $i$ 个 token 上：
 
 $$
 \sum_{j=1}^{i} A_{i,j} = 1
 $$
 
-### 4. 聚合 V
+### 3. 输出
 
-使用因果注意力权重对 $V$ 做加权求和：
+使用注意力权重对 $V$ 加权求和：
 
 $$
 O = AV
-$$
-
-其中：
-
-$$
-O \in \mathbb{R}^{T \times d_v}
 $$
 
 第 $i$ 个 token 的输出为：
@@ -414,15 +376,25 @@ $$
 O_i = \sum_{j=1}^{i} A_{i,j}V_j
 $$
 
-完整公式为：
+也可以理解为：
+
+$$
+O_i = Attention(q_i, K_{\le i}, V_{\le i})
+$$
+
+也就是第 $i$ 个 token 只会使用自己和之前位置的 `Key/Value`。
+
+这个理解对后续的 `KV Cache` 很重要：推理生成第 $i$ 个 token 时，历史 token 的 $K_{\le i}$ 和 $V_{\le i}$ 已经计算过，可以缓存起来；新 token 只需要计算自己的 $q_i$，再和缓存中的历史 `Key/Value` 做注意力。
+
+完整公式可以写成：
 
 $$
 CausalAttention(Q, K, V) = softmax(\frac{QK^T}{\sqrt{d_k}} + M)V
 $$
 
-### 5. 在多头注意力中的 mask 形状
+### 4. 在多头注意力中的 Mask 形状
 
-在 MHA 或 GQA 中，注意力分数通常具有如下形状：
+在 MHA 或 GQA 中，注意力分数通常为：
 
 $$
 S \in \mathbb{R}^{B \times H \times T \times T}
@@ -434,13 +406,13 @@ $$
 M \in \mathbb{R}^{T \times T}
 $$
 
-计算时，$M$ 会广播到 batch 维和 head 维：
+计算时会扩展为：
 
 $$
 M \in \mathbb{R}^{1 \times 1 \times T \times T}
 $$
 
-加到每个 batch、每个 head 的注意力分数上。
+然后广播到每个 batch 和每个 head 上。
 
 ## GQA 多头注意力机制 Grouped Query Attention
 
@@ -632,17 +604,27 @@ $$
 
 ## 旋转位置编码 Rotary Position Embedding
 
-基础的自注意力无法区分位置信息，通过旋转变换把位置信息注入到 `Query` 和 `Key` 中。
-
-在自注意力中，位置编码需要影响注意力分数：
+基础的自注意力只根据 token 内容计算相关性，如果不加入位置信息，模型无法区分相同 token 出现在不同位置时的差别。
 
 $$
 S = QK^T
 $$
 
-因此 `RoPE` 作用在 $Q$ 和 $K$ 上，不作用在 $V$ 上。
+`RoPE` 的核心思想是：根据 token 的位置，对 `Query` 和 `Key` 做旋转变换，让注意力点积自然带上位置信息。
 
-### 1. 输入形式
+### 1. 为什么作用在 Q 和 K 上
+
+注意力分数由 $Q$ 和 $K$ 的点积决定：
+
+$$
+S_{t,s} = q_t^T k_s
+$$
+
+其中 $t$ 和 $s$ 表示两个 token 的位置。
+
+位置编码要影响注意力分数，因此 `RoPE` 作用在 $Q$ 和 $K$ 上。`V` 只负责提供被加权汇聚的内容，不直接参与注意力分数计算，所以不需要应用 `RoPE`。
+
+### 2. 输入形式
 
 对于单个 attention head，设：
 
@@ -662,78 +644,39 @@ $$
 q_t, k_t \in \mathbb{R}^{D \times 1}
 $$
 
-`RoPE` 会对 $q_t$ 和 $k_t$ 的相邻两个维度成对旋转。
+`RoPE` 会把最后一维 $D$ 按两维一组划分，并根据位置 $t$ 对每组维度使用不同的旋转角度。
 
-### 2. 旋转角度
+### 3. 旋转角度
 
-将向量维度按两维一组划分。第 $i$ 组维度为：
+将向量维度按两维一组划分。第 $m$ 组维度为：
 
 $$
-(2i, 2i + 1)
+(2m, 2m + 1)
 $$
 
 其中：
 
 $$
-i = 0, 1, \cdots, \frac{D}{2} - 1
+m = 0, 1, \cdots, \frac{D}{2} - 1
 $$
 
-第 $i$ 组对应的频率为：
+第 $m$ 组对应的频率为：
 
 $$
-\omega_i = \theta^{-\frac{2i}{D}}
+\omega_m = \theta^{-\frac{2m}{D}}
 $$
 
-其中 $\theta$ 是 RoPE 的 base 参数。
-
-第 $t$ 个位置在第 $i$ 组维度上的旋转角度为：
+第 $t$ 个位置在第 $m$ 组维度上的旋转角度为：
 
 $$
-\alpha_{t,i} = t \cdot \omega_i
+\alpha_{t,m} = t \cdot \omega_m
 $$
 
-### 3. 二维旋转公式
-
-对任意列向量 $x_t \in \mathbb{R}^{D \times 1}$，取第 $i$ 组二维子向量：
-
-$$
-\begin{bmatrix}
-x_{t,2i} \\
-x_{t,2i+1}
-\end{bmatrix}
-$$
-
-RoPE 对该二维子向量做旋转：
-
-$$
-\begin{bmatrix}
-\tilde{x}_{t,2i} \\
-\tilde{x}_{t,2i+1}
-\end{bmatrix}
-=
-\begin{bmatrix}
-\cos \alpha_{t,i} & -\sin \alpha_{t,i} \\
-\sin \alpha_{t,i} & \cos \alpha_{t,i}
-\end{bmatrix}
-\begin{bmatrix}
-x_{t,2i} \\
-x_{t,2i+1}
-\end{bmatrix}
-$$
-
-展开为：
-
-$$
-\tilde{x}_{t,2i} = x_{t,2i}\cos \alpha_{t,i} - x_{t,2i+1}\sin \alpha_{t,i}
-$$
-
-$$
-\tilde{x}_{t,2i+1} = x_{t,2i}\sin \alpha_{t,i} + x_{t,2i+1}\cos \alpha_{t,i}
-$$
+其中 $\theta$ 是 `RoPE` 的 base 参数，常见取值为 $10000$。不同维度组使用不同频率，用来表达不同尺度的位置信息。
 
 ### 4. 对 Q 和 K 应用 RoPE
 
-对每个位置 $t$：
+对每个位置 $t$，分别旋转 $q_t$ 和 $k_t$：
 
 $$
 \tilde{q}_t = RoPE(q_t, t)
@@ -749,7 +692,7 @@ $$
 \tilde{Q}, \tilde{K} \in \mathbb{R}^{T \times D}
 $$
 
-注意力分数改为：
+注意力分数改为使用旋转后的 $Q$ 和 $K$：
 
 $$
 S = \frac{\tilde{Q}\tilde{K}^T}{\sqrt{D}}
@@ -758,42 +701,42 @@ $$
 元素级形式为：
 
 $$
-S_{i,j} = \frac{\tilde{q}_i^T \tilde{k}_j}{\sqrt{D}}
+S_{t,s} = \frac{\tilde{q}_t^T \tilde{k}_s}{\sqrt{D}}
 $$
 
-其中 $\tilde{q}_i$ 带有第 $i$ 个位置的旋转信息，$\tilde{k}_j$ 带有第 $j$ 个位置的旋转信息。
+其中 $\tilde{q}_t$ 带有第 $t$ 个位置的旋转信息，$\tilde{k}_s$ 带有第 $s$ 个位置的旋转信息。
 
 ### 5. RoPE 的相对位置性质
 
-设 $R_t$ 表示第 $t$ 个位置对应的旋转矩阵。由于本节将 $q_i$ 和 $k_j$ 写成列向量，RoPE 通过左乘 $R_t$ 实现旋转：
+设 $R_t$ 表示第 $t$ 个位置对应的旋转矩阵：
 
 $$
-\tilde{q}_i = R_iq_i
+\tilde{q}_t = R_tq_t
 $$
 
 $$
-\tilde{k}_j = R_jk_j
+\tilde{k}_s = R_sk_s
 $$
 
-注意力点积为：
+则注意力点积为：
 
 $$
-\tilde{q}_i^T\tilde{k}_j = (R_iq_i)^T(R_jk_j)
+\tilde{q}_t^T\tilde{k}_s = q_t^T R_t^T R_s k_s
 $$
 
 因为旋转矩阵满足：
 
 $$
-R_i^T R_j = R_{j-i}
+R_t^T R_s = R_{s-t}
 $$
 
 所以：
 
 $$
-\tilde{q}_i^T\tilde{k}_j = q_i^T R_{j-i}k_j
+\tilde{q}_t^T\tilde{k}_s = q_t^T R_{s-t}k_s
 $$
 
-这说明 RoPE 使注意力分数与相对位置 $j-i$ 相关。
+这说明位置信息会以相对位置 $s-t$ 的形式进入注意力点积。注意力分数仍然依赖 $q_t$ 和 $k_s$ 的内容，并不是只由相对位置决定。
 
 ### 6. 在多头注意力中的使用
 
@@ -809,7 +752,7 @@ $$
 K \in \mathbb{R}^{B \times T \times H_{kv} \times D}
 $$
 
-`RoPE` 作用在最后一维 $D$ 上，并且对每个位置 $t$ 使用对应的位置角度 $\alpha_{t,i}$。
+`RoPE` 作用在最后一维 $D$ 上，并且对每个位置 $t$ 使用对应的位置角度 $\alpha_{t,m}$。
 
 `RoPE` 不改变张量形状：
 
@@ -820,3 +763,174 @@ $$
 $$
 \tilde{K} \in \mathbb{R}^{B \times T \times H_{kv} \times D}
 $$
+
+## 推理时的注意力计算
+
+训练时通常一次性输入长度为 $T$ 的序列，直接计算完整注意力矩阵：
+
+$$
+S = \frac{QK^T}{\sqrt{d_k}}
+$$
+
+在自回归推理时，模型是逐 token 生成的，因此注意力计算通常分为两个阶段。
+
+### Prefill 阶段
+
+`Prefill` 阶段处理用户输入的 prompt。假设 prompt 长度为 $T$，这一阶段仍然会计算整段 prompt 的因果注意力：
+
+$$
+O = softmax(\frac{QK^T}{\sqrt{d_k}} + M)V
+$$
+
+同时会把 prompt 中每个 token 对应的 `Key/Value` 保存到 `KV Cache` 中：
+
+$$
+K_{\text{cache}} = [k_1, k_2, \cdots, k_T]
+$$
+
+$$
+V_{\text{cache}} = [v_1, v_2, \cdots, v_T]
+$$
+
+### Decode 阶段
+
+`Decode` 阶段每次只生成一个新 token。假设当前处理第 $i$ 个位置，只需要计算当前 token 的：
+
+$$
+q_i,\ k_i,\ v_i
+$$
+
+然后把新的 $k_i$ 和 $v_i$ 追加到 `KV Cache`：
+
+$$
+K_{\text{cache}} = [k_1, k_2, \cdots, k_i]
+$$
+
+$$
+V_{\text{cache}} = [v_1, v_2, \cdots, v_i]
+$$
+
+当前 token 的注意力只需要使用当前 query 和缓存中的所有 `Key/Value`：
+
+$$
+S_i = \frac{q_iK_{\text{cache}}^T}{\sqrt{d_k}}
+$$
+
+$$
+A_i = softmax(S_i)
+$$
+
+$$
+O_i = A_iV_{\text{cache}}
+$$
+
+因此推理时的单步注意力可以理解为：
+
+$$
+O_i = Attention(q_i, K_{\text{cache}}, V_{\text{cache}})
+$$
+
+这等价于完整因果注意力矩阵中的第 $i$ 行。区别是推理时不会重复计算历史 token 的 $K$ 和 $V$，而是直接复用缓存。
+
+### 3. 和训练时的区别
+
+- 训练时：一次性计算完整的 $QK^T$，得到 $T \times T$ 注意力矩阵，并使用 causal mask 屏蔽未来位置。
+- 推理时：每一步只计算当前 token 的一行注意力，历史 token 的 `Key/Value` 来自 `KV Cache`。
+- `KV Cache` 节省的是历史 $K$ 和 $V$ 的重复计算，但当前 token 仍然需要和全部缓存位置做 attention。
+
+## Transformer 结构
+
+大语言模型通常使用 `Decoder-only Transformer` 结构。整体流程可以理解为：
+
+```text
+Token IDs -> Token Embedding -> N 个 Transformer Block -> LM Head -> logits
+```
+
+给定输入 token 序列：
+
+$$
+x \in \mathbb{R}^{B \times T}
+$$
+
+经过词嵌入后得到：
+
+$$
+X_0 \in \mathbb{R}^{B \times T \times C}
+$$
+
+其中 $B$ 是 batch size，$T$ 是序列长度，$C$ 是隐藏维度。
+
+### 1. Transformer Block
+
+一个 decoder-only 的 `Transformer Block` 通常由两部分组成：
+
+- 自注意力层 `Self-Attention`
+- 前馈网络 `Feed Forward Network`
+
+常见的大模型一般使用 `Pre-Norm` 结构，即先做归一化，再进入子层：
+
+$$
+A_l = X_l + Attention(Norm(X_l))
+$$
+
+$$
+X_{l+1} = A_l + FFN(Norm(A_l))
+$$
+
+其中 $l$ 表示第 $l$ 层。
+
+残差连接可以保留原始信息，归一化可以稳定训练。
+
+### 2. Self-Attention 层
+
+在 LLM 中，`Self-Attention` 通常会同时使用：
+
+- `Causal Attention`：保证当前位置不能看到未来 token。
+- `RoPE`：把位置信息注入到 $Q$ 和 $K$。
+- `MHA` 或 `GQA`：使用多个 attention head 表达不同子空间的信息。
+
+因此 attention 层可以简化理解为：
+
+$$
+Attention(X) = CausalAttention(Q, K, V)
+$$
+
+其中 $Q$、$K$、$V$ 都由当前层输入 $X$ 线性映射得到。
+
+### 3. FFN 层
+
+`FFN` 对每个 token 位置独立计算，用来增强非线性表达能力。它不会在不同 token 之间交换信息，不改变序列长度：
+
+$$
+FFN: \mathbb{R}^{B \times T \times C} \rightarrow \mathbb{R}^{B \times T \times C}
+$$
+
+注意力层负责 token 之间的信息交互，`FFN` 层负责对每个 token 的表示做进一步变换。
+
+### 4. 输出层
+
+经过 $N$ 层 `Transformer Block` 后，得到最终隐藏状态：
+
+$$
+X_N \in \mathbb{R}^{B \times T \times C}
+$$
+
+最后通过 `LM Head` 映射到词表大小：
+
+$$
+logits = X_N W_{vocab}
+$$
+
+其中：
+
+$$
+W_{vocab} \in \mathbb{R}^{C \times V}
+$$
+
+输出形状为：
+
+$$
+logits \in \mathbb{R}^{B \times T \times V}
+$$
+
+其中 $V$ 表示词表大小。推理时通常取最后一个位置的 logits，用来预测下一个 token。
