@@ -1,319 +1,248 @@
-# llm 基础知识
+# LLM 基础知识
+
+## 符号约定
+
+除非特别说明，本文采用以下约定：
+
+- $B$：batch size。
+- $T$：sequence length。
+- $C$：hidden size。
+- $H$：query head 数量。
+- $D$：单个 attention head 的维度。
+- $V_{\text{vocab}}$：词表大小。
+- 大写字母表示矩阵或张量，小写字母表示单个 token 的向量。
+- 单个 token 的向量统一写成行向量。例如 $q_t,k_t\in\mathbb{R}^{1\times d_k}$，$v_t\in\mathbb{R}^{1\times d_v}$。
+- $Q,K,V$ 按行堆叠各 token 的向量。例如 $Q=[q_1;\cdots;q_T]\in\mathbb{R}^{T\times d_k}$。
+- 讨论单个样本或单个 head 时，省略 batch 和 head 下标。
+
+## 词嵌入 Token Embedding
+
+tokenizer 将文本转换为 token id：
+
+$$
+x\in\mathbb{Z}^{B\times T}
+$$
+
+设词表大小为 $V_{\text{vocab}}$，embedding table 为：
+
+$$
+E\in\mathbb{R}^{V_{\text{vocab}}\times C}
+$$
+
+词嵌入通过查表得到：
+
+$$
+X_{b,t}=E[x_{b,t}],
+\qquad
+X\in\mathbb{R}^{B\times T\times C}
+$$
+
+词嵌入只编码 token 身份。使用绝对位置编码时，通常计算：
+
+$$
+X_0=TokenEmbedding(x)+PositionEmbedding(pos)
+$$
+
+使用 `RoPE` 时，位置信息在 attention 中注入 $Q$ 和 $K$，不直接加到 token embedding 上。
 
 ## RMSNorm
 
-$$
-rms(x) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} x_i^2 + \epsilon}
-$$
-
-`RMSNorm`，即 `Root Mean Square Layer Normalization`，使用向量的均方根进行归一化。公式如下：
+`RMSNorm` 使用均方根缩放单个 token 的隐藏向量。对
+$x\in\mathbb{R}^{1\times C}$：
 
 $$
-RMSNorm(x) = \frac{x}{rms(x)} \odot g
+rms(x)=\sqrt{\frac{1}{C}\sum_{i=1}^{C}x_i^2+\epsilon}
 $$
 
-其中：
-
-- $x \in \mathbb{R}^{d}$ 表示一个 token 的隐藏状态向量。
-- $d$ 是隐藏层维度。
-- $\epsilon$ 是一个很小的常数，用于避免除零。
-- $g \in \mathbb{R}^{d}$ 是可学习的缩放参数，通常也叫 `weight`。
-- $\odot$ 表示逐元素相乘。
-
-通常在 LLM 中，输入张量维度是 $(B, T, C)$：
-
-- $B$ 表示 batch size。
-- $T$ 表示 sequence length。
-- $C$ 表示 hidden size。
-
-`RMSNorm` 会沿着最后一维 $C$ 计算 `RMS`。也就是说，每个 batch 中的每个 token 都会独立计算自己的均方根：
-
 $$
-rms(x_{b,t}) = \sqrt{\frac{1}{C} \sum_{i=1}^{C} x_{b,t,i}^{2} + \epsilon}
+RMSNorm(x)=\frac{x}{rms(x)}\odot g
 $$
 
-然后对该 token 的隐藏向量做归一化：
-
-$$
-y_{b,t,i} = \frac{x_{b,t,i}}{rms(x_{b,t})} \cdot g_i
-$$
+其中 $g\in\mathbb{R}^{1\times C}$ 是可学习缩放参数，$\epsilon$ 用于避免除零。对于输入 $X\in\mathbb{R}^{B\times T\times C}$，每个 token 都沿最后一维独立归一化。
 
 ## LayerNorm
 
-`LayerNorm`，即 `Layer Normalization`，会对一个向量先减去均值，再除以标准差，使归一化后的向量均值接近 0，方差接近 1。
-
-对于一个 token 的隐藏状态向量 $x \in \mathbb{R}^{d}$：
-
-$$
-mean(x) = \frac{1}{d} \sum_{i=1}^{d} x_i
-$$
+`LayerNorm` 先中心化，再按标准差缩放。对
+$x\in\mathbb{R}^{1\times C}$：
 
 $$
-var(x) = \frac{1}{d} \sum_{i=1}^{d} (x_i - mean(x))^2
-$$
-
-`LayerNorm` 的公式如下：
-
-$$
-LayerNorm(x) = \frac{x - mean(x)}{\sqrt{var(x) + \epsilon}} \odot g + b
-$$
-
-其中：
-
-- $g \in \mathbb{R}^{d}$ 是可学习的缩放参数，通常也叫 `weight` 或 $\gamma$。
-- $b \in \mathbb{R}^{d}$ 是可学习的偏置参数，通常也叫 `bias` 或 $\beta$。
-- $\epsilon$ 是一个很小的常数，用于避免除零。
-
-如果输入张量维度是 $(B, T, C)$，`LayerNorm` 通常也是沿着最后一维 $C$ 做归一化。也就是说，每个 batch 中的每个 token 都会独立计算自己的均值和方差：
-
-$$
-mean(x_{b,t}) = \frac{1}{C} \sum_{i=1}^{C} x_{b,t,i}
+\mu(x)=\frac{1}{C}\sum_{i=1}^{C}x_i,
+\qquad
+\sigma^2(x)=\frac{1}{C}\sum_{i=1}^{C}(x_i-\mu(x))^2
 $$
 
 $$
-var(x_{b,t}) = \frac{1}{C} \sum_{i=1}^{C} (x_{b,t,i} - mean(x_{b,t}))^2
+LayerNorm(x)=
+\frac{x-\mu(x)}{\sqrt{\sigma^2(x)+\epsilon}}\odot g+b
 $$
 
-然后对该 token 的隐藏向量做归一化：
+其中 $g,b\in\mathbb{R}^{1\times C}$ 是可学习参数。`LayerNorm` 只使用当前 token 的隐藏向量，不依赖其他 token 或 batch 内其他样本。
 
-$$
-y_{b,t,i} = \frac{x_{b,t,i} - mean(x_{b,t})}{\sqrt{var(x_{b,t}) + \epsilon}} \cdot g_i + b_i
-$$
+### 在 Transformer 中的作用
 
-因此，`LayerNorm` 不依赖 batch 内其他样本，也不依赖其他 token。它只使用当前 token 自己的 hidden vector 来计算归一化统计量。
+归一化用于稳定激活值和梯度。常见结构为：
 
-### LayerNorm 在 Transformer 中的作用
+- `Post-Norm`：子层计算后执行残差连接和归一化。
+- `Pre-Norm`：先归一化，再执行子层和残差连接。
 
-`LayerNorm` 常用于 Transformer block 的注意力层和 FFN 层附近，用来稳定训练过程，让不同层之间的激活值分布更平稳。
-
-常见结构有两种：
-
-- `Post-LN`：先执行子层，再做残差连接和 `LayerNorm`。
-- `Pre-LN`：先做 `LayerNorm`，再执行子层和残差连接。
-
-现代 LLM 更多使用 `Pre-LN` 风格，因为深层网络训练通常更稳定。很多 LLM 会把这里的 `LayerNorm` 替换成更轻量的 `RMSNorm`。
+现代 LLM 通常采用更易训练的 `Pre-Norm`，并常用 `RMSNorm` 替代 `LayerNorm`。
 
 ## RMSNorm 和 LayerNorm 的区别
 
-而 `RMSNorm` 不减均值，只用均方根进行缩放：
-
-$$
-RMSNorm(x) = \frac{x}{\sqrt{mean(x^2) + \epsilon}} \odot g
-$$
-
-所以 `RMSNorm` 计算更简单，速度更快，并且在很多 LLM 中效果足够好，例如 `LLaMA` 系列模型就使用了 `RMSNorm`。
+`LayerNorm` 同时移除均值并缩放方差；`RMSNorm` 不移除均值，只按均方根缩放。后者计算更简单，已用于 `LLaMA` 等模型。
 
 ## 自注意力机制 self-attention
 
-给定输入矩阵 $X \in \mathbb{R}^{T \times C}$，其中：
-
-- $T$ 表示 sequence length。
-- $C$ 表示 hidden size。
-
-自注意力的核心思想是：序列中的每个 token 根据自身与序列内其他 token 的相关性，对序列信息进行加权聚合。
-
-### 1. 生成 Q、K、V
-
-首先通过三个线性变换，把输入 $X$ 映射成 `Query`、`Key`、`Value`：
+自注意力根据 token 之间的相关性聚合序列信息。以下省略 batch 维度，设：
 
 $$
-Q = XW_Q
+X\in\mathbb{R}^{T\times C}
 $$
 
+### 生成 Q、K、V
+
+通过三个线性变换生成 query、key 和 value：
+
 $$
-K = XW_K
+Q=XW_Q,\qquad K=XW_K,\qquad V=XW_V
 $$
 
 $$
-V = XW_V
-$$
-
-其中：
-
-- $Q$ 表示 query，用于计算当前 token 与其他 token 的相关性。
-- $K$ 表示 key，用于提供被匹配的特征。
-- $V$ 表示 value，用于提供被聚合的信息。
-
-线性映射矩阵的维度为：
-
-$$
-W_Q, W_K \in \mathbb{R}^{C \times d_k}
+W_Q,W_K\in\mathbb{R}^{C\times d_k},
+\qquad
+W_V\in\mathbb{R}^{C\times d_v}
 $$
 
 $$
-W_V \in \mathbb{R}^{C \times d_v}
+Q,K\in\mathbb{R}^{T\times d_k},
+\qquad
+V\in\mathbb{R}^{T\times d_v}
 $$
 
-因此：
+其中 $Q$、$K$、$V$ 的第 $t$ 行分别是 $q_t$、$k_t$、$v_t$。
+
+### 计算注意力分数
+
+query 与所有 key 做缩放点积：
 
 $$
-Q, K \in \mathbb{R}^{T \times d_k}
-$$
-
-$$
-V \in \mathbb{R}^{T \times d_v}
-$$
-
-在理解上，`Q`、`K`、`V` 可以看作是对输入序列 $X$ 的线性变换。对于序列中的每个 `token`，其原始 `hidden vector` 维度为 $C$，经过不同的线性映射后，分别投影到 $d_k$ 维的`query/key`空间和 $d_v$ 维的`value`空间中。
-
-### 2. 计算注意力分数
-
-对每个 token 的 query 和所有 token 的 key 做点积，得到注意力分数：
-
-$$
-Q \in \mathbb{R}^{T \times d_k}
+S=\frac{QK^T}{\sqrt{d_k}}
+\in\mathbb{R}^{T\times T}
 $$
 
 $$
-K \in \mathbb{R}^{T \times d_k}
+S_{i,j}=\frac{q_ik_j^T}{\sqrt{d_k}}
 $$
 
-注意力分数矩阵为：
+除以 $\sqrt{d_k}$ 可避免点积幅度随维度增大而过大。
+
+### 计算注意力权重和输出
+
+对 $S$ 的每一行执行 `softmax`：
 
 $$
-\begin{align*}
-S &= QK^T \\
-&= \begin{bmatrix}
-Q_1 \\ Q_2 \\ \vdots \\ Q_T
-\end{bmatrix}\begin{bmatrix}
-    K_1^T & K_2^T & \cdots & K_T^T
-\end{bmatrix} \\
-&= \begin{bmatrix}
-Q_1K_1^T & Q_1K_2^T & \cdots & Q_1K_T^T \\
-Q_2K_1^T & Q_2K_2^T & \cdots & Q_2K_T^T \\
-\vdots & \vdots & \ddots & \vdots \\
-Q_TK_1^T & Q_TK_2^T & \cdots & Q_TK_T^T
-\end{bmatrix}
-\end{align*}
-$$
-
-其中 $Q_i, K_i \in \mathbb{R}^{1 \times d_k}$，分别表示第 $i$ 个 token 的 query 向量和 key 向量。
-
-因此：
-
-$$
-S \in \mathbb{R}^{T \times T}
-$$
-
-元素 $S_{i,j}$ 为：
-
-$$
-S_{i,j} = Q_iK_j^T = \sum_{r=1}^{d_k} Q_{i,r}K_{j,r}
-$$
-
-缩放点积注意力使用 $\sqrt{d_k}$ 对注意力分数进行缩放：
-
-$$
-\hat{S}_{i,j} = \frac{S_{i,j}}{\sqrt{d_k}}
-$$
-
-其中 $\hat{S}_{i,j}$ 表示缩放后的注意力分数。
-
-此时缩放后的注意力分数矩阵为：
-
-$$
-\hat{S} \in \mathbb{R}^{T \times T}
-$$
-
-其中 $\hat{S}_{i,j}$ 表示第 $i$ 个 token 对第 $j$ 个 token 的注意力分数。
-
-### softmax 函数
-
-`softmax` 函数将一个实数向量转换为概率分布。
-
-给定向量 $z \in \mathbb{R}^{n}$：
-
-$$
-z = [z_1, z_2, \cdots, z_n]
-$$
-
-`softmax` 的第 $i$ 个输出为：
-
-$$
-softmax(z)_i = \frac{e^{z_i}}{\sum_{j=1}^{n} e^{z_j}}
-$$
-
-输出向量满足：
-
-$$
-softmax(z)_i > 0
+A=softmax(S)
 $$
 
 $$
-\sum_{i=1}^{n} softmax(z)_i = 1
+A_{i,j}=\frac{e^{S_{i,j}}}{\sum_{r=1}^{T}e^{S_{i,r}}},
+\qquad
+\sum_{j=1}^{T}A_{i,j}=1
 $$
 
-### 3. 使用 softmax 得到注意力权重
-
-对注意力分数的最后一维做 `softmax`，把分数转换成概率分布：
+最后聚合 value：
 
 $$
-A = softmax(\hat{S})
+O=AV
+=softmax\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\in\mathbb{R}^{T\times d_v}
 $$
 
-其中：
+## GQA 多头注意力机制 Grouped Query Attention
+
+多头注意力在不同子空间中并行建模 token 关系。`GQA` 让一组 query head 共享同一个 key/value head，以减少参数量和 `KV Cache`。
 
 $$
-A \in \mathbb{R}^{T \times T}
+D=\frac{C}{H},
+\qquad
+G=\frac{H}{H_{kv}}
 $$
 
-对于每个 token 来说，它对所有 token 的注意力权重之和为 1。
+其中 $H$ 是 query head 数量，$H_{kv}$ 是 key/value head 数量，$G$ 是每组包含的 query head 数量，要求 $H$ 能被 $H_{kv}$ 整除。
 
-### 4. 根据注意力权重聚合 V
+### 生成 Q、K、V
 
-最后用注意力权重对 $V$ 做加权求和：
-
-$$
-A \in \mathbb{R}^{T \times T}
-$$
+对 $X\in\mathbb{R}^{B\times T\times C}$ 线性映射并 reshape：
 
 $$
-V \in \mathbb{R}^{T \times d_v}
+Q\in\mathbb{R}^{B\times T\times H\times D}
 $$
 
 $$
-O = AV
+K,V\in\mathbb{R}^{B\times T\times H_{kv}\times D}
 $$
 
-输出矩阵形状为：
+### Query head 到 Key/Value head 的分组映射
+
+第 $h$ 个 query head 使用的 key/value head 为：
 
 $$
-O \in \mathbb{R}^{T \times d_v}
+m(h)=\left\lfloor\frac{h-1}{G}\right\rfloor+1,
+\qquad
+h\in\{1,\ldots,H\}
 $$
 
-也就是说，每个 token 的输出向量都是所有 token 的 value 向量的加权和。
+### 每个 Query head 计算注意力
 
-完整公式可以写成：
+对第 $b$ 个样本、第 $h$ 个 query head：
 
 $$
-Attention(Q, K, V) = softmax(\frac{QK^T}{\sqrt{d_k}})V
+O_{b,h}
+=softmax\left(
+\frac{Q_{b,h}K_{b,m(h)}^T}{\sqrt D}
+\right)V_{b,m(h)}
 $$
+
+$$
+O_{b,h}\in\mathbb{R}^{T\times D}
+$$
+
+### 拼接所有 Query head 的输出
+
+拼接全部 query head，再执行输出投影：
+
+$$
+O=concat(O_1,\ldots,O_H)\in\mathbb{R}^{B\times T\times C}
+$$
+
+$$
+Y=OW_O,
+\qquad
+W_O\in\mathbb{R}^{C\times C}
+$$
+
+$$
+Y\in\mathbb{R}^{B\times T\times C}
+$$
+
+### GQA 和 MHA、MQA 的关系
+
+- 当 $H_{kv} = H$ 时，每个 query head 都有独立的 key/value head，此时为普通 `Multi-Head Attention`。
+- 当 $H_{kv} = 1$ 时，所有 query head 共享同一个 key/value head，此时为 `Multi-Query Attention`。
+- 当 $1 < H_{kv} < H$ 时，多个 query head 按组共享 key/value head，此时为 `Grouped Query Attention`。
 
 ## 因果注意力 Causal Attention
 
-`Causal Attention` 用在自回归模型中，用来保证第 $i$ 个 token 只能关注自己和之前的 token，不能看到未来 token。
-
-给定：
+`Causal Attention` 保证第 $i$ 个 token 只能使用位置 $1$ 到 $i$ 的信息。缩放注意力分数为：
 
 $$
-Q, K \in \mathbb{R}^{T \times d_k}
+S=\frac{QK^T}{\sqrt{d_k}}
+\in\mathbb{R}^{T\times T}
 $$
 
-$$
-V \in \mathbb{R}^{T \times d_v}
-$$
+### 因果 Mask
 
-先计算缩放注意力分数：
-
-$$
-S = \frac{QK^T}{\sqrt{d_k}}
-$$
-
-其中 $S \in \mathbb{R}^{T \times T}$，$S_{i,j}$ 表示第 $i$ 个 token 对第 $j$ 个 token 的注意力分数。
-
-### 1. 因果 Mask
-
-定义因果 mask 矩阵 $M \in \mathbb{R}^{T \times T}$：
+定义：
 
 $$
 M_{i,j} =
@@ -323,102 +252,36 @@ M_{i,j} =
 \end{cases}
 $$
 
-也就是保留下三角区域，屏蔽上三角区域：
+### Masked Softmax
 
 $$
-M =
-\begin{bmatrix}
-0 & -\infty & -\infty & \cdots & -\infty \\
-0 & 0 & -\infty & \cdots & -\infty \\
-0 & 0 & 0 & \cdots & -\infty \\
-\vdots & \vdots & \vdots & \ddots & \vdots \\
-0 & 0 & 0 & \cdots & 0
-\end{bmatrix}
+A=softmax(S+M)
 $$
 
-其中 $j > i$ 表示未来 token，对应的注意力分数会被置为 $-\infty$。
+当 $j>i$ 时，$A_{i,j}=0$；第 $i$ 行的有效权重仅分布在位置 $1$ 到 $i$。
 
-### 2. Masked Softmax
-
-$$
-A = softmax(S + M)
-$$
-
-由于：
+### 输出
 
 $$
-e^{-\infty} = 0
+O=AV,
+\qquad
+o_i=\sum_{j=1}^{i}A_{i,j}v_j
 $$
 
-所以未来 token 的注意力权重为：
-
 $$
-A_{i,j} = 0,\quad j > i
-$$
-
-第 $i$ 个 token 的注意力权重只会分布在第 $1$ 到第 $i$ 个 token 上：
-
-$$
-\sum_{j=1}^{i} A_{i,j} = 1
+CausalAttention(Q,K,V)
+=softmax\left(\frac{QK^T}{\sqrt{d_k}}+M\right)V
 $$
 
-### 3. 输出
+推理时可缓存历史 $K_{\le i}$ 和 $V_{\le i}$，避免重复计算。
 
-使用注意力权重对 $V$ 加权求和：
+### 在多头注意力中的 Mask 形状
 
-$$
-O = AV
-$$
+在 MHA 或 GQA 中，$S\in\mathbb{R}^{B\times H\times T\times T}$。实现时通常将 mask 组织为 $M\in\mathbb{R}^{1\times1\times T\times T}$，并广播到 batch 和 head 维度。
 
-第 $i$ 个 token 的输出为：
+### Sliding Window Attention
 
-$$
-O_i = \sum_{j=1}^{i} A_{i,j}V_j
-$$
-
-也可以理解为：
-
-$$
-O_i = Attention(q_i, K_{\le i}, V_{\le i})
-$$
-
-也就是第 $i$ 个 token 只会使用自己和之前位置的 `Key/Value`。
-
-这个理解对后续的 `KV Cache` 很重要：推理生成第 $i$ 个 token 时，历史 token 的 $K_{\le i}$ 和 $V_{\le i}$ 已经计算过，可以缓存起来；新 token 只需要计算自己的 $q_i$，再和缓存中的历史 `Key/Value` 做注意力。
-
-完整公式可以写成：
-
-$$
-CausalAttention(Q, K, V) = softmax(\frac{QK^T}{\sqrt{d_k}} + M)V
-$$
-
-### 4. 在多头注意力中的 Mask 形状
-
-在 MHA 或 GQA 中，注意力分数通常为：
-
-$$
-S \in \mathbb{R}^{B \times H \times T \times T}
-$$
-
-因果 mask 的基础形状为：
-
-$$
-M \in \mathbb{R}^{T \times T}
-$$
-
-计算时会扩展为：
-
-$$
-M \in \mathbb{R}^{1 \times 1 \times T \times T}
-$$
-
-然后广播到每个 batch 和每个 head 上。
-
-### 5. Sliding Window Attention
-
-工程实现中，有些模型会限制每个 token 的注意力窗口大小 `window_size`。此时第 $i$ 个 token 不再关注所有历史 token，而是只关注最近 $w$ 个 token。
-
-对应的 mask 可以写成：
+`Sliding Window Attention` 只保留最近 $w$ 个位置：
 
 $$
 M_{i,j} =
@@ -428,203 +291,15 @@ M_{i,j} =
 \end{cases}
 $$
 
-其中 $w$ 表示 `window_size`。
-
-此时第 $i$ 个 token 的输出可以理解为：
-
 $$
-O_i = Attention(q_i, K_{\max(1, i-w+1):i}, V_{\max(1, i-w+1):i})
-$$
-
-`Sliding Window Attention` 可以降低长序列的计算量和 `KV Cache` 显存占用，但窗口之外的更早 token 不能被当前 token 直接关注。
-
-## GQA 多头注意力机制 Grouped Query Attention
-
-单独只有一个注意力矩阵无法捕捉序列中不同子空间的特征，因此引入多头注意力机制。
-
-给定输入 $X \in \mathbb{R}^{B \times T \times C}$，其中：
-
-- $B$ 表示批处理数`batch size`。
-- $T$ 表示序列长度`sequence length`。
-- $C$ 表示隐藏维度`hidden size`。
-
-设 `Query` 的头数为 $H$，`Key/Value` 的头数为 $H_{kv}$，且 $H$ 能被 $H_{kv}$ 整除。每个 `Query` head 的维度为：
-
-$$
-D = \frac{C}{H}
+o_i=Attention\left(
+q_i,
+K_{\max(1,i-w+1):i},
+V_{\max(1,i-w+1):i}
+\right)
 $$
 
-GQA 中多个 `Query` head 共享同一个 `Key/Value` head。每个 `Key/Value` head 对应的 `Query` head 数量为：
-
-$$
-G = \frac{H}{H_{kv}}
-$$
-
-其中 $G$ 表示每组中的 `Query` head 数量。
-
-### 1. 生成 Q、K、V
-
-线性映射矩阵为：
-
-$$
-W_Q \in \mathbb{R}^{C \times (H \cdot D)}
-$$
-
-$$
-W_K \in \mathbb{R}^{C \times (H_{kv} \cdot D)}
-$$
-
-$$
-W_V \in \mathbb{R}^{C \times (H_{kv} \cdot D)}
-$$
-
-通过线性变换得到：
-
-$$
-Q = XW_Q
-$$
-
-$$
-K = XW_K
-$$
-
-$$
-V = XW_V
-$$
-
-然后将 $Q$、$K$、$V$ reshape 成多头形式：
-
-$$
-Q \in \mathbb{R}^{B \times T \times H \times D}
-$$
-
-$$
-K \in \mathbb{R}^{B \times T \times H_{kv} \times D}
-$$
-
-$$
-V \in \mathbb{R}^{B \times T \times H_{kv} \times D}
-$$
-
-### 2. Query head 到 Key/Value head 的分组映射
-
-设 query head 下标为：
-
-$$
-h \in \{1, 2, \cdots, H\}
-$$
-
-第 $h$ 个 query head 对应的 key/value head 下标为：
-
-$$
-m(h) = \left\lceil \frac{h}{G} \right\rceil
-$$
-
-其中：
-
-$$
-m(h) \in \{1, 2, \cdots, H_{kv}\}
-$$
-
-也就是说，第 $1$ 到第 $G$ 个 query head 使用第 $1$ 个 key/value head，第 $G+1$ 到第 $2G$ 个 query head 使用第 $2$ 个 key/value head。
-
-### 3. 每个 Query head 计算注意力
-
-对第 $b$ 个 batch、第 $h$ 个 query head，有：
-
-$$
-Q_{b,h} \in \mathbb{R}^{T \times D}
-$$
-
-$$
-K_{b,m(h)} \in \mathbb{R}^{T \times D}
-$$
-
-$$
-V_{b,m(h)} \in \mathbb{R}^{T \times D}
-$$
-
-注意力分数为：
-
-$$
-S_{b,h} = \frac{Q_{b,h}K_{b,m(h)}^T}{\sqrt{D}}
-$$
-
-其中：
-
-$$
-S_{b,h} \in \mathbb{R}^{T \times T}
-$$
-
-注意力权重为：
-
-$$
-A_{b,h} = softmax(S_{b,h})
-$$
-
-其中 `softmax` 作用在 $S_{b,h}$ 的最后一维。
-
-第 $h$ 个 query head 的输出为：
-
-$$
-O_{b,h} = A_{b,h}V_{b,m(h)}
-$$
-
-其中：
-
-$$
-O_{b,h} \in \mathbb{R}^{T \times D}
-$$
-
-### 4. 拼接所有 Query head 的输出
-
-对第 $b$ 个 batch 内所有 query head 的输出进行拼接：
-
-$$
-O_b = concat(O_{b,1}, O_{b,2}, \cdots, O_{b,H})
-$$
-
-得到：
-
-$$
-O_b \in \mathbb{R}^{T \times (H \cdot D)}
-$$
-
-因为 $H \cdot D = C$，所以：
-
-$$
-O_b \in \mathbb{R}^{T \times C}
-$$
-
-对所有 batch 拼接后的输出张量为：
-
-$$
-O \in \mathbb{R}^{B \times T \times C}
-$$
-
-最后通过输出线性层：
-
-$$
-Y = OW_O
-$$
-
-其中：
-
-$$
-W_O \in \mathbb{R}^{C \times C}
-$$
-
-输出为：
-
-$$
-Y \in \mathbb{R}^{B \times T \times C}
-$$
-
-### GQA 和 MHA、MQA 的关系
-
-- 当 $H_{kv} = H$ 时，每个 query head 都有独立的 key/value head，此时为普通 `Multi-Head Attention`。
-- 当 $H_{kv} = 1$ 时，所有 query head 共享同一个 key/value head，此时为 `Multi-Query Attention`。
-- 当 $1 < H_{kv} < H$ 时，多个 query head 按组共享 key/value head，此时为 `Grouped Query Attention`。
+它降低计算量和 `KV Cache` 占用，但无法直接访问窗口外的信息。
 
 ## 旋转位置编码 Rotary Position Embedding
 
@@ -636,19 +311,19 @@ $$
 
 `RoPE` 的核心思想是：根据 token 的位置，对 `Query` 和 `Key` 做旋转变换，让注意力点积自然带上位置信息。
 
-### 1. 为什么作用在 Q 和 K 上
+### 为什么作用在 Q 和 K 上
 
 注意力分数由 $Q$ 和 $K$ 的点积决定：
 
 $$
-S_{t,s} = q_t^T k_s
+S_{t,s} = q_tk_s^T
 $$
 
 其中 $t$ 和 $s$ 表示两个 token 的位置。
 
-位置编码要影响注意力分数，因此 `RoPE` 作用在 $Q$ 和 $K$ 上。`V` 只负责提供被加权汇聚的内容，不直接参与注意力分数计算，所以不需要应用 `RoPE`。
+位置编码要影响注意力分数，因此 `RoPE` 作用在 $Q$ 和 $K$ 上。$V$ 只提供被聚合的内容，不直接参与注意力分数计算，因此不应用 `RoPE`。
 
-### 2. 输入形式
+### 输入形式
 
 对于单个 attention head，设：
 
@@ -662,15 +337,15 @@ $$
 - $D$ 表示每个 head 的维度。
 - $D$ 为偶数。
 
-第 $t$ 个 token 的 query 向量和 key 向量在本节中写成列向量，即 $Q$ 和 $K$ 第 $t$ 行的转置：
+第 $t$ 个 token 的 query 和 key 是 $Q$、$K$ 的第 $t$ 行：
 
 $$
-q_t, k_t \in \mathbb{R}^{D \times 1}
+q_t, k_t \in \mathbb{R}^{1 \times D}
 $$
 
 `RoPE` 会把最后一维 $D$ 按两维一组划分，并根据位置 $t$ 对每组维度使用不同的旋转角度。
 
-### 3. 旋转角度
+### 旋转角度
 
 将向量维度按两维一组划分。第 $m$ 组维度为：
 
@@ -698,7 +373,7 @@ $$
 
 其中 $\theta$ 是 `RoPE` 的 base 参数，常见取值为 $10000$。不同维度组使用不同频率，用来表达不同尺度的位置信息。
 
-### 4. 对 Q 和 K 应用 RoPE
+### 对 Q 和 K 应用 RoPE
 
 对每个位置 $t$，分别旋转 $q_t$ 和 $k_t$：
 
@@ -725,27 +400,27 @@ $$
 元素级形式为：
 
 $$
-S_{t,s} = \frac{\tilde{q}_t^T \tilde{k}_s}{\sqrt{D}}
+S_{t,s} = \frac{\tilde{q}_t\tilde{k}_s^T}{\sqrt{D}}
 $$
 
 其中 $\tilde{q}_t$ 带有第 $t$ 个位置的旋转信息，$\tilde{k}_s$ 带有第 $s$ 个位置的旋转信息。
 
-### 5. RoPE 的相对位置性质
+### RoPE 的相对位置性质
 
 设 $R_t$ 表示第 $t$ 个位置对应的旋转矩阵：
 
 $$
-\tilde{q}_t = R_tq_t
+\tilde{q}_t = q_tR_t^T
 $$
 
 $$
-\tilde{k}_s = R_sk_s
+\tilde{k}_s = k_sR_s^T
 $$
 
 则注意力点积为：
 
 $$
-\tilde{q}_t^T\tilde{k}_s = q_t^T R_t^T R_s k_s
+\tilde{q}_t\tilde{k}_s^T = q_tR_t^TR_sk_s^T
 $$
 
 因为旋转矩阵满足：
@@ -757,12 +432,12 @@ $$
 所以：
 
 $$
-\tilde{q}_t^T\tilde{k}_s = q_t^T R_{s-t}k_s
+\tilde{q}_t\tilde{k}_s^T = q_tR_{s-t}k_s^T
 $$
 
 这说明位置信息会以相对位置 $s-t$ 的形式进入注意力点积。注意力分数仍然依赖 $q_t$ 和 $k_s$ 的内容，并不是只由相对位置决定。
 
-### 6. 在多头注意力中的使用
+### 在多头注意力中的使用
 
 在 MHA 或 GQA 中，`RoPE` 对每个 head 的 $Q$ 和 $K$ 分别应用。
 
@@ -809,11 +484,13 @@ $$
 同时会把 prompt 中每个 token 对应的 `Key/Value` 保存到 `KV Cache` 中：
 
 $$
-K_{\text{cache}} = [k_1, k_2, \cdots, k_T]
+K_{\text{cache}}=[k_1;\,k_2;\,\cdots;\,k_T]
+\in\mathbb{R}^{T\times d_k}
 $$
 
 $$
-V_{\text{cache}} = [v_1, v_2, \cdots, v_T]
+V_{\text{cache}}=[v_1;\,v_2;\,\cdots;\,v_T]
+\in\mathbb{R}^{T\times d_v}
 $$
 
 ### Decode 阶段
@@ -827,11 +504,11 @@ $$
 然后把新的 $k_i$ 和 $v_i$ 追加到 `KV Cache`：
 
 $$
-K_{\text{cache}} = [k_1, k_2, \cdots, k_i]
+K_{\text{cache}}=[k_1;\,k_2;\,\cdots;\,k_i]
 $$
 
 $$
-V_{\text{cache}} = [v_1, v_2, \cdots, v_i]
+V_{\text{cache}}=[v_1;\,v_2;\,\cdots;\,v_i]
 $$
 
 默认情况下，当前 token 的注意力会使用当前 query 和缓存中的所有 `Key/Value`：
@@ -871,6 +548,127 @@ $$
 - 如果模型使用 `window_size`，训练和推理都会遵守相同的窗口限制。
 - `KV Cache` 节省的是历史 $K$ 和 $V$ 的重复计算；如果没有窗口限制，当前 token 仍然需要和全部缓存位置做 attention。
 
+## Gated DeltaNet 线性注意力
+
+`Gated DeltaNet` 用固定大小的记忆矩阵压缩历史信息，不构造 $T\times T$ 注意力矩阵。它结合两种机制：
+
+- `decay gate`：整体衰减旧状态。
+- `delta rule`：定向修改与当前 key 相关的记忆。
+
+以下讨论单个 head。设：
+
+$$
+q_t,k_t\in\mathbb{R}^{1\times d_k},
+\qquad
+v_t\in\mathbb{R}^{1\times d_v}
+$$
+
+记忆矩阵为：
+
+$$
+M_t\in\mathbb{R}^{d_k\times d_v}
+$$
+
+### 基础线性注意力
+
+当前 key-value 通过外积写入记忆，再由 query 读取：
+
+$$
+M_t=M_{t-1}+k_t^Tv_t,
+\qquad
+o_t=q_tM_t
+$$
+
+展开可得：
+
+$$
+o_t=\sum_{i=1}^{t}(q_tk_i^T)v_i
+$$
+
+因此，线性注意力可以先累计 $k_i^Tv_i$，再与 $q_t$ 相乘，避免显式保存全部历史 `Key/Value`。固定大小的记忆也会带来容量限制：相似 key 写入的信息可能相互干扰。
+
+### Delta Rule
+
+`DeltaNet` 先读取 $k_t$ 对应的旧 value，再写入预测误差：
+
+$$
+\hat v_t=k_tM_{t-1}
+$$
+
+$$
+M_t=M_{t-1}+\beta_tk_t^T(v_t-\hat v_t),
+\qquad
+\beta_t\in(0,1)
+$$
+
+其中 $\beta_t$ 控制写入强度。等价形式为：
+
+$$
+M_t=(I-\beta_tk_t^Tk_t)M_{t-1}+\beta_tk_t^Tv_t
+$$
+
+其中 $I\in\mathbb{R}^{d_k\times d_k}$。第一项削弱 $k_t$ 方向上的旧关联，第二项写入新的 $k_t\rightarrow v_t$ 关联。为稳定更新，通常对 query 和 key 做 L2 归一化：
+
+$$
+q_t\leftarrow\frac{q_t}{\|q_t\|_2},
+\qquad
+k_t\leftarrow\frac{k_t}{\|k_t\|_2}
+$$
+
+### Gated Delta Rule
+
+`Gated DeltaNet` 先使用衰减门保留部分旧状态：
+
+$$
+\tilde M_{t-1}=\alpha_tM_{t-1},
+\qquad
+\alpha_t\in(0,1)
+$$
+
+再对衰减后的状态执行 `delta rule`：
+
+$$
+M_t=\tilde M_{t-1}
++\beta_tk_t^T(v_t-k_t\tilde M_{t-1})
+$$
+
+$$
+o_t=q_tM_t
+$$
+
+合并后得到：
+
+$$
+M_t=
+\alpha_t(I-\beta_tk_t^Tk_t)M_{t-1}
++\beta_tk_t^Tv_t
+$$
+
+两个门控制不同粒度的更新：
+
+- $\alpha_t\rightarrow0$：快速清除大部分历史状态。
+- $\alpha_t\rightarrow1$：退化为普通 `DeltaNet`。
+- $\beta_t\rightarrow0$：当前 key-value 几乎不写入状态。
+- $\beta_t\rightarrow1$ 且 $\|k_t\|_2=1$：用新 value 替换当前 key 方向上的旧关联。
+
+### 复杂度
+
+单个 head 的时间和状态空间复杂度分别为：
+
+$$
+O(Td_kd_v),
+\qquad
+O(d_kd_v)
+$$
+
+状态空间不随 $T$ 增长。训练时可使用 `chunkwise parallel algorithm` 提高并行度；decode 时只需更新固定大小的 $M_t$，无需维护随上下文增长的 `KV Cache`。
+
+### 和 Softmax Attention 的区别
+
+- `Softmax Attention` 能直接访问每个历史 token，但计算量和 `KV Cache` 随序列长度增长。
+- `Gated DeltaNet` 使用固定大小的状态，长序列推理更节省显存，但可能发生记忆冲突。
+- 两者可以组成混合模型：`Gated DeltaNet` 压缩长期信息，`Sliding Window Attention` 建模局部依赖。
+
 ## Transformer 结构
 
 大语言模型通常使用 `Decoder-only Transformer` 结构。整体流程可以理解为：
@@ -882,7 +680,7 @@ Token IDs -> Token Embedding -> N 个 Transformer Block -> LM Head -> logits
 给定输入 token 序列：
 
 $$
-x \in \mathbb{R}^{B \times T}
+x \in \mathbb{Z}^{B \times T}
 $$
 
 经过词嵌入后得到：
@@ -891,9 +689,7 @@ $$
 X_0 \in \mathbb{R}^{B \times T \times C}
 $$
 
-其中 $B$ 是 batch size，$T$ 是序列长度，$C$ 是隐藏维度。
-
-### 1. Transformer Block
+### Transformer Block
 
 一个 decoder-only 的 `Transformer Block` 通常由两部分组成：
 
@@ -914,7 +710,7 @@ $$
 
 残差连接可以保留原始信息，归一化可以稳定训练。
 
-### 2. Self-Attention 层
+### Self-Attention 层
 
 在 LLM 中，`Self-Attention` 通常会同时使用：
 
@@ -930,7 +726,7 @@ $$
 
 其中 $Q$、$K$、$V$ 都由当前层输入 $X$ 线性映射得到。
 
-### 3. FFN 层
+### FFN 层
 
 `FFN` 对每个 token 位置独立计算，用来增强非线性表达能力。它不会在不同 token 之间交换信息，不改变序列长度：
 
@@ -940,7 +736,7 @@ $$
 
 注意力层负责 token 之间的信息交互，`FFN` 层负责对每个 token 的表示做进一步变换。
 
-### 4. 输出层
+### 输出层
 
 经过 $N$ 层 `Transformer Block` 后，得到最终隐藏状态：
 
@@ -948,89 +744,11 @@ $$
 X_N \in \mathbb{R}^{B \times T \times C}
 $$
 
-最后通过 `LM Head` 映射到词表大小：
+最后通过 `LM Head` 映射到词表空间：
 
 $$
-logits = X_N W_{vocab}
+logits=LMHead(X_N)
 $$
-
-其中：
-
-$$
-W_{vocab} \in \mathbb{R}^{C \times V}
-$$
-
-输出形状为：
-
-$$
-logits \in \mathbb{R}^{B \times T \times V}
-$$
-
-其中 $V$ 表示词表大小。推理时通常取最后一个位置的 logits，用来预测下一个 token。
-
-## 词嵌入 Token Embedding
-
-文本经过 tokenizer 后会变成 token id 序列。给定输入：
-
-$$
-x \in \mathbb{Z}^{B \times T}
-$$
-
-其中 $B$ 是 batch size，$T$ 是序列长度，每个元素都是词表中的 token id。
-
-词嵌入层本质上是一个查表操作。设词表大小为 $V$，隐藏维度为 $C$，则 embedding table 为：
-
-$$
-E \in \mathbb{R}^{V \times C}
-$$
-
-对于位置 $(b, t)$ 上的 token id $x_{b,t}$，对应的向量为：
-
-$$
-X_{b,t} = E[x_{b,t}]
-$$
-
-因此嵌入后的输入形状为：
-
-$$
-X \in \mathbb{R}^{B \times T \times C}
-$$
-
-词嵌入把离散的 token id 转换成连续向量，后续的 `Transformer Block` 都在这些向量表示上计算。
-
-### 和位置编码的关系
-
-词嵌入只表示 token 本身的语义，不包含位置信息。
-
-如果模型使用绝对位置编码，通常会把 token embedding 和 position embedding 相加：
-
-$$
-X_0 = TokenEmbedding(x) + PositionEmbedding(pos)
-$$
-
-如果模型使用 `RoPE`，通常不会把位置向量直接加到输入 embedding 上，而是在 attention 中对 $Q$ 和 $K$ 注入位置信息。
-
-### 和 LM Head 的关系
-
-模型最后会把隐藏状态映射回词表空间：
-
-$$
-logits = X_N W_{vocab}
-$$
-
-其中：
-
-$$
-W_{vocab} \in \mathbb{R}^{C \times V}
-$$
-
-有些模型会使用权重共享：
-
-$$
-W_{vocab} = E^T
-$$
-
-这样输入端的 token embedding 和输出端的词表分类权重使用同一组参数。
 
 ## LM Head
 
@@ -1042,49 +760,30 @@ $$
 X_N \in \mathbb{R}^{B \times T \times C}
 $$
 
-其中 $C$ 是隐藏维度。设词表大小为 $V$，`LM Head` 的权重为：
+设词表大小为 $V_{\text{vocab}}$，`LM Head` 的权重为：
 
 $$
-W_{vocab} \in \mathbb{R}^{C \times V}
+W_{vocab}\in\mathbb{R}^{C\times V_{\text{vocab}}}
 $$
 
-则输出 logits 为：
-
 $$
-logits = X_N W_{vocab}
-$$
-
-输出形状为：
-
-$$
-logits \in \mathbb{R}^{B \times T \times V}
+logits=X_NW_{vocab}
+\in\mathbb{R}^{B\times T\times V_{\text{vocab}}}
 $$
 
-其中 $logits_{b,t}$ 表示第 $b$ 个样本、第 $t$ 个位置对整个词表的预测分数。
+其中 $logits_{b,t,:}$ 是位置 $(b,t)$ 对整个词表的原始预测分数。
 
 ### 训练时
 
 训练自回归语言模型时，第 $t$ 个位置的输出用来预测第 $t+1$ 个 token。
 
 $$
-logits_{b,t} \rightarrow x_{b,t+1}
+logits_{b,t,:}\rightarrow x_{b,t+1}
 $$
 
-设输入 token id 为：
+`logits` 不是概率，也不需要预先执行 `softmax`。
 
-$$
-x \in \mathbb{Z}^{B \times T}
-$$
-
-`logits` 的形状为：
-
-$$
-logits \in \mathbb{R}^{B \times T \times V}
-$$
-
-其中 $logits_{b,t,:}$ 是第 $b$ 个样本、第 $t$ 个位置对全部 $V$ 个 token 的原始预测分数。它不是概率，也不需要事先做 `softmax`。
-
-### 1. 构造 targets
+### 构造 targets
 
 目标 token 就是输入序列右移一位：
 
@@ -1095,7 +794,9 @@ $$
 因此实际参与损失计算的张量为：
 
 $$
-shift\_logits = logits[:, :-1, :] \in \mathbb{R}^{B \times (T-1) \times V}
+shift\_logits
+=logits[:, :-1, :]
+\in\mathbb{R}^{B\times(T-1)\times V_{\text{vocab}}}
 $$
 
 $$
@@ -1118,9 +819,9 @@ BOS   -> 我
 
 最后一个位置没有下一个 token，因此通常不参与本段序列的 loss。
 
-`targets` 中的每个元素只是正确 token 的 id，取值范围为 $[0, V-1]$，不需要转换成长度为 $V$ 的 one-hot 向量。
+`targets` 中的元素是正确 token 的 id，取值范围为 $[0,V_{\text{vocab}}-1]$，无需转换成 one-hot 向量。
 
-### 2. 单个位置的交叉熵
+### 单个位置的交叉熵
 
 交叉熵会在词表维度上计算 `softmax`，并取正确 target 对应概率的负对数：
 
@@ -1131,23 +832,23 @@ $$
 
 模型给正确 token 分配的概率越高，$\ell_{b,t}$ 越小。
 
-### 3. 整个 batch 的 loss
+### 整个 batch 的 loss
 
 对所有有效 token 位置的损失取平均：
 
 $$
 Loss =
-\frac{1}{N}\sum_{(b,t) \in \mathcal{V}} \ell_{b,t}
+\frac{1}{N}\sum_{(b,t) \in \mathcal{I}} \ell_{b,t}
 $$
 
-其中 $\mathcal{V}$ 表示有效位置集合，$N$ 是有效位置数。padding、prompt 中不需要训练的位置等通常会标记为 `ignore_index`，不参与 loss。
+其中 $\mathcal{I}$ 表示有效位置集合，$N$ 是有效位置数。padding、prompt 中不需要训练的位置等通常会标记为 `ignore_index`，不参与 loss。
 
 ### 推理时
 
 推理生成时，通常只取最后一个位置的 logits：
 
 $$
-logits_{last} \in \mathbb{R}^{B \times V}
+logits_{last}\in\mathbb{R}^{B\times V_{\text{vocab}}}
 $$
 
 然后根据采样策略选择下一个 token，例如 `argmax`、`top-k`、`top-p` 或 `temperature sampling`。
@@ -1166,7 +867,7 @@ $$
 
 `SFT` 使用高质量的指令与回答数据继续训练预训练模型，使模型学会理解指令并按照期望的格式回答。
 
-### 1. 训练数据
+### 训练数据
 
 一条 SFT 数据通常包含：
 
@@ -1184,7 +885,7 @@ $$
 
 模型仍然使用自回归方式，根据前面的 token 预测下一个 token。
 
-### 2. Targets 和 Loss Mask
+### Targets 和 Loss Mask
 
 targets 仍然由输入序列右移一位得到：
 
@@ -1214,13 +915,13 @@ $$
 
 只计算回答部分的 loss，可以让模型利用完整对话作为上下文，同时主要学习如何生成期望的回答。
 
-### 3. Teacher Forcing
+### Teacher Forcing
 
 训练时，模型每个位置接收到的都是数据中的真实历史 token，而不是模型自己生成的 token。这种方式称为 `Teacher Forcing`。
 
 因此一条长度为 $T$ 的样本可以并行计算所有有效位置的 next-token loss，而不需要像推理时一样逐 token 生成。
 
-### 4. 多轮对话
+### 多轮对话
 
 对于多轮对话，可以只训练最后一轮回答，也可以训练所有 `Assistant` 回答：
 
@@ -1234,7 +935,7 @@ Assistant -> 计算 loss
 
 具体哪些位置参与 loss 由训练数据的 mask 策略决定。
 
-### 5. 和预训练的区别
+### 和预训练的区别
 
 - 预训练主要使用大规模文本学习语言知识和 next-token prediction。
 - SFT 使用规模更小、质量更高的指令回答数据，学习指令遵循和回答格式。
