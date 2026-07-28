@@ -68,7 +68,7 @@ struct ggml_tensor * ggml_new_tensor(
         const int64_t       * ne);
 ```
 
-`ggml_new_tensor` 在 `ctx` 中创建一个 `n_dims` 维张量，维度由 `ne` 指定。新张量没有生成算子，因此 `op` 初始为 `GGML_OP_NONE`；是否立即分配数据空间取决于 context 的分配配置。
+`ggml_new_tensor` 在 `ctx` 中创建一个 `n_dims` 维张量，维度由 `ne` 指定。新张量没有生成算子，因此 `op` 初始为 `GGML_OP_NONE`；是否立即分配数据空间取决于`context`的分配配置。这个函数通常只是分配`tensor`的元数据，而不分配实际数据；实际数据的分配通常在后续调用`process_ubatch`时通过`ggml_backend_sched_alloc_graph`分配.
 
 ### 描述张量计算关系
 
@@ -250,7 +250,38 @@ static size_t ggml_visit_parents_graph(struct ggml_cgraph * cgraph, struct ggml_
 - 先递归处理全部依赖，再将当前张量加入 `leafs` 或 `nodes`。因此数组记录的是经过分类的 DFS 后序，`nodes` 中的依赖节点位于使用者之前，构成拓扑顺序。
 - 在已有 `cgraph` 上追加尚未访问的节点，因此可以多次调用以加入多个输出张量。
 
-### 执行计算图
+### 分配数据内存
+
+```cpp
+bool ggml_backend_sched_alloc_graph(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
+    GGML_ASSERT(sched);
+    GGML_ASSERT((int)sched->hash_set.size >= graph->n_nodes + graph->n_leafs);
+    GGML_ASSERT(!sched->is_alloc);
+
+    sched->cur_copy = sched->next_copy;
+    sched->next_copy = (sched->next_copy + 1) % sched->n_copies;
+
+    ggml_backend_sched_split_graph(sched, graph);
+
+    if (!ggml_backend_sched_alloc_splits(sched)) {
+        return false;
+    }
+
+    sched->is_alloc = true;
+
+    return true;
+}
+```
+
+`ggml_backend_sched_alloc_graph` 先按 backend 切分计算图，再为张量分配对应 backend 的存储空间。buffer 不一定位于 CPU 内存，也可能位于 CUDA、Metal、Vulkan 等设备可用的显存或共享内存中。该函数不执行计算或数据传输。
+
+- `cur_copy`：选择本次使用的流水线并行副本。
+- `ggml_backend_sched_split_graph`：根据张量位置、backend 优先级和算子支持情况分配节点，将连续的同 backend 节点划为 split，并为跨 backend 输入创建副本元数据、改写 `src`。实际复制在执行 split 时发生。
+- `ggml_backend_sched_alloc_splits`：使用 graph allocator 在各 backend 的 buffer 中分配或复用张量空间；若 backend 分配变化或原有规划不再适用，则同步设备、重新预留 buffer 并重试。
+
+分配成功后设置 `is_alloc`；无法分配时返回 `false`。
+
+## 执行计算图
 
 以 CPU 后端为例，计算节点按 `cgraph->nodes` 中的拓扑顺序执行。对于支持并行的算子，所有工作线程共同执行同一个 kernel，并根据线程编号或动态 chunk 划分数据；部分算子可能只使用一个线程。节点之间通过 barrier 同步，以保证依赖节点已经完成。
 
@@ -478,3 +509,11 @@ static int ggml_cpu_try_fuse_ops(
 ```
 
 `ggml_cpu_try_fuse_ops` 不修改计算图，而是直接调用融合 kernel，并返回已覆盖的后续节点数。调用方据此增加 `node_n`，跳过已经由融合 kernel 完成的节点；例如返回 `1` 表示跳过紧随其后的 `MUL` 节点。
+
+## 常见算子
+
+### `GGML_OP_VIEW`
+
+`GGML_OP_VIEW` 表示对已有张量存储的零拷贝视图。视图不拥有独立的数据存储，但可以通过自己的形状和步长描述源张量的子区域或不同布局。
+
+视图张量的 `view_src` 指向共享存储的源张量，`view_offs` 表示相对源存储的字节偏移，`nb` 描述各维度的字节步长。执行计算图时该算子不进行数值计算，但会保留数据依赖，并为内存分配器和 backend 提供存储别名信息。
