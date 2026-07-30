@@ -5,7 +5,7 @@ description: >-
   summary and bullet-point details. Use when the user asks to write, generate,
   or suggest a commit message, or mentions staged changes, git commit, or
   提交信息 / commit message.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Git Commit Message
