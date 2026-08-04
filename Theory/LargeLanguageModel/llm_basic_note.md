@@ -736,6 +736,57 @@ $$
 
 注意力层负责 token 之间的信息交互，`FFN` 层负责对每个 token 的表示做进一步变换。
 
+设输入包含$N$个`Token`,每个`Token`的维度为$d$
+
+$$
+X \in \mathbb{R}^{d \times N}
+$$
+
+#### 通用FFN
+
+$$
+Y = W_{down} \phi(W_{up}X+b_{up}) + b_{down}
+$$
+
+其中各矩阵/向量维度为：
+
+| 符号 | 维度 | 含义 |
+| ------ | ------ | ------ |
+| $X$ | $\mathbb{R}^{d \times N}$ | 输入，$N$ 个 token，每个维度 $d$ |
+| $W_{up}$ | $\mathbb{R}^{m \times d}$ | 升维投影，$d \to m$（$m$ 为中间层宽度，常取 $4d$） |
+| $b_{up}$ | $\mathbb{R}^{m}$ | 升维偏置，对 $N$ 个位置广播 |
+| $\phi(\cdot)$ | $\mathbb{R} \to \mathbb{R}$（逐元素） | 激活函数，作用于中间表示 |
+| $W_{down}$ | $\mathbb{R}^{d \times m}$ | 降维投影，$m \to d$ |
+| $b_{down}$ | $\mathbb{R}^{d}$ | 降维偏置，对 $N$ 个位置广播 |
+| $Y$ | $\mathbb{R}^{d \times N}$ | 输出，与输入同形状 |
+
+#### Gate FFN
+
+$$
+Y = W_{down}[\phi(W_{gate}X+b_{gate}) \odot (W_{up}X+b_{up})] + b_{down}
+$$
+
+相对通用 FFN，多了一条门控支路：$W_{gate}$ 经激活后与 $W_{up}$ 的结果做逐元素相乘，再经 $W_{down}$ 投影回 $d$ 维（如 SwiGLU）。
+
+其中各矩阵/向量维度为：
+
+| 符号 | 维度 | 含义 |
+| ------ | ------ | ------ |
+| $X$ | $\mathbb{R}^{d \times N}$ | 输入，$N$ 个 token，每个维度 $d$ |
+| $W_{gate}$ | $\mathbb{R}^{m \times d}$ | 门控投影，$d \to m$ |
+| $b_{gate}$ | $\mathbb{R}^{m}$ | 门控偏置，对 $N$ 个位置广播 |
+| $W_{up}$ | $\mathbb{R}^{m \times d}$ | 升维投影，$d \to m$ |
+| $b_{up}$ | $\mathbb{R}^{m}$ | 升维偏置，对 $N$ 个位置广播 |
+| $\phi(\cdot)$ | $\mathbb{R} \to \mathbb{R}$（逐元素） | 激活函数，只作用于门控支路 |
+| $\phi(W_{gate}X+b_{gate})$ | $\mathbb{R}^{m \times N}$ | 门控信号 |
+| $W_{up}X+b_{up}$ | $\mathbb{R}^{m \times N}$ | 升维后的值 |
+| $\odot$ | 同形逐元素乘 | 门控结果，形状仍为 $\mathbb{R}^{m \times N}$ |
+| $W_{down}$ | $\mathbb{R}^{d \times m}$ | 降维投影，$m \to d$ |
+| $b_{down}$ | $\mathbb{R}^{d}$ | 降维偏置，对 $N$ 个位置广播 |
+| $Y$ | $\mathbb{R}^{d \times N}$ | 输出，与输入同形状 |
+
+即：两条 $d\to m$ 支路在中间层用 $\odot$ 融合后，再由 $W_{down}$ 压回 $d$，序列长度 $N$ 不变。
+
 ### 输出层
 
 经过 $N$ 层 `Transformer Block` 后，得到最终隐藏状态：
@@ -812,9 +863,9 @@ $$
 则各位置的预测目标为：
 
 ```text
-BOS   -> 我
-我    -> 喜欢
-喜欢  -> 学习
+BOS   -> 我
+我    -> 喜欢
+喜欢  -> 学习
 ```
 
 最后一个位置没有下一个 token，因此通常不参与本段序列的 loss。
@@ -926,10 +977,10 @@ $$
 对于多轮对话，可以只训练最后一轮回答，也可以训练所有 `Assistant` 回答：
 
 ```text
-System  -> 不计算 loss
-User    -> 不计算 loss
+System  -> 不计算 loss
+User    -> 不计算 loss
 Assistant -> 计算 loss
-User    -> 不计算 loss
+User    -> 不计算 loss
 Assistant -> 计算 loss
 ```
 

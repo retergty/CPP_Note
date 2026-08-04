@@ -133,7 +133,7 @@ $$
 
 其中，$H$、$W$和$C$分别表示预处理后图像的高度、宽度和通道数。
 
-`Patch Embedding`将图像划分为大小为$P\times P$的图像块，图像块数量为：
+`Patch Embedding`将图像划分为大小为$P\times P$的`patch`，`patch`数量为：
 
 $$
 N=\frac{H}{P}\times\frac{W}{P}
@@ -159,7 +159,7 @@ $$
 E=[e_1,e_2,\ldots,e_N]\in\mathbb{R}^{N\times D}
 $$
 
-实际实现中通常使用卷积核大小和步长均为$P$的二维卷积，一次完成图像分块和线性映射。原始`ViT`使用互不重叠的图像块，其他视觉模型也可以通过减小步长生成相互重叠的图像块。
+实际实现中通常使用卷积核大小和步长均为$P$的二维卷积，一次完成图像分块和线性映射。
 
 ### 时间维 Patch Embedding
 
@@ -272,11 +272,97 @@ $$
 
 可学习绝对位置编码能够直接表示空间位置，但对未见过的分辨率依赖插值，且不直接表示两个位置之间的相对关系。因此，视觉`Transformer`通常还会在注意力的$Q$和$K$中引入二维旋转位置编码。
 
+### Vision RoPE
+
+`Vision RoPE`是在视觉编码器内部使用的二维旋转位置编码。它不直接加到视觉`Token`上，而是在每层自注意力中根据图像块的行、列坐标旋转 $Q$ 和 $K$ ，使注意力显式感知二维相对位置。
+
+设`Patch Embedding`后的空间网格大小为：
+
+$$
+h=\frac{H}{P},
+\qquad
+w=\frac{W}{P}
+$$
+
+按行优先展平时，第$n$个视觉`Token`的坐标为：
+
+$$
+r_n=\left\lfloor\frac{n}{w}\right\rfloor,
+\qquad
+c_n=n\bmod w
+$$
+
+其中 $0\leq r_n<h$，$0\leq c_n<w$ 。设单个注意力头的特征维度为 $d_{\text{head}}$ ，将其中用于旋转的维度划分为高度子空间和宽度子空间：
+
+$$
+q_n=
+\left[
+q_n^{(h)};
+q_n^{(w)};
+q_n^{(\mathrm{rest})}
+\right],
+\qquad
+k_n=
+\left[
+k_n^{(h)};
+k_n^{(w)};
+k_n^{(\mathrm{rest})}
+\right]
+$$
+
+对任意坐标$u$，二维特征对$(x_{2j},x_{2j+1})$的旋转定义为：
+
+$$
+\operatorname{Rot}(x,u)_j
+=
+\begin{bmatrix}
+\cos(u\theta_j) & -\sin(u\theta_j)\\
+\sin(u\theta_j) & \cos(u\theta_j)
+\end{bmatrix}
+\begin{bmatrix}
+x_{2j}\\
+x_{2j+1}
+\end{bmatrix}
+$$
+
+其中$\theta_j$是由低频到高频排列的旋转频率。高度子空间使用行坐标$r_n$，宽度子空间使用列坐标$c_n$：
+
+$$
+\tilde q_n
+=
+\left[
+\operatorname{Rot}(q_n^{(h)},r_n);
+\operatorname{Rot}(q_n^{(w)},c_n);
+q_n^{(\mathrm{rest})}
+\right]
+$$
+
+$$
+\tilde k_n
+=
+\left[
+\operatorname{Rot}(k_n^{(h)},r_n);
+\operatorname{Rot}(k_n^{(w)},c_n);
+k_n^{(\mathrm{rest})}
+\right]
+$$
+
+旋转后再计算注意力：
+
+$$
+\operatorname{Attention}(Q,K,V)
+=
+\operatorname{Softmax}
+\left(
+\frac{\tilde Q\tilde K^\top}{\sqrt{d_{\text{head}}}}
+\right)V
+$$
+
+`Vision RoPE`实质上是对每个注意力头，将 $q_n$ 和 $k_n$ 划分为三个子空间，对于高度子空间，使用行坐标 $r$,宽度子空间使用列坐标 $c$分别进行 `RoPE`.
+
 ### M-RoPE
 
-`M-RoPE`全称为`Multi-dimensional Rotary Position Embedding`，用于在语言模型中统一表示文本、图像和视频的位置。它作用于注意力的$Q$和$K$，与视觉编码器输入端的可学习绝对位置编码属于不同阶段。
-
-图像展平为序列后，一维序号无法完整表示二维空间关系。例如，一行末尾和下一行开头在序列中相邻，但在图像中并不一定相邻。
+`M-RoPE`全称为`Multi-dimensional Rotary Position Embedding`，用于在语言模型中统一表示文本、图像和视频的位置。
 
 `M-RoPE`为每个视觉`Token`分配三个位置坐标：
 
@@ -331,13 +417,13 @@ $$
 例如，一个$2\times3$的视觉网格从$p_0=10$开始，其位置坐标依次为：
 
 ```text
-(10, 10, 10)  (10, 10, 11)  (10, 10, 12)
-(10, 11, 10)  (10, 11, 11)  (10, 11, 12)
+(10, 10, 10)  (10, 10, 11)  (10, 10, 12)
+(10, 11, 10)  (10, 11, 11)  (10, 11, 12)
 ```
 
 后续文本从三个坐标中的最大位置继续编号，而不是简单增加视觉`Token`总数。这样可以在保留二维结构的同时避免把$h\times w$个视觉`Token`视为同样长度的一维位置跨度。
 
-视频在此基础上增加时间位置。每个视觉`Token`通过$(p_t,p_h,p_w)$同时表示所属时间片和空间位置。`Qwen3.5`还使用显式时间戳`Token`标记视频时间，因此实际时间信息并不只依赖$p_t$。
+视频在此基础上增加时间位置。每个视觉`Token`通过$(p_t,p_h,p_w)$同时表示所属时间片和空间位置。
 
 #### Interleaved M-RoPE
 
@@ -349,7 +435,7 @@ $$
 
 由于`RoPE`的不同维度对应不同频率，这种连续划分会使三个坐标分别集中在不同频段，导致频率分布不均衡。
 
-`Qwen3.5`采用`Interleaved M-RoPE`，将三个坐标交错分配到旋转维度：
+`Interleaved M-RoPE`将三个坐标交错分配到旋转维度：
 
 ```text
 [T, H, W, T, H, W, T, H, W, ...]
@@ -379,14 +465,47 @@ $$
 
 交错分配使时间、高度和宽度信息都覆盖低频与高频维度，从而减少频谱偏置，改善高分辨率图像和长视频的位置建模。
 
+#### 与 Vision RoPE 的频率分配差异
+
+关键不在于子空间是否连续，而在于各坐标轴使用的频率。二维`Vision RoPE`通常为高度和宽度复用同一频率序列：
+
+```text
+(H, θ0), (H, θ1), (H, θ2)
+(W, θ0), (W, θ1), (W, θ2)
+```
+
+因此，连续排列不会使两个坐标轴落入不同频段。`Vision RoPE`也可以采用交错排列。
+
+`Interleaved M-RoPE`保留语言模型原有的全局频率序列，并交错指定每个频率使用的坐标：
+
+```text
+(T, θ0), (H, θ1), (W, θ2),
+(T, θ3), (H, θ4), (W, θ5), ...
+```
+
+当输入为文本时，$p_t=p_h=p_w=p$，因此：
+
+$$
+\phi_i=p\theta_i
+$$
+
+该结果与普通一维`RoPE`一致。若三个坐标轴改为复用频率：
+
+```text
+(T, θ0), (H, θ0), (W, θ0),
+(T, θ1), (H, θ1), (W, θ1), ...
+```
+
+则在旋转维度固定时，唯一频率数量约减少为三分之一；文本频率也变为$\theta_0,\theta_0,\theta_0,\theta_1,\theta_1,\theta_1,\ldots$，不再等价于原有的一维`RoPE`。
+
 整体流程可以概括为：
 
 ```text
 文本 Token -> 一维位置 p -> (p, p, p)
 图像 Token -> 二维网格位置 -> (p_t, p_h, p_w)
 视频 Token -> 时间与空间位置 -> (p_t, p_h, p_w)
-                    ↓
-          Interleaved M-RoPE
-                    ↓
-          对 Attention 的 Q、K 旋转
+                    ↓
+          Interleaved M-RoPE
+                    ↓
+          对 Attention 的 Q、K 旋转
 ```
