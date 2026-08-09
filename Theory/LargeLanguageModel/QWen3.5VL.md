@@ -921,7 +921,6 @@ M_t=
 +\beta_tk_t^Tv_t
 $$
 
-
 ```CPP
 ggml_tensor * conv_states_all = mctx_cur->get_r_l(il);
 ggml_tensor * ssm_states_all  = mctx_cur->get_s_l(il);
@@ -929,16 +928,73 @@ ggml_tensor * ssm_states_all  = mctx_cur->get_s_l(il);
 ggml_tensor * conv_kernel      = model.layers[il].ssm_conv1d;
 const int64_t conv_kernel_size = conv_kernel->ne[0];
 const int64_t conv_channels    = d_inner + 2 * hparams.ssm_n_group * hparams.ssm_d_state;
-
-ggml_tensor * conv_input = build_conv_state(inp, conv_states_all, qkv_mixed, conv_kernel_size, conv_channels, il);
-
-ggml_tensor * state = build_rs(inp, ssm_states_all, hparams.n_embd_s(), n_seqs);
 ```
 
-为后续短卷积和DeltaNet状态更新准备状态输入。
+获取的卷积历史状态缓存`conv_states_all`,循环状态历史缓存`ssm_states_all`，卷积核`conv_kernel`,卷积核在`token`时间轴上的长度`conv_kernel_size`,要卷积的通道数`conv_channels`就是`conv_channels = Q宽度 + K宽度 + V宽度`.例如
+
+卷积历史状态缓存`conv_states_all`的形状为`[state_size, mem_size * (1 + n_rs_seq)]`
+
+`conv_kernel_size = 4`表示计算当前`token`卷积时使用四个QKV位置`[x[t-3], x[t-2], x[t-1], x[t]]`，需要缓存`3`个历史QKV.
+
+`conv_channels = 8192`表示需要计算`8192`个通道的卷积.
 
 ```CPP
+ggml_tensor * llm_graph_context::build_rs(
+        ggml_tensor * s,
+        ggml_tensor * state_copy_main,
+        ggml_tensor * state_copy_extra,
+            int32_t   state_size,
+            int32_t   n_seqs,
+           uint32_t   n_rs,
+           uint32_t   rs_head,
+           uint32_t   rs_size,
+            int32_t   rs_zero,
+        const llm_graph_get_rows_fn & get_state_rows) const {
 
+    GGML_UNUSED(rs_size);
+    ggml_tensor * states = ggml_reshape_2d(ctx0, s, state_size, s->ne[1]);
+
+    // Clear a single state which will then be copied to the other cleared states.
+    // Note that this is a no-op when the view is zero-sized.
+    ggml_tensor * state_zero = ggml_view_1d(ctx0, states, state_size*(rs_zero >= 0), rs_zero*states->nb[1]*(rs_zero >= 0));
+    ggml_build_forward_expand(gf, ggml_scale_inplace(ctx0, state_zero, 0));
+
+    // copy states
+    // NOTE: assuming the copy destinations are ALL contained between rs_head and rs_head + n_rs
+    // {state_size, rs_size} -> {state_size, n_seqs}
+    ggml_tensor * output_states = get_state_rows(ctx0, states, state_copy_main);
+    ggml_build_forward_expand(gf, output_states);
+
+    // copy extra states which won't be changed further (between n_seqs and n_rs)
+    ggml_tensor * states_extra = ggml_get_rows(ctx0, states, state_copy_extra);
+    ggml_build_forward_expand(gf,
+        ggml_cpy(ctx0,
+            states_extra,
+            ggml_view_2d(ctx0, s, state_size, (n_rs - n_seqs), s->nb[1], (rs_head + n_seqs)*s->nb[1])));
+
+    return output_states;
+}
+```
+
+`build_rs`负责从取出当前序列需要的状态，同时完成清零、复制和缓存槽位整理。它统一化短卷积状态`conv_states_all`和`DeltaNet`矩阵状态`ssm_states_all`.
+
+核心输入输出
+
+```txt
+输入：
+s                   所有缓存槽位的状态
+state_copy_main     当前序列状态的来源槽位
+state_copy_extra    额外状态的来源槽位
+
+输出：
+output_states: [state_size, n_seqs]  当前 n_seqs 条序列的状态
+```
+
+对于短卷积状态,`state_size = (conv_kernel_size - 1) * conv_channels`.
+
+对于`DeltaNet`矩阵状态,`state_size = Dk * Dv * num_v_heads`
+
+```CPP
 ggml_tensor * llm_build_delta_net_base::build_conv_state(
         llm_graph_input_rs * inp,
         ggml_tensor *        conv_states_all,
@@ -1018,7 +1074,78 @@ ggml_tensor * llm_build_delta_net_base::build_conv_state(
 }
 ```
 
-`build_conv_state`函数
+`build_conv_state`函数管理短卷积的历史状态.
+
+`kv_head`,当前序列状态要写入的缓存起点.`mem_size`,每个状态快照平面包含多少缓存槽位.`n_seqs`,本轮并行处理的序列数.
+
+`build_rs`输出展平的循环状态缓存`conv_states: [state_size, n_seqs]`，先将它还原为`[conv_kernel_size - 1, conv_channels, n_seqs]`.将`qkv_mixed`转置后，变成`[n_seq_tokens, conv_channels, n_seqs]`，这样第`0`维就是时间维，与历史循环状态缓存`conv_states`对齐,进行拼接，得到`conv_input: [conv_kernel_size - 1 + n_seq_tokens, conv_channels, n_seqs]`.由于之后需要改变`conv_states_all`,所以`conv_input`在拼接时进行了拷贝。
+
+不启用回滚时，`conv_state_last`就是从`n_seq_tokens`开始的`conv_input`.维度为`[conv_kernel_size - 1, conv_channels, n_seqs]`,它是当前序列的最新卷积状态.
+
+`conv_state_update`的形状是`[(conv_kernel_size - 1) * conv_channels, n_seqs]`，表示需要更新的缓存。
+
+```CPP
+ggml_tensor * state = build_rs(inp, ssm_states_all, hparams.n_embd_s(), n_seqs);
+state = ggml_reshape_4d(ctx0, state, head_v_dim, head_v_dim, num_v_heads, n_seqs);
+```
+
+先读取当前`n_seqs`条序列的状态，`state: [hparams.n_embd_s(), n_seqs]`其中，`hparams.n_embd_s() = ssm_d_state * ssm_d_inner = head_v_dim * head_v_dim * num_v_heads`.再将展平状态恢复为`[head_v_dim, head_v_dim, num_v_heads, n_seqs]`.
+
+```CPP
+ggml_tensor * conv_output_proper = ggml_ssm_conv(ctx0, conv_input, conv_kernel);
+cb(conv_output_proper, "conv_output_raw", il);
+
+ggml_tensor * conv_output_silu = ggml_silu(ctx0, conv_output_proper);
+cb(conv_output_silu, "conv_output_silu", il);
+
+ggml_tensor * conv_qkv_mix = conv_output_silu;
+```
+
+对拼接后的`QKV`做逐通道因果一维卷积，然后应用`SiLU`激活,之后改名准备拆分`Q/K/V`.
+
+```CPP
+// Calculate the total conv dimension
+int64_t qkv_dim = head_k_dim * num_k_heads * 2 + head_v_dim * num_v_heads;
+int64_t nb1_qkv = ggml_row_size(conv_qkv_mix->type, qkv_dim);
+
+// Extract the convolved Q, K, V from conv_output
+ggml_tensor * q_conv = ggml_view_4d(ctx0, conv_qkv_mix, head_k_dim, num_k_heads, n_seq_tokens, n_seqs,
+        ggml_row_size(conv_qkv_mix->type, head_k_dim),
+        nb1_qkv,
+        nb1_qkv * n_seq_tokens,
+        0);
+
+ggml_tensor * k_conv = ggml_view_4d(ctx0, conv_qkv_mix, head_k_dim, num_k_heads, n_seq_tokens, n_seqs,
+        ggml_row_size(conv_qkv_mix->type, head_k_dim),
+        nb1_qkv,
+        nb1_qkv * n_seq_tokens,
+        head_k_dim * num_k_heads * ggml_element_size(conv_qkv_mix));
+
+ggml_tensor * v_conv = ggml_view_4d(ctx0, conv_qkv_mix, head_v_dim, num_v_heads, n_seq_tokens, n_seqs,
+        ggml_row_size(conv_qkv_mix->type, head_v_dim),
+        nb1_qkv,
+        nb1_qkv * n_seq_tokens,
+        ggml_row_size(conv_qkv_mix->type, 2 * head_k_dim * num_k_heads));
+```
+
+把卷积后的混合张量`conv_qkv_mix`按内存区域拆成`Q、K、V`三个零拷贝`view`.
+
+```CPP
+q_conv = ggml_l2_norm(ctx0, q_conv, eps_norm);
+k_conv = ggml_l2_norm(ctx0, k_conv, eps_norm);
+```
+
+对每个`Q head`和`K head`做`L2`归一化.
+
+```CPP
+if (num_k_heads != num_v_heads && (!cparams.fused_gdn_ar || !cparams.fused_gdn_ch)) {
+    GGML_ASSERT(num_v_heads % num_k_heads == 0);
+    q_conv = ggml_repeat_4d(ctx0, q_conv, head_k_dim, num_v_heads, n_seq_tokens, n_seqs);
+    k_conv = ggml_repeat_4d(ctx0, k_conv, head_k_dim, num_v_heads, n_seq_tokens, n_seqs);
+}
+```
+
+处理`Q/K head`数量与`V head`数量不同的情况.当不能完全依赖`fused GDN`的内部广播时，就显式重复`Q/K`
 
 ## 视频解码器
 
