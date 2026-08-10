@@ -550,10 +550,12 @@ $$
 
 ## Gated DeltaNet 线性注意力
 
-`Gated DeltaNet` 用固定大小的记忆矩阵压缩历史信息，不构造 $T\times T$ 注意力矩阵。它结合两种机制：
+`Gated DeltaNet`用固定大小的记忆矩阵压缩历史信息，不构造 $T\times T$注意力矩阵。其核心包含：
 
 - `decay gate`：整体衰减旧状态。
 - `delta rule`：定向修改与当前 key 相关的记忆。
+
+部分实现还在线性注意力前加入因果短卷积，以混合局部上下文。以下以`Qwen3.5`的实现为例。
 
 以下讨论单个 head。设：
 
@@ -651,17 +653,48 @@ $$
 - $\beta_t\rightarrow0$：当前 key-value 几乎不写入状态。
 - $\beta_t\rightarrow1$ 且 $\|k_t\|_2=1$：用新 value 替换当前 key 方向上的旧关联。
 
+### 因果短卷积
+
+在执行`delta rule`前，对拼接的`Q/K/V`投影应用逐通道因果一维卷积。设：
+
+$$
+u_t=W_{qkv}x_t,
+\qquad
+u_t\in\mathbb{R}^{D_{qkv}}
+$$
+
+卷积核长度为 $K$，各位置的逐通道权重为 $c_j\in\mathbb{R}^{D_{qkv}}$。卷积和拆分过程为：
+
+$$
+\bar u_t
+=
+\operatorname{SiLU}
+\left(
+\sum_{j=0}^{K-1}c_j\odot u_{t-j}
+\right)
+$$
+
+$$
+q_t,k_t,v_t
+=
+\operatorname{Split}(\bar u_t)
+$$
+
+其中，当 $t-j<0$ 时令 $u_{t-j}=0$；$\odot$表示逐元素乘法。输出只依赖区间 $[t-K+1,t]$，因此满足因果约束，并为`Q/K/V`提供长度为 $K$ 的局部感受野。
+
+解码时只需缓存最近 $K-1$ 个 $u_t$，卷积状态大小为 $O((K-1)D_{qkv})$，不随上下文长度增长。卷积状态保存短期局部信息，矩阵状态 $M_t$压缩更长的历史信息。
+
 ### 复杂度
 
-单个 head 的时间和状态空间复杂度分别为：
+按单个 head 估算，并忽略线性投影的开销，长度为 $T$ 的序列所需计算量和状态空间分别为：
 
 $$
-O(Td_kd_v),
+O\left(Td_kd_v+TKD_{qkv}\right),
 \qquad
-O(d_kd_v)
+O\left(d_kd_v+(K-1)D_{qkv}\right)
 $$
 
-状态空间不随 $T$ 增长。训练时可使用 `chunkwise parallel algorithm` 提高并行度；decode 时只需更新固定大小的 $M_t$，无需维护随上下文增长的 `KV Cache`。
+当 $K$ 固定时，计算量随 $T$ 线性增长，状态空间与 $T$ 无关。训练时可并行计算卷积，并分块并行计算`delta rule`；解码时只更新卷积状态和矩阵状态，无需维护随上下文增长的`KV Cache`。
 
 ### 和 Softmax Attention 的区别
 

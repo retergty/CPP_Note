@@ -510,6 +510,28 @@ static int ggml_cpu_try_fuse_ops(
 
 `ggml_cpu_try_fuse_ops` 不修改计算图，而是直接调用融合 kernel，并返回已覆盖的后续节点数。调用方据此增加 `node_n`，跳过已经由融合 kernel 完成的节点；例如返回 `1` 表示跳过紧随其后的 `MUL` 节点。
 
+## 常见函数
+
+### GGML_TENSOR_BINARY_OP_LOCALS
+
+这个宏，把二元算子中经常需要计算的形状与步长从`src0`,`src1`,`dst`抽成局部变量.
+
+展开后相当于
+
+```txt
+// src0
+ne00, ne01, ne02, ne03   = src0->ne[0..3]
+nb00, nb01, nb02, nb03   = src0->nb[0..3]
+
+// src1
+ne10, ne11, ne12, ne13   = src1->ne[0..3]
+nb10, nb11, nb12, nb13   = src1->nb[0..3]
+
+// dst
+ne0,  ne1,  ne2,  ne3    = dst->ne[0..3]
+nb0,  nb1,  nb2,  nb3    = dst->nb[0..3]
+```
+
 ## 常见算子
 
 ### `GGML_OP_VIEW`
@@ -517,3 +539,274 @@ static int ggml_cpu_try_fuse_ops(
 `GGML_OP_VIEW` 表示对已有张量存储的零拷贝视图。视图不拥有独立的数据存储，但可以通过自己的形状和步长描述源张量的子区域或不同布局。
 
 视图张量的 `view_src` 指向共享存储的源张量，`view_offs` 表示相对源存储的字节偏移，`nb` 描述各维度的字节步长。执行计算图时该算子不进行数值计算，但会保留数据依赖，并为内存分配器和 backend 提供存储别名信息。
+
+### `GGML_OP_MUL_MAT`
+
+```CPP
+struct ggml_tensor * ggml_mul_mat(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        struct ggml_tensor  * b)
+```
+
+`GGML_OP_MUL_MAT`表示进行矩阵乘法，对最内层维度进行点积计算。设`a: [K, N]`,`b: [K, M]`，则`ggml_mul_mat(a,b)`的结果是`c: [N,M]`,其中`c[n, m] = dot(a[:, n], b[:, m])`.
+
+数学含义可以按照两种方式理解:
+
+1. 按照头文件的注释，理解为$A \in \mathbb{R}^{N \times K}$,$B \in \mathbb{R}^{M \times K}$,此时$C = AB^T$,$C \in \mathbb{R}^{N \times M}$.此时矩阵理解为行主序.
+2. 直接理解为$A \in \mathbb{R}^{K \times N}$,$B \in \mathbb{R}^{K \times M}$,此时$C = A^TB$,$C \in \mathbb{R}^{N \times M}$,此时矩阵理解为列主序.
+
+在函数`ggml_compute_forward_mul_mat`中就是实际线程进行矩阵乘法的计算代码.
+
+#### ggml_compute_forward_mul_mat
+
+```CPP
+const struct ggml_tensor * src0 = dst->src[0];
+const struct ggml_tensor * src1 = dst->src[1];
+
+const int32_t hint = ggml_get_op_params_i32(dst, 1);
+if (hint == GGML_HINT_SRC0_IS_HADAMARD && !params->use_ref) {
+    ggml_compute_forward_fwht(params, dst);
+    return;
+}
+
+GGML_TENSOR_BINARY_OP_LOCALS
+
+const int ith = params->ith;
+const int nth = params->nth;
+
+enum ggml_type           const vec_dot_type         = type_traits_cpu[src0->type].vec_dot_type;
+ggml_from_float_t        const from_float           = type_traits_cpu[vec_dot_type].from_float;
+int64_t                  const vec_dot_num_rows     = type_traits_cpu[src0->type].nrows;
+
+GGML_ASSERT(ne0 == ne01);
+GGML_ASSERT(ne1 == ne11);
+GGML_ASSERT(ne2 == ne12);
+GGML_ASSERT(ne3 == ne13);
+
+// we don't support permuted src0 or src1
+GGML_ASSERT(nb00 == ggml_type_size(src0->type));
+GGML_ASSERT(nb10 == ggml_type_size(src1->type));
+
+// dst cannot be transposed or permuted
+GGML_ASSERT(nb0 == sizeof(float));
+GGML_ASSERT(nb0 <= nb1);
+GGML_ASSERT(nb1 <= nb2);
+GGML_ASSERT(nb2 <= nb3);
+```
+
+先读取线程号`ith`和总线程数`nth`.
+
+通过`src0`的类型，获取`src1`需要的目标类型`vec_dot_type`，将`F32`转化为`vec_dot_type`的函数`from_float`,`vec_dot_num_rows`表示一次`vec_dot`同时能算的输出数。
+
+进行形状布局断言.确认
+
+```text
+dst: [N, M, ...] 与 a:[K,N,...], b:[K,M,...] 对齐
+src0/src1 的 ne[0] 连续（未 permute）
+dst 是普通 F32、未转置
+```
+
+```CPP
+    if (src1->type != vec_dot_type) {
+        char * wdata = params->wdata;
+
+        const size_t nbw0 = ggml_type_size(vec_dot_type);
+        const size_t nbw1 = ggml_row_size(vec_dot_type, ne10);
+        const size_t nbw2 = nbw1*ne11;
+        const size_t nbw3 = nbw2*ne12;
+
+        assert(params->wsize >= ne13*nbw3);
+        GGML_ASSERT(src1->type == GGML_TYPE_F32);
+
+    #if 0
+        for (int64_t i13 = 0; i13 < ne13; ++i13) {
+            for (int64_t i12 = 0; i12 < ne12; ++i12) {
+                for (int64_t i11 = ith; i11 < ne11; i11 += nth) {
+                    from_float((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11),
+                               (void *)               (wdata + i13*nbw3 + i12*nbw2 + i11*nbw1),
+                                ne10);
+                }
+            }
+        }
+    #else
+        for (int64_t i13 = 0; i13 < ne13; ++i13) {
+            for (int64_t i12 = 0; i12 < ne12; ++i12) {
+                for (int64_t i11 = 0; i11 < ne11; ++i11) {
+                    size_t bs = ggml_blck_size(vec_dot_type);
+                    int64_t ne10_block_start = (ith * ne10/bs) / nth;
+                    int64_t ne10_block_end   = ((ith + 1) * ne10/bs) / nth;
+                    from_float((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11 + ne10_block_start*bs*nb10),
+                               (void *)               (wdata + i13*nbw3 + i12*nbw2 + i11*nbw1 + ne10_block_start*nbw0),
+                               (ne10_block_end - ne10_block_start) * bs);
+                }
+            }
+        }
+    #endif
+    }
+
+    if (ith == 0) {
+        // Every thread starts at ith, so the first unprocessed chunk is nth.  This save a bit of coordination right at the start.
+        atomic_store_explicit(&params->threadpool->current_chunk, nth, memory_order_relaxed);
+    }
+
+    ggml_barrier(params->threadpool);
+```
+
+将`src1`转化为`vec_dot_type`类型.进行多线程优化,当前线程只转`src1[k_start : k_end, i11, i12, i13]`这一段
+
+```CPP
+// This is the size of the first dimension of the result, so we can iterate that way. (see the ASSERT above, these are the same numbers)
+const int64_t nr0 = ne0;
+
+// This is the size of the rest of the dimensions of the result
+const int64_t nr1 = ne1 * ne2 * ne3;
+
+// Now select a reasonable chunk size.
+int chunk_size = 16;
+
+// We need to step up the size if it's small
+if (nr0 == 1 || nr1 == 1) {
+    chunk_size = 64;
+}
+
+// distribute the work across the inner or outer loop based on which one is larger
+// The number of chunks in the 0/1 dim.
+// CEIL(nr0/chunk_size)
+int64_t nchunk0 = (nr0 + chunk_size - 1) / chunk_size;
+int64_t nchunk1 = (nr1 + chunk_size - 1) / chunk_size;
+
+// If the chunking is poor for the number of threads on this setup, scrap the whole plan.  Re-chunk it by thread.
+//   Also, chunking by thread was measured to have perform better on NUMA systems.  See https://github.com/ggml-org/llama.cpp/pull/6915
+//   In theory, chunking should be just as useful on NUMA and non NUMA systems, but testing disagreed with that.
+if (nchunk0 * nchunk1 < nth * 4 || ggml_is_numa()) {
+    // distribute the thread work across the inner or outer loop based on which one is larger
+    nchunk0 = nr0 > nr1 ? nth : 1; // parallelize by src0 rows
+    nchunk1 = nr0 > nr1 ? 1 : nth; // parallelize by src1 rows
+}
+
+// The number of elements in each chunk
+const int64_t dr0 = (nr0 + nchunk0 - 1) / nchunk0;
+const int64_t dr1 = (nr1 + nchunk1 - 1) / nchunk1;
+
+// The first chunk comes from our thread_id, the rest will get auto-assigned.
+int current_chunk = ith;
+```
+
+在实际计算前,规划如何把输出矩阵切成`chunk`，将不同chunk分配给不同线程并行计算。先将输出收束为二维，计算`nchunk0`,`nchunk1`两个维度下切分的chunk数，计算`dr0`,`dr1`每个chunk中实际跨度。
+
+例如
+
+```txt
+nr0 = 50
+chunk_size = 16
+nchunk0 = ceil(50/16) = 4
+dr0     = ceil(50/4)  = 13
+块0: [0, 13)
+块1: [13, 26)
+块2: [26, 39)
+块3: [39, 52) -> 实际 [39, 50)  只有 11 个
+```
+
+```CPP
+// The first chunk comes from our thread_id, the rest will get auto-assigned.
+int current_chunk = ith;
+
+while (current_chunk < nchunk0 * nchunk1) {
+    const int64_t ith0 = current_chunk % nchunk0;
+    const int64_t ith1 = current_chunk / nchunk0;
+
+    const int64_t ir0_start = dr0 * ith0;
+    const int64_t ir0_end = MIN(ir0_start + dr0, nr0);
+
+    const int64_t ir1_start = dr1 * ith1;
+    const int64_t ir1_end = MIN(ir1_start + dr1, nr1);
+
+    // dot kernels can handle 1 row and col at a time, but mmla kernels can process 2 rows and cols
+    int64_t num_rows_per_vec_dot = vec_dot_num_rows;
+
+    // these checks are needed to avoid crossing dim1 boundaries
+    // can be optimized, but the logic would become more complicated, so keeping it like this for simplicity
+    if ((nr0 % 2 != 0) || (ne11 % 2 != 0) || ((ir0_end - ir0_start) % 2 != 0) || ((ir1_end - ir1_start) % 2 != 0)) {
+        num_rows_per_vec_dot = 1;
+    }
+    ggml_compute_forward_mul_mat_one_chunk(params, dst, src0->type, num_rows_per_vec_dot, ir0_start, ir0_end, ir1_start, ir1_end);
+
+    if (nth >= nchunk0 * nchunk1) {
+        break;
+    }
+
+    current_chunk = atomic_fetch_add_explicit(&params->threadpool->current_chunk, 1, memory_order_relaxed);
+}
+```
+
+实际进行chunk矩阵乘法计算，调用`ggml_compute_forward_mul_mat_one_chunk`实际进行计算.
+
+#### ggml_compute_forward_mul_mat_one_chunk
+
+```CPP
+static void ggml_compute_forward_mul_mat_one_chunk(
+    const struct ggml_compute_params * params,
+    struct ggml_tensor * dst,
+    const enum ggml_type type,
+    const int64_t num_rows_per_vec_dot,
+    const int64_t ir0_start,
+    const int64_t ir0_end,
+    const int64_t ir1_start,
+    const int64_t ir1_end);
+```
+
+这个函数计算输出矩阵上的一个矩形`chunk`，内部再进行`16×16 tiling`，使用`vec_dot`计算点积.
+
+输入参数
+
+* `type`是`src0`的类型，用来选`vec_dot`.
+* `num_rows_per_vec_dot`一次点积算几行.
+* `ir0_start/end`输出`ne[0]=N`方向范围.
+* `ir1_start/end`摊平后的`nr1`方向范围。
+
+```CPP
+    for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
+        for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
+            for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
+                const int64_t i13 = (ir1 / (ne12 * ne1));
+                const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
+                const int64_t i11 = (ir1 - i13 * ne12 * ne1 - i12 * ne1);
+
+                // broadcast src0 into src1
+                const int64_t i03 = i13 / r3;
+                const int64_t i02 = i12 / r2;
+
+                const int64_t i1 = i11;
+                const int64_t i2 = i12;
+                const int64_t i3 = i13;
+
+                const char * src0_row = (const char*)src0->data + (0 + i02 * nb02 + i03 * nb03);
+
+                // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
+                //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
+                //       the original src1 data pointer, so we should index using the indices directly
+                // TODO: this is a bit of a hack, we should probably have a better way to handle this
+                const char * src1_col = (const char*)wdata +
+                    (src1_cont || src1->type != vec_dot_type
+                        ? (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size
+                        : (i11 * nb11 + i12 * nb12 + i13 * nb13));
+                float * dst_col = (float*)((char*)dst->data + (i1 * nb1 + i2 * nb2 + i3 * nb3));
+
+                //for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ++ir0) {
+                //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
+                //}
+
+                for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ir0 += num_rows_per_vec_dot) {
+                    vec_dot(ne00, &tmp[ir0 - iir0], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
+                }
+
+                for (int cn = 0; cn < num_rows_per_vec_dot; ++cn) {
+                    memcpy(&dst_col[iir0 + cn * nb1 / nb0], tmp + (cn * 16), (MIN(iir0 + blck_0, ir0_end) - iir0) * sizeof(float));
+                }
+            }
+        }
+    }
+```
+
+实际调用`vec_dot`计算矩阵乘法.

@@ -934,6 +934,8 @@ const int64_t conv_channels    = d_inner + 2 * hparams.ssm_n_group * hparams.s
 
 卷积历史状态缓存`conv_states_all`的形状为`[state_size, mem_size * (1 + n_rs_seq)]`
 
+循环状态历史缓存`ssm_states_all`的形状为`[head_v_dim, head_k_dim, num_v_heads, n_seqs]`
+
 `conv_kernel_size = 4`表示计算当前`token`卷积时使用四个QKV位置`[x[t-3], x[t-2], x[t-1], x[t]]`，需要缓存`3`个历史QKV.
 
 `conv_channels = 8192`表示需要计算`8192`个通道的卷积.
@@ -1146,6 +1148,173 @@ if (num_k_heads != num_v_heads && (!cparams.fused_gdn_ar || !cparams.fused_gdn_c
 ```
 
 处理`Q/K head`数量与`V head`数量不同的情况.当不能完全依赖`fused GDN`的内部广播时，就显式重复`Q/K`
+
+```CPP
+ggml_tensor * llm_build_delta_net_base::build_recurrent_attn(
+        llm_graph_input_rs * inp,
+        ggml_tensor *        ssm_states_all,
+        ggml_tensor *        q,
+        ggml_tensor *        k,
+        ggml_tensor *        v,
+        ggml_tensor *        g,
+        ggml_tensor *        b,
+        ggml_tensor *        s,
+        int                  il) {
+    const auto * mctx_cur   = inp->mctx;
+    const auto   kv_head    = mctx_cur->get_head();
+    const uint32_t mem_size = mctx_cur->get_size();
+
+    const int64_t S_v          = s->ne[0];
+    const int64_t H_v          = s->ne[2];
+    const int64_t n_seqs       = s->ne[3];
+    const int64_t n_seq_tokens = q->ne[2];
+
+    const bool keep = cparams.n_rs_seq > 0;
+
+    if (!keep) {
+        auto attn_out = build_delta_net(q, k, v, g, b, s, il);
+        ggml_tensor * output    = attn_out.first;
+        ggml_tensor * new_state = attn_out.second;
+        cb(output, "attn_output", il);
+        cb(new_state, "new_state", il);
+
+        ggml_build_forward_expand(gf,
+                ggml_cpy(ctx0, new_state,
+                    ggml_view_2d(ctx0, ssm_states_all, hparams.n_embd_s(), n_seqs, ssm_states_all->nb[1],
+                        kv_head * hparams.n_embd_s() * ggml_element_size(ssm_states_all))));
+
+        return output;
+    }
+
+    const int64_t D = S_v * S_v * H_v;
+    const int64_t K = cparams.n_rs_seq + 1;
+
+    // state s is 4D [S_v, S_v, H_v, n_seqs]; K snapshot slots are written into the output.
+    ggml_tensor * gdn_out = ggml_gated_delta_net(ctx0, q, k, v, g, b, s, K);
+    if (n_seq_tokens > 1) {
+        res->add_fused_node({LLM_FUSED_OP_GDN_CH, gdn_out, il});
+    } else {
+        res->add_fused_node({LLM_FUSED_OP_GDN_AR, gdn_out, il});
+    }
+
+    const int64_t attn_score_elems    = S_v * H_v * n_seq_tokens * n_seqs;
+    const int64_t state_size_per_snap = S_v * S_v * H_v * n_seqs;
+
+    ggml_tensor * output = ggml_view_4d(ctx0, gdn_out,
+        S_v, H_v, n_seq_tokens, n_seqs,
+        ggml_row_size(gdn_out->type, S_v),
+        ggml_row_size(gdn_out->type, S_v * H_v),
+        ggml_row_size(gdn_out->type, S_v * H_v * n_seq_tokens),
+        0);
+    cb(output, "attn_output", il);
+
+    const size_t row_size = hparams.n_embd_s() * ggml_element_size(ssm_states_all);
+
+    // op writes the last min(n_seq_tokens, K) snapshots; trailing slots are left unwritten
+    const int64_t n_written = std::min<int64_t>(n_seq_tokens, K);
+
+    // write the produced snapshots into the recurrent cache (snapshot slot i -> rollback group i)
+    ggml_tensor * src = ggml_view_3d(ctx0, gdn_out,
+        D, n_seqs, n_written,
+        ggml_row_size(gdn_out->type, D),
+        ggml_row_size(gdn_out->type, state_size_per_snap),
+        ggml_row_size(gdn_out->type, attn_score_elems));
+
+    ggml_tensor * dst = ggml_view_3d(ctx0, ssm_states_all,
+        D, n_seqs, n_written,
+        ssm_states_all->nb[1],
+        (size_t) mem_size * row_size,
+        (size_t) kv_head * row_size);
+
+    ggml_build_forward_expand(gf, ggml_cpy(ctx0, src, dst));
+
+    return output;
+}
+```
+
+进行`Gated DeltaNet`递推注意力，并把新的`recurrent state`写回`ssm_states_all`.
+
+`output:[head_v_dim, num_v_heads, n_seq_tokens, n_seqs]`是计算出的线性注意力,`new_state:[head_v_dim, head_k_dim, num_v_heads, n_seqs]`是要更新的线性注意力状态。
+
+```CPP
+std::pair<ggml_tensor *, ggml_tensor *> llm_build_delta_net_base::build_delta_net(
+        ggml_tensor * q,
+        ggml_tensor * k,
+        ggml_tensor * v,
+        ggml_tensor * g,
+        ggml_tensor * b,
+        ggml_tensor * s,
+        int           il) {
+    const int64_t n_seq_tokens = q->ne[2];
+
+    if (n_seq_tokens == 1) {
+        if (cparams.fused_gdn_ar) {
+            return build_delta_net_fused(q, k, v, g, b, s, il);
+        }
+        return build_delta_net_autoregressive(q, k, v, g, b, s, il);
+    }
+
+    if (cparams.fused_gdn_ch) {
+        return build_delta_net_fused(q, k, v, g, b, s, il);
+    }
+
+    return build_delta_net_chunking(q, k, v, g, b, s, il);
+}
+```
+
+根据`token`数量和后端`fused`支持情况选择计算路径。
+
+输入
+
+```txt
+q/k/v：当前 Q、K、V
+g：状态衰减参数
+b：beta，状态更新强度
+s：初始递归状态
+```
+
+输出
+
+```txt
+std::pair<output, new_state>
+output:    [S_v, H_v, n_seq_tokens, n_seqs]
+new_state: [S_v, S_v, H_v, n_seqs]
+```
+
+```CPP
+// z: [head_dim, n_heads, n_tokens, n_seqs] -> [n_heads * n_tokens * n_seqs, head_dim]
+ggml_tensor * z_2d = ggml_reshape_4d(ctx0, z, head_v_dim, num_v_heads, n_seq_tokens, n_seqs);
+
+// Apply gated normalization: self.norm(core_attn_out, z)
+ggml_tensor * attn_out_norm = build_norm_gated(output, model.layers[il].ssm_norm, z_2d, il);
+
+// Final reshape: [head_dim, n_heads, n_tokens, n_seqs] -> [n_tokens, n_seqs, n_heads * head_dim]
+ggml_tensor * final_output = ggml_reshape_3d(ctx0, attn_out_norm, head_v_dim * num_v_heads, n_seq_tokens, n_seqs);
+cb(final_output, "final_output", il);
+
+// Output projection
+cur = build_lora_mm(model.layers[il].ssm_out, final_output, model.layers[il].ssm_out_s);
+cb(cur, "linear_attn_out", il);
+
+// Reshape back to original dimensions
+cur = ggml_reshape_2d(ctx0, cur, n_embd, n_seq_tokens * n_seqs);
+```
+
+对`DeltaNet`输出做门控归一化，合并`heads`，再投影回模型隐藏维度.
+
+先将门控张量`z`恢复成多`head`形式,`z_2d: [head_v_dim, num_v_heads, n_seq_tokens, n_seqs]`.
+
+计算`Gated RMSNorm`:
+
+```txt
+normalized = RMSNorm(output)
+gate       = SiLU(z_2d)
+attn_out_norm = normalized * gate
+```
+
+合并`value heads`，把`attn_out_norm: [head_v_dim, num_v_heads, n_seq_tokens, n_seqs]`合并为`final_output: [head_v_dim * num_v_heads, n_seq_tokens, n_seqs]`.
+
+进行输出投影将`final_output`投影回模型隐藏维度`[n_embd, n_seq_tokens, n_seqs]`,最后合并`sequence`和`token`维度`[n_embd, n_seq_tokens * n_seqs]`和进入时保持一致。
 
 ## 视频解码器
 
