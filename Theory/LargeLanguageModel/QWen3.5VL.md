@@ -1409,7 +1409,10 @@ ggml_tensor * llama_model_qwen35::graph::build_layer_attn(
 这个函数计算全注意力层.
 
 * `inp`这一层全注意力要用的`KV cache`句柄。
-* `cur`本层注意力输入,维度是`[n_embd, n_tokens]`
+* `cur`本层注意力输入,维度是`[n_embd, n_tokens]`.
+* `inp_pos`位置`id`,给RoPE用
+* `sections`,MRoPE 四段划分（文本/高/宽/时间一类）。
+* `il`层号
 
 ```CPP
 const int64_t n_embd_head = hparams.n_embd_head_v();
@@ -1428,7 +1431,354 @@ ggml_tensor * Qcur = ggml_view_3d(ctx0, Qcur_full, n_embd_head, n_head, n_tokens
 cb(Qcur, "Qcur_reshaped", il);
 ```
 
+`wq`是$W_Q$和门控$G$的联合权重.`Qcur_full`维度为`[ (n_embd_head * 2) * n_head, n_tokens ]`,其中`Q`和`G`是按照head交错:
 
+```text
+token t:
+  [ Q_h0 | G_h0 | Q_h1 | G_h1 | ... | Q_hN | G_hN ]
+     ^      ^
+  head_dim  head_dim
+```
+
+使用`view`获取`Qcur`.维度变成`[n_embd_head, n_head, n_tokens]`.
+
+```CPP
+// Apply Q normalization
+Qcur = build_norm(Qcur, model.layers[il].attn_q_norm, nullptr, LLM_NORM_RMS, il);
+cb(Qcur, "Qcur_normed", il);
+
+ggml_tensor * Kcur = build_lora_mm(model.layers[il].wk, cur, model.layers[il].wk_s);
+cb(Kcur, "Kcur", il);
+
+ggml_tensor * Vcur = build_lora_mm(model.layers[il].wv, cur, model.layers[il].wv_s);
+cb(Vcur, "Vcur", il);
+
+// Apply K normalization
+Kcur = ggml_reshape_3d(ctx0, Kcur, n_embd_head, n_head_kv, n_tokens);
+Kcur = build_norm(Kcur, model.layers[il].attn_k_norm, nullptr, LLM_NORM_RMS, il);
+cb(Kcur, "Kcur_normed", il);
+```
+
+获取QKV，同时对QK进行`RMS_NORM`,这个是为了稳定训练.
+
+`K`的形状是`[n_embd_head, n_head_kv, n_tokens]`
+
+```CPP
+ggml_tensor * gate = ggml_view_3d(ctx0, Qcur_full, n_embd_head, n_head, n_tokens,
+    ggml_element_size(Qcur_full) * n_embd_head * 2,
+    ggml_element_size(Qcur_full) * n_embd_head * 2 * n_head,
+    ggml_element_size(Qcur_full) * n_embd_head);
+gate = ggml_cont_2d(ctx0, gate, n_embd_head * n_head, n_tokens);
+cb(gate, "gate_reshaped", il);
+```
+
+将使用`view`获取`gate`,维度变成`[n_embd_head, n_head, n_tokens]`.之后连续化为`[n_embd_head * n_head, n_tokens]`.
+
+```CPP
+Vcur = ggml_reshape_3d(ctx0, Vcur, n_embd_head, n_head_kv, n_tokens);
+```
+
+将`Vcur`变为`[n_embd_head, n_head_kv, n_tokens]`.
+
+```CPP
+// Apply MRoPE
+Qcur = ggml_rope_multi(
+        ctx0, Qcur, inp_pos, nullptr,
+        n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
+        ext_factor, attn_factor, beta_fast, beta_slow
+        );
+
+Kcur = ggml_rope_multi(
+        ctx0, Kcur, inp_pos, nullptr,
+        n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
+        ext_factor, attn_factor, beta_fast, beta_slow
+        );
+```
+
+使用M-RoPE旋转。
+
+```CPP
+ggml_tensor * llm_graph_context::build_attn(
+        llm_graph_input_attn_kv * inp,
+        ggml_tensor * wo,
+        ggml_tensor * wo_b,
+        ggml_tensor * wo_s,
+        ggml_tensor * q_cur,
+        ggml_tensor * k_cur,
+        ggml_tensor * v_cur,
+        ggml_tensor * kq_b,
+        ggml_tensor * sinks,
+        ggml_tensor * v_mla, // TODO: remove
+            float     kq_scale,
+            int       il) const {
+    GGML_ASSERT(v_mla == nullptr);
+
+    if (inp->self_k_rot) {
+        q_cur = llama_mul_mat_hadamard(ctx0, q_cur, inp->self_k_rot);
+        k_cur = llama_mul_mat_hadamard(ctx0, k_cur, inp->self_k_rot);
+    }
+
+    if (inp->self_v_rot) {
+        v_cur = llama_mul_mat_hadamard(ctx0, v_cur, inp->self_v_rot);
+    }
+
+    // these nodes are added to the graph together so that they are not reordered
+    // by doing so, the number of splits in the graph is reduced
+    // expand k later to enable rope fusion which directly writes into k-v cache
+    ggml_build_forward_expand(gf, q_cur);
+    ggml_build_forward_expand(gf, v_cur);
+    ggml_build_forward_expand(gf, k_cur);
+
+    const auto * mctx_cur = inp->mctx;
+
+    // store to KV cache
+    {
+        const auto & k_idxs = inp->get_k_idxs();
+        const auto & v_idxs = inp->get_v_idxs();
+
+        ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, k_idxs, il));
+        ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
+    }
+
+    ggml_tensor * kq_mask = inp->get_kq_mask();
+
+    ggml_tensor * q = q_cur;
+    ggml_tensor * k = mctx_cur->get_k(ctx0, il);
+    ggml_tensor * v = mctx_cur->get_v(ctx0, il);
+
+    ggml_tensor * cur = build_attn_mha(q, k, v, kq_b, kq_mask, sinks, v_mla, kq_scale, il);
+    cb(cur, "kqv_out", il);
+
+    if (inp->self_v_rot) {
+        cur = llama_mul_mat_hadamard(ctx0, cur, inp->self_v_rot);
+    }
+
+    if (wo) {
+        if (arch == LLM_ARCH_GLM4 || arch == LLM_ARCH_GLM4_MOE || arch == LLM_ARCH_JAIS2) {
+            // GLM4, GLM4_MOE, and JAIS2 seem to have numerical issues with half-precision accumulators
+            cur = build_lora_mm(wo, cur);
+            ggml_mul_mat_set_prec(cur, GGML_PREC_F32);
+            if (wo_s) {
+                cur = ggml_mul(ctx0, cur, wo_s);
+            }
+        } else {
+            cur = build_lora_mm(wo, cur, wo_s);
+        }
+    }
+
+    if (wo_b) {
+        cur = ggml_add(ctx0, cur, wo_b);
+    }
+
+    return cur;
+}
+```
+
+这个函数准备计算注意力.
+
+* `inp`内存上下文.
+* `wo`,`wo_s`,`wo_b`是注意力输出投影相关的权重。
+* `q_cur`,`k_cur`,`v_cur`当前的`QKV`.
+* `kq_scale`,`softmax`前的缩放，通常`1/sqrt(head_dim)`.
+* `kq_b`,`sinks`,`v_mla`少量架构使用.
+
+```CPP
+if (inp->self_k_rot) {
+    q_cur = llama_mul_mat_hadamard(ctx0, q_cur, inp->self_k_rot);
+    k_cur = llama_mul_mat_hadamard(ctx0, k_cur, inp->self_k_rot);
+}
+
+if (inp->self_v_rot) {
+    v_cur = llama_mul_mat_hadamard(ctx0, v_cur, inp->self_v_rot);
+}
+...
+if (inp->self_v_rot) {
+    cur = llama_mul_mat_hadamard(ctx0, cur, inp->self_v_rot);
+}
+```
+
+`self_k_rot`,`self_v_rot`只在`K`或`V cache`被量化 且`head_dim % 64 == 0`时创建。
+
+`self_k_rot`,`self_v_rot`是正交对称阵，用来旋转量化的QK，`KV cache`量化通常按一组数共用一个`scale`（block / tensor）。真实`K/V`常有少数通道特别大:
+
+```text
+k ≈ [0.1, 0.2, 12.0, 0.1, ...]   // 第 3 维是 outlier
+```
+
+`scale`会被12放大，同时其余值量化挡位很少，信息消失。所以使用旋转，让每个坐标比较均匀。
+
+```CPP
+// store to KV cache
+{
+    const auto & k_idxs = inp->get_k_idxs();
+    const auto & v_idxs = inp->get_v_idxs();
+
+    ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, k_idxs, il));
+    ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
+}
+```
+
+存储`KV Cache`.
+
+```CPP
+ggml_tensor * q = q_cur;
+ggml_tensor * k = mctx_cur->get_k(ctx0, il);
+ggml_tensor * v = mctx_cur->get_v(ctx0, il);
+```
+
+读出完整整段kv.形状是`[head_dim, n_head_kv, n_kv, n_stream]`.
+
+```CPP
+ggml_tensor * llm_graph_context::build_attn_mha(
+         ggml_tensor * q,
+         ggml_tensor * k,
+         ggml_tensor * v,
+         ggml_tensor * kq_b,
+         ggml_tensor * kq_mask,
+         ggml_tensor * sinks,
+         ggml_tensor * v_mla,
+               float   kq_scale,
+                 int   il) const {
+    const bool v_trans = v->nb[1] > v->nb[2];
+
+    // split the batch into streams if needed
+    const auto n_stream = k->ne[3];
+
+    q = ggml_view_4d(ctx0, q, q->ne[0], q->ne[1], q->ne[2]/n_stream, n_stream, q->nb[1], q->nb[2], q->nb[3]/n_stream, 0);
+
+    q = ggml_permute(ctx0, q, 0, 2, 1, 3);
+    k = ggml_permute(ctx0, k, 0, 2, 1, 3);
+    v = ggml_permute(ctx0, v, 0, 2, 1, 3);
+
+    ggml_tensor * cur;
+
+    const bool use_flash_attn = cparams.flash_attn && kq_b == nullptr;
+    if (use_flash_attn) {
+        GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
+
+        if (v_trans) {
+            v = ggml_transpose(ctx0, v);
+        }
+
+        // this can happen when KV cache is not used (e.g. an embedding model with non-causal attn)
+        if (k->type == GGML_TYPE_F32) {
+            k = ggml_cast(ctx0, k, GGML_TYPE_F16);
+        }
+
+        if (v->type == GGML_TYPE_F32) {
+            v = ggml_cast(ctx0, v, GGML_TYPE_F16);
+        }
+
+        cur = ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale, hparams.f_max_alibi_bias,
+                                  hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+        res->add_fused_node({LLM_FUSED_OP_FLASH_ATTN, cur, il});
+
+        ggml_flash_attn_ext_add_sinks(cur, sinks);
+        ggml_flash_attn_ext_set_prec (cur, GGML_PREC_F32);
+
+        if (v_mla) {
+#if 0
+            // v_mla can be applied as a matrix-vector multiplication with broadcasting across dimension 3 == n_tokens.
+            // However, the code is optimized for dimensions 0 and 1 being large, so this is inefficient.
+            cur = ggml_reshape_4d(ctx0, cur, v_mla->ne[0], 1, n_head, n_tokens);
+            cur = ggml_mul_mat(ctx0, v_mla, cur);
+#else
+            // It's preferable to do the calculation as a matrix-matrix multiplication with n_tokens in dimension 1.
+            // The permutations are noops and only change how the tensor data is interpreted.
+            cur = ggml_permute(ctx0, cur, 0, 2, 1, 3);
+            cur = ggml_mul_mat(ctx0, v_mla, cur);
+            cb(cur, "fattn_mla", il);
+            cur = ggml_permute(ctx0, cur, 0, 2, 1, 3);
+            cur = ggml_cont(ctx0, cur); // Needed because ggml_reshape_2d expects contiguous inputs.
+#endif
+        }
+
+        cur = ggml_reshape_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
+    } else {
+        ggml_tensor * kq = ggml_mul_mat(ctx0, k, q);
+        cb(kq, "kq", il);
+
+        // note: this op tends to require high floating point range
+        //       while for some models F16 is enough, for others it is not, so we default to F32 here
+        ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+
+        if (arch == LLM_ARCH_GROK) {
+            // need to do the following:
+            // multiply by attn_output_multiplier
+            // and then :
+            // kq = 30 * tanh(kq / 30)
+            // before the softmax below
+
+            kq = ggml_tanh(ctx0, ggml_scale(ctx0, kq, hparams.f_attn_out_scale / hparams.f_attn_logit_softcapping));
+            cb(kq, "kq_tanh", il);
+            kq = ggml_scale(ctx0, kq, hparams.f_attn_logit_softcapping);
+            cb(kq, "kq_scaled", il);
+        }
+
+        if (hparams.attn_soft_cap) {
+            kq = ggml_scale(ctx0, kq, 1.0f / hparams.f_attn_logit_softcapping);
+            cb(kq, "kq_scaled_1", il);
+            kq = ggml_tanh (ctx0, kq);
+            cb(kq, "kq_tanh", il);
+            kq = ggml_scale(ctx0, kq, hparams.f_attn_logit_softcapping);
+            cb(kq, "kq_scaled_2", il);
+        }
+
+        if (kq_b) {
+            kq = ggml_add(ctx0, kq, kq_b);
+            cb(kq, "kq_plus_kq_b", il);
+        }
+
+        kq = ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
+        ggml_soft_max_add_sinks(kq, sinks);
+        cb(kq, "kq_soft_max", il);
+
+        if (!v_trans) {
+            // note: avoid this branch
+            v = ggml_cont(ctx0, ggml_transpose(ctx0, v));
+            cb(v, "v_cont", il);
+        }
+
+        ggml_tensor * kqv = ggml_mul_mat(ctx0, v, kq);
+        cb(kqv, "kqv", il);
+
+        // for MLA with the absorption optimization, we need to "decompress" from MQA back to MHA
+        if (v_mla) {
+            kqv = ggml_mul_mat(ctx0, v_mla, kqv);
+            cb(kqv, "kqv_mla", il);
+        }
+
+        cur = ggml_permute(ctx0, kqv, 0, 2, 1, 3);
+
+        // recombine streams
+        cur = ggml_cont_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
+
+        if (!cparams.offload_kqv) {
+            // all nodes between the KV store and the attention output are run on the CPU
+            ggml_backend_sched_set_tensor_backend(sched, cur, backend_cpu);
+        }
+    }
+
+    ggml_build_forward_expand(gf, cur);
+
+    return cur;
+}
+```
+
+实际进行因果注意力计算.
+
+```CPP
+ggml_tensor * gate_sigmoid = ggml_sigmoid(ctx0, gate);
+cb(gate_sigmoid, "gate_sigmoid", il);
+
+cur = ggml_mul(ctx0, cur, gate_sigmoid);
+cb(cur, "attn_gated", il);
+
+cur = build_lora_mm(model.layers[il].wo, cur, model.layers[il].wo_s);
+cb(cur, "attn_output", il);
+```
+
+计算`gate`激活函数，乘上输出，最后进行输出投影，`wo`的维度是`[n_head * head_dim, n_embd]`,返回`[n_embd,n_tokens]`,保证后续计算维度正确.
 
 ## 视频解码器
 
