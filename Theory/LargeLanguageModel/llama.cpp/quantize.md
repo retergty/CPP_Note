@@ -345,4 +345,361 @@ for (int j = 0; j < QK_K; j += 64) {
 
 #### 推理计算时
 
-在实际推理时`Q4_K`
+在实际推理的优化内核中，`Q4_K`权重通常不会先展开成完整的浮点数组，而是把激活按256个元素量化为`Q8_K`，直接执行整数点积，并在累加后乘回缩放因子。
+
+设`Q4_K`权重超块和`Q8_K`激活超块分别为
+
+$$
+\hat w_{j,i}=d_w s_j q^w_{j,i}-d_{\min,w}m_j
+$$
+
+$$
+\hat a_{j,i}=d_a q^a_{j,i}
+$$
+
+其中$q^w_{j,i}\in\{0,\ldots,15\}$是`Q4_K`权重码，$q^a_{j,i}\in\{-127,\ldots,127\}$是`Q8_K`激活码；$j\in\{0,\ldots,7\}$表示32元素子块，$i\in\{0,\ldots,31\}$。两者的点积可以展开为
+
+$$
+\begin{aligned}
+\sum_{j=0}^{7}\sum_{i=0}^{31}\hat w_{j,i}\hat a_{j,i}
+= {}&
+d_a d_w
+\sum_{j=0}^{7}s_j
+\left(\sum_{i=0}^{31}q^w_{j,i}q^a_{j,i}\right) \\
+&-d_a d_{\min,w}
+\sum_{j=0}^{7}m_j
+\left(\sum_{i=0}^{31}q^a_{j,i}\right).
+\end{aligned}
+$$
+
+令
+
+$$
+P_j=\sum_{i=0}^{31}q^w_{j,i}q^a_{j,i},
+\qquad
+B_j=\sum_{i=0}^{31}q^a_{j,i},
+$$
+
+则一个超块的结果为
+
+$$
+\operatorname{dot}
+=d_a d_w\sum_{j=0}^{7}s_jP_j
+-d_a d_{\min,w}\sum_{j=0}^{7}m_jB_j.
+$$
+
+这里$P_j$是无符号`4-bit`权重码和有符号`8-bit`激活码的整数点积；$B_j$是激活码之和，用于计算`Q4_K`仿射偏移产生的修正项。
+
+`Q8_K`已经保存了每16个激活码的和，因此不需要在点积内核中重新求和：
+
+$$
+B_j=\text{bsums}_{2j}+\text{bsums}_{2j+1}.
+$$
+
+不使用加速指令集可以写为
+
+```CPP
+void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    assert(n % QK_K == 0);
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+
+    const block_q4_K * GGML_RESTRICT x = vx;
+    const block_q8_K * GGML_RESTRICT y = vy;
+
+    const int nb = n / QK_K;
+
+    static const uint32_t kmask1 = 0x3f3f3f3f;
+    static const uint32_t kmask2 = 0x0f0f0f0f;
+    static const uint32_t kmask3 = 0x03030303;
+
+    uint32_t utmp[4];
+
+    const uint8_t * scales = (const uint8_t*)&utmp[0];
+    const uint8_t * mins   = (const uint8_t*)&utmp[2];
+
+    int8_t  aux8[QK_K];
+    int16_t aux16[8];
+    float   sums [8];
+    int32_t aux32[8];
+    memset(sums, 0, 8*sizeof(float));
+
+    float sumf = 0;
+    for (int i = 0; i < nb; ++i) {
+        const uint8_t * GGML_RESTRICT q4 = x[i].qs;
+        const  int8_t * GGML_RESTRICT q8 = y[i].qs;
+        memset(aux32, 0, 8*sizeof(int32_t));
+        int8_t * GGML_RESTRICT a = aux8;
+        for (int j = 0; j < QK_K/64; ++j) {
+            for (int l = 0; l < 32; ++l) a[l] = (int8_t)(q4[l] & 0xF);
+            a += 32;
+            for (int l = 0; l < 32; ++l) a[l] = (int8_t)(q4[l]  >> 4);
+            a += 32; q4 += 32;
+        }
+        memcpy(utmp, x[i].scales, 12);
+        utmp[3] = ((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4);
+        const uint32_t uaux = utmp[1] & kmask1;
+        utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
+        utmp[2] = uaux;
+        utmp[0] &= kmask1;
+
+        int sumi = 0;
+        for (int j = 0; j < QK_K/16; ++j) sumi += y[i].bsums[j] * mins[j/2];
+        a = aux8;
+        int is = 0;
+        for (int j = 0; j < QK_K/32; ++j) {
+            int32_t scale = scales[is++];
+            for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+            for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+            q8 += 8; a += 8;
+            for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+            for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+            q8 += 8; a += 8;
+            for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+            for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+            q8 += 8; a += 8;
+            for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+            for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+            q8 += 8; a += 8;
+        }
+        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        for (int l = 0; l < 8; ++l) sums[l] += d * aux32[l];
+        const float dmin = GGML_CPU_FP16_TO_FP32(x[i].dmin) * y[i].d;
+        sumf -= dmin * sumi;
+    }
+    for (int l = 0; l < 8; ++l) sumf += sums[l];
+    *s = sumf;
+}
+```
+
+注意不同CPU/GPU后端的SIMD实现和数据重排方式不同，但计算的都是上面的等价公式。
+
+##### 过程详解
+
+```CPP
+int8_t * GGML_RESTRICT a = aux8;
+for (int j = 0; j < QK_K/64; ++j) {
+    for (int l = 0; l < 32; ++l) a[l] = (int8_t)(q4[l] & 0xF);
+    a += 32;
+    for (int l = 0; l < 32; ++l) a[l] = (int8_t)(q4[l]  >> 4);
+    a += 32; q4 += 32;
+}
+```
+
+每个字节保存两个权重码：低4位是前32个元素，高4位是后32个元素。每轮将32字节解包为64个`int8_t`，最终得到按原始顺序排列的`aux8[256]`。
+
+```CPP
+memcpy(utmp, x[i].scales, 12);
+utmp[3] = ((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4);
+const uint32_t uaux = utmp[1] & kmask1;
+utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
+utmp[2] = uaux;
+utmp[0] &= kmask1;
+```
+
+利用`0x3f`、`0x0f`和`0x03`掩码重新组合`scales[12]`中的`6-bit`参数。解包后`utmp`的字节布局为
+
+$$
+[s_0,\ldots,s_7,\;m_0,\ldots,m_7].
+$$
+
+```CPP
+const uint8_t * scales = (const uint8_t *)&utmp[0];
+const uint8_t * mins   = (const uint8_t *)&utmp[2];
+```
+
+```CPP
+int sumi = 0;
+for (int j = 0; j < QK_K/16; ++j) {
+    sumi += y[i].bsums[j] * mins[j/2];
+}
+```
+
+`bsums`按16个激活码求和，而$m_j$对应32个元素，因此相邻两个`bsums`共用一个$m_j$：
+
+$$
+\text{sumi}
+=\sum_{j=0}^{7}m_j
+\left(\text{bsums}_{2j}+\text{bsums}_{2j+1}\right)
+=\sum_{j=0}^{7}m_jB_j.
+$$
+
+```CPP
+a = aux8;
+int is = 0;
+for (int j = 0; j < QK_K/32; ++j) {
+    int32_t scale = scales[is++];
+    for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+    for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+    q8 += 8; a += 8;
+    for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+    for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+    q8 += 8; a += 8;
+    for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+    for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+    q8 += 8; a += 8;
+    for (int l = 0; l < 8; ++l) aux16[l] = q8[l] * a[l];
+    for (int l = 0; l < 8; ++l) aux32[l] += scale * aux16[l];
+    q8 += 8; a += 8;
+}
+```
+
+源码将每个32元素子块手动展开为4组相同的8元素计算。每组先计算$q^wq^a$，再乘以局部$s_j$并累加；8个累加通道之和即主项：
+
+$$
+\sum_{l=0}^{7}\text{aux32}_l
+=\sum_{j=0}^{7}s_jP_j.
+$$
+
+```CPP
+const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+for (int l = 0; l < 8; ++l) sums[l] += d * aux32[l];
+const float dmin = GGML_CPU_FP16_TO_FP32(x[i].dmin) * y[i].d;
+sumf -= dmin * sumi;
+```
+
+最后乘回两个量化块的缩放因子，并减去仿射偏移修正项。处理完所有超块后，将8个通道相加得到最终点积：
+
+```CPP
+for (int l = 0; l < 8; ++l) sumf += sums[l];
+*s = sumf;
+```
+
+### Q8_K
+
+`Q8_K`是一种`8-bit`的量化格式，主要给中间激活量化用，不是像`Q4_K`那样常存进`GGUF`的权重量化格式。
+
+#### 超块结构
+
+```CPP
+typedef struct {
+    float   d;              // delta
+    int8_t  qs[256];       // quants
+    int16_t bsums[16]; // sum of quants in groups of 16
+} block_q8_K;
+```
+
+* `d`超块的`scale`.
+* `qs`有符号的`8-bit`整数.
+* `bsums`每`16`个`qs`的和.用于点积加速.
+
+#### 反量化公式
+
+$$
+\hat x_j = d\cdot q_j
+$$
+
+```CPP
+void dequantize_row_q8_K(const block_q8_K * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
+    assert(k % QK_K == 0);
+    const int64_t nb = k / QK_K;
+    for (int i = 0; i < nb; i++) {
+        for (int j = 0; j < QK_K; ++j) {
+            *y++ = x[i].d * x[i].qs[j];
+        }
+    }
+}
+```
+
+#### 量化过程
+
+##### 源码
+
+```CPP
+void quantize_row_q8_K_ref(const float * GGML_RESTRICT x, block_q8_K * GGML_RESTRICT y, int64_t k) {
+    assert(k % QK_K == 0);
+    const int64_t nb = k / QK_K;
+
+    for (int i = 0; i < nb; i++) {
+
+        float max = 0;
+        float amax = 0;
+        for (int j = 0; j < QK_K; ++j) {
+            float ax = fabsf(x[j]);
+            if (ax > amax) {
+                amax = ax; max = x[j];
+            }
+        }
+        if (!amax) {
+            y[i].d = 0;
+            memset(y[i].qs, 0, QK_K);
+            x += QK_K;
+            continue;
+        }
+        //const float iscale = -128.f/max;
+        // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
+        const float iscale = -127.f/max;
+        for (int j = 0; j < QK_K; ++j) {
+            int v = nearest_int(iscale*x[j]);
+            y[i].qs[j] = MIN(127, v);
+        }
+        for (int j = 0; j < QK_K/16; ++j) {
+            int sum = 0;
+            for (int ii = 0; ii < 16; ++ii) {
+                sum += y[i].qs[j*16 + ii];
+            }
+            y[i].bsums[j] = sum;
+        }
+        y[i].d = 1/iscale;
+        x += QK_K;
+    }
+}
+```
+
+##### 过程详解
+
+```CPP
+for (int j = 0; j < QK_K; ++j) {
+    float ax = fabsf(x[j]);
+    if (ax > amax) {
+        amax = ax; max = x[j];
+    }
+    if (!amax) {
+    y[i].d = 0;
+    memset(y[i].qs, 0, QK_K);
+    x += QK_K;
+    continue;
+    }
+}
+```
+
+遍历超块，取绝对值最大的元素，记下其带符号值max，和绝对值amax.如果amax严格为零，清零qs跳过.
+
+```CPP
+const float iscale = -127.f/max;
+for (int j = 0; j < QK_K; ++j) {
+    int v = nearest_int(iscale*x[j]);
+    y[i].qs[j] = MIN(127, v);
+}
+```
+
+确定`iscale`和`d`。
+
+$$
+iscale = -\frac{127}{m} \\
+d = \frac{1}{scale} = -\frac{m}{127}
+$$
+
+计算量化权重
+
+$$
+q_j = \min(127,\operatorname{round}(\operatorname{iscale}\cdot x))
+$$
+
+```CPP
+for (int j = 0; j < QK_K/16; ++j) {
+    int sum = 0;
+    for (int ii = 0; ii < 16; ++ii) {
+        sum += y[i].qs[j*16 + ii];
+    }
+    y[i].bsums[j] = sum;
+}
+y[i].d = 1/iscale;
+```
+
+填`bs`，是每16个qs的和.
+
+写入`d`.
