@@ -540,6 +540,40 @@ nb0,  nb1,  nb2,  nb3    = dst->nb[0..3]
 
 视图张量的 `view_src` 指向共享存储的源张量，`view_offs` 表示相对源存储的字节偏移，`nb` 描述各维度的字节步长。执行计算图时该算子不进行数值计算，但会保留数据依赖，并为内存分配器和 backend 提供存储别名信息。
 
+### `GGML_OP_PERMUTE`
+
+```CPP
+struct ggml_tensor * ggml_permute(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        int                   axis0,
+        int                   axis1,
+        int                   axis2,
+        int                   axis3)
+```
+
+`GGML_OP_PERMUTE`表示重排张量轴的view.不拷贝数据，而是只改每个维度长度`ne[]`和步长`nb[]`,让后续算子用新的轴顺序去读同一块内存.`axis0`,`axis1`,`axis2`,`axis3`的含义是把输入的第`i`维放到输出的`axis_i`位置。
+
+对于一个`tensor`它的维度为`(nb[0], nb[1], nb[2], nb[3])`,对当中的某个元素的访问公式是
+
+```CPP
+tensor(i0, i1, i2, i3) = base + i0*nb[0] + i1*nb[1] + i2*nb[2] + i3*nb[3]
+```
+
+所以`PERMUTE`操作就是重排了一下ne和nb.
+
+```CPP
+ne[axis0] = a->ne[0];
+ne[axis1] = a->ne[1];
+ne[axis2] = a->ne[2];
+ne[axis3] = a->ne[3];
+
+nb[axis0] = a->nb[0];
+nb[axis1] = a->nb[1];
+nb[axis2] = a->nb[2];
+nb[axis3] = a->nb[3];
+```
+
 ### `GGML_OP_MUL_MAT`
 
 ```CPP
