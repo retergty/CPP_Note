@@ -16,7 +16,7 @@ class LockedLatchLatestStateRegister {
   explicit LockedLatchLatestStateRegister(const T& initial_value) noexcept
       : value_(initial_value) {}
 
-  // latch 写路径假定写者互斥，不能交错执行两边的更新。
+  // 底层写路径假定写者互斥，不能交错 Publish。
   void Publish(const T& value) {
     std::lock_guard<std::mutex> lock(writer_mutex_);
     value_.Publish(value);
