@@ -592,6 +592,24 @@ struct ggml_tensor * ggml_mul_mat(
 
 在函数`ggml_compute_forward_mul_mat`中就是实际线程进行矩阵乘法的计算代码.
 
+当`a: [K, N, A2, A3]`,`b: [K, M, B2, B3]`,`dst: [N, M, B2, B3]`，其中必须满足`B2 % A2 ==0`,`B3 % A3 ==0`.
+
+#### 广播
+
+当`a: [K, N, A2, A3]`,`b: [K, M, B2, B3]`,`dst: [N, M, B2, B3]`，其中必须满足`B2 % A2 ==0`,`B3 % A3 ==0`.此时`a`的第2维和第3维会被广播到`b`的第2维和第3维.
+
+例如
+
+```text
+k:  [D, n_kv, 2, 1]
+q:  [D, n_q,  4, 1]
+
+kq[:, :, 0, :] = k[:, :, 0, :]^T  @  q[:, :, 0, :]   // Q0 用 K0
+kq[:, :, 1, :] = k[:, :, 0, :]^T  @  q[:, :, 1, :]   // Q1 也用 K0
+kq[:, :, 2, :] = k[:, :, 1, :]^T  @  q[:, :, 2, :]   // Q2 用 K1
+kq[:, :, 3, :] = k[:, :, 1, :]^T  @  q[:, :, 3, :]   // Q3 也用 K1
+```
+
 #### ggml_compute_forward_mul_mat
 
 ```CPP
@@ -790,7 +808,7 @@ static void ggml_compute_forward_mul_mat_one_chunk(
     const int64_t ir1_end);
 ```
 
-这个函数计算输出矩阵上的一个矩形`chunk`，内部再进行`16×16 tiling`，使用`vec_dot`计算点积.
+这个函数计算输出矩阵上的一个矩形`chunk`，内部再进行`16×16 tiling`，使用`vec_dot`计算点积.同时处理广播.
 
 输入参数
 

@@ -1597,7 +1597,7 @@ if (inp->self_v_rot) {
 }
 ```
 
-`self_k_rot`,`self_v_rot`只在`K`或`V cache`被量化 且`head_dim % 64 == 0`时创建。
+`self_k_rot`,`self_v_rot`只在`K`或`V cache`被量化 且`head_dim % 64 == 0`时创建，只会创建一次。通常`self_k_rot`,`self_v_rot`是二维矩阵`[n,n]`,其中`n`就是把`QKV`沿着`head_dim`切分后的块元素个数.
 
 `self_k_rot`,`self_v_rot`是正交对称阵，用来旋转量化的QK，`KV cache`量化通常按一组数共用一个`scale`（block / tensor）。真实`K/V`常有少数通道特别大:
 
@@ -1796,7 +1796,7 @@ v = ggml_permute(ctx0, v, 0, 2, 1, 3);
 
 检查`V`是否转置.将`q`view`[head_dim, n_head, n_seq_tokens, n_stream]`，也就是将每个流拆分开来.
 
-重新排列`qkv`，`q`变为`[head_dim, n_seq_tokens, n_head, n_stream]`,`k`变为`[head_dim, n_head_kv, n_kv, n_stream]`,`v`变为`[n_kv, head_dim, n_head_kv, n_stream]`(已转置)，`[head_dim, n_kv, n_head_kv, n_stream]`(未转置).
+重新排列`qkv`，`q`变为`[head_dim, n_seq_tokens, n_head, n_stream]`,`k`变为`[head_dim, n_kv, n_head_kv, n_stream]`,`v`变为`[n_kv, head_dim, n_head_kv, n_stream]`(已转置)，`[head_dim, n_kv, n_head_kv, n_stream]`(未转置).
 
 ```CPP
 GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
@@ -1845,7 +1845,7 @@ cur = ggml_reshape_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
 
 `K/V`若是`F32`（例如`embedding`模型、不用`KV cache`）-> `cast`成`F16`，`kernel`只吃半精度。
 
-经过flash attention后，变为`[head_dim, n_head, n_seq_tokens, n_stream]`
+经过`flash attention`后，变为`[head_dim, n_head, n_seq_tokens, n_stream]`
 
 最后将输出变换回二维`[head_dim*n_head,n_seq_tokens*n_stream]`
 
@@ -1925,7 +1925,32 @@ cb(kq, "kq", il);
 ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
 ```
 
-进行矩阵乘，`kq`
+进行矩阵乘，`q`维度是`[head_dim, n_seq_tokens, n_head, n_stream]`,`k`维度是`[head_dim, n_kv, n_head_kv, n_stream]`,由于`GQA`设计，`n_head_kv`小于`n_head`,会自动进行广播，结果是`kq`的维度是`[n_kv, n_seq_tokens, n_head, n_stream]`，由于相对于标准公式$QK^T$，`k`,`q`是行优先的向量所以是$kq^T$。
+
+使用`GGML_PREC_F32`提高精度，防止溢出.
+
+```CPP
+kq = ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
+ggml_soft_max_add_sinks(kq, sinks);
+```
+
+`ggml_soft_max_ext`进行`softmax`.加入`kq_mask`,`kq_scale`这些.
+
+```CPP
+ggml_tensor * kqv = ggml_mul_mat(ctx0, v, kq);
+cb(kqv, "kqv", il);
+```
+
+通常这个流程中`v`已经是转置存储了,维度是`[n_kv, head_dim, n_head_kv, n_stream]`,计算`kqv`,维度是`[head_dim, n_seq_tokens, n_head_kv, n_stream]`,同样也是相对于标准公式$\operatorname{softmax}(QK^T)V$,这个是$v\operatorname{softmax}(kq^T)^T$.
+
+```CPP
+cur = ggml_permute(ctx0, kqv, 0, 2, 1, 3);
+
+// recombine streams
+cur = ggml_cont_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]*cur->ne[3]);
+```
+
+重排`kqv`为`[head_dim, n_head_kv, n_seq_tokens, n_stream]`,同时恢复为二维`[head_dim * n_head_kv, n_seq_tokens * n_stream]`并返回
 
 ```CPP
 ggml_tensor * gate_sigmoid = ggml_sigmoid(ctx0, gate);
@@ -1939,6 +1964,273 @@ cb(cur, "attn_output", il);
 ```
 
 计算`gate`激活函数，乘上输出，最后进行输出投影，`wo`的维度是`[n_head * head_dim, n_embd]`,返回`[n_embd,n_tokens]`,保证后续计算维度正确.
+
+#### build_layer_ffn
+
+##### 源码
+
+```CPP
+ggml_tensor * llama_model_qwen35::graph::build_layer_ffn(ggml_tensor * cur, const int il) {
+    // Qwen3.5 does not use MoE FFN
+    GGML_ASSERT(model.layers[il].ffn_gate_inp == nullptr);
+
+    cur = build_ffn(cur,
+        model.layers[il].ffn_up, NULL, model.layers[il].ffn_up_s,
+        model.layers[il].ffn_gate, NULL, model.layers[il].ffn_gate_s,
+        model.layers[il].ffn_down, NULL, model.layers[il].ffn_down_s,
+        NULL,
+        LLM_FFN_SILU, LLM_FFN_PAR, il);
+    cb(cur, "ffn_out", il);
+
+    return cur;
+}
+```
+
+##### 分析
+
+```CPP
+ggml_tensor * llm_graph_context::build_ffn(
+         ggml_tensor * cur,
+         ggml_tensor * up,
+         ggml_tensor * up_b,
+         ggml_tensor * up_s,
+         ggml_tensor * gate,
+         ggml_tensor * gate_b,
+         ggml_tensor * gate_s,
+         ggml_tensor * down,
+         ggml_tensor * down_b,
+         ggml_tensor * down_s,
+         ggml_tensor * act_scales,
+     llm_ffn_op_type   type_op,
+   llm_ffn_gate_type   type_gate,
+                 int   il) const {
+    // NVFP4 support is currently restricted to
+    // 1) LORA absence (*_s would be applied after LORA residual, which is incorrect)
+    // 2) bias absense (*_s would be applied after bias addition, which is incorrect)
+    // TODO: disambiguate LLM-architectural scales (which use *_s) from NVFP4 scale_2 (which also uses *_s currently)
+    auto has_lora = [this](ggml_tensor * w) {
+        if (!w) {
+            return false;
+        }
+        for (const auto & lora : *loras) {
+            if (lora.first->get_weight(w) != nullptr) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    GGML_ASSERT(!up_s   || !up_b   || !up   || up->type   != GGML_TYPE_NVFP4);
+    GGML_ASSERT(!gate_s || !gate_b || !gate || gate->type != GGML_TYPE_NVFP4);
+    GGML_ASSERT(!down_s || !down_b || !down || down->type != GGML_TYPE_NVFP4);
+    GGML_ASSERT(!up_s   || !up   || up->type   != GGML_TYPE_NVFP4 || !has_lora(up));
+    GGML_ASSERT(!gate_s || !gate || gate->type != GGML_TYPE_NVFP4 || !has_lora(gate));
+    GGML_ASSERT(!down_s || !down || down->type != GGML_TYPE_NVFP4 || !has_lora(down));
+
+    ggml_tensor * tmp = up ? build_lora_mm(up, cur) : cur;
+    cb(tmp, "ffn_up", il);
+
+    if (up_b) {
+        tmp = ggml_add(ctx0, tmp, up_b);
+        cb(tmp, "ffn_up_b", il);
+    }
+
+    if (up_s) {
+        tmp = ggml_mul(ctx0, tmp, up_s);
+        cb(tmp, "ffn_up_s", il);
+    }
+
+    if (gate) {
+        switch (type_gate) {
+            case LLM_FFN_SEQ:
+                {
+                    cur = build_lora_mm(gate, tmp);
+                    cb(cur, "ffn_gate", il);
+                } break;
+            case LLM_FFN_PAR:
+                {
+                    cur = build_lora_mm(gate, cur);
+                    cb(cur, "ffn_gate", il);
+                } break;
+        }
+
+        if (gate_b) {
+            cur = ggml_add(ctx0, cur, gate_b);
+            cb(cur, "ffn_gate_b", il);
+        }
+
+        if (gate_s) {
+            cur = ggml_mul(ctx0, cur, gate_s);
+            cb(cur, "ffn_gate_s", il);
+        }
+
+    } else {
+        cur = tmp;
+    }
+
+    switch (type_op) {
+        case LLM_FFN_SILU:
+            if (gate && type_gate == LLM_FFN_PAR) {
+                if (il >= 0) {
+                    const float limit = hparams.swiglu_clamp_shexp[il];
+                    constexpr float eps = 1e-6f;
+                    if (limit > eps) {
+                        tmp = ggml_clamp(ctx0, tmp, -limit, limit);
+                        cb(tmp, "ffn_up_clamped", il);
+
+                        if (arch == LLM_ARCH_DEEPSEEK4 || (arch == LLM_ARCH_DFLASH && hparams.dsv4_hc_mult > 0)) {
+                            cur = ggml_clamp(ctx0, cur, -INFINITY, limit);
+                            cb(cur, "ffn_gate_clamped", il);
+                            cur = ggml_swiglu_split(ctx0, cur, tmp);
+                        } else {
+                            ggml_tensor * gate_act = ggml_silu(ctx0, cur);
+                            cb(gate_act, "ffn_silu", il);
+                            gate_act = ggml_clamp(ctx0, gate_act, -INFINITY, limit);
+                            cb(gate_act, "ffn_silu_clamped", il);
+                            cur = ggml_mul(ctx0, gate_act, tmp);
+                        }
+                        cb(cur, "ffn_swiglu_limited", il);
+                        type_gate = LLM_FFN_SEQ;
+                        break;
+                    }
+                }
+
+                cur = ggml_swiglu_split(ctx0, cur, tmp);
+                cb(cur, "ffn_swiglu", il);
+                type_gate = LLM_FFN_SEQ;
+            } else {
+                cur = ggml_silu(ctx0, cur);
+                cb(cur, "ffn_silu", il);
+            } break;
+        case LLM_FFN_GELU:
+            if (gate && type_gate == LLM_FFN_PAR) {
+                cur = ggml_geglu_split(ctx0, cur, tmp);
+                cb(cur, "ffn_geglu", il);
+                type_gate = LLM_FFN_SEQ;
+            } else {
+                cur = ggml_gelu(ctx0, cur);
+                cb(cur, "ffn_gelu", il);
+                if (act_scales != NULL) {
+                    cur = ggml_div(ctx0, cur, act_scales);
+                    cb(cur, "ffn_act", il);
+                }
+            } break;
+        case LLM_FFN_RELU:
+            if (gate && type_gate == LLM_FFN_PAR) {
+                cur = ggml_reglu_split(ctx0, cur, tmp);
+                cb(cur, "ffn_reglu", il);
+                type_gate = LLM_FFN_SEQ;
+            } else {
+                cur = ggml_relu(ctx0, cur);
+                cb(cur, "ffn_relu", il);
+            } break;
+        case LLM_FFN_RELU_SQR:
+            {
+                cur = ggml_relu(ctx0, cur);
+                cb(cur, "ffn_relu", il);
+
+                cur = ggml_sqr(ctx0, cur);
+                cb(cur, "ffn_sqr(relu)", il);
+            } break;
+        case LLM_FFN_SWIGLU:
+            {
+                cur = ggml_swiglu(ctx0, cur);
+                cb(cur, "ffn_swiglu", il);
+            } break;
+        case LLM_FFN_SWIGLU_OAI_MOE:
+            if (gate && type_gate == LLM_FFN_PAR) {
+                // same alpha/limit constants as gpt-oss
+                const float alpha = 1.702f;
+                const float limit = 7.0f;
+                cur = ggml_swiglu_oai(ctx0, cur, tmp, alpha, limit);
+                cb(cur, "ffn_swiglu_oai", il);
+                type_gate = LLM_FFN_SEQ;
+            } else {
+                GGML_ABORT("LLM_FFN_SWIGLU_OAI_MOE requires a parallel gate");
+            } break;
+        case LLM_FFN_GEGLU:
+            {
+                cur = ggml_geglu(ctx0, cur);
+                cb(cur, "ffn_geglu", il);
+            } break;
+        case LLM_FFN_REGLU:
+            {
+                cur = ggml_reglu(ctx0, cur);
+                cb(cur, "ffn_reglu", il);
+            } break;
+        default:
+            GGML_ABORT("fatal error");
+    }
+
+    if (gate && type_gate == LLM_FFN_PAR) {
+        cur = ggml_mul(ctx0, cur, tmp);
+        cb(cur, "ffn_gate_par", il);
+    }
+
+    if (down) {
+        cur = build_lora_mm(down, cur);
+        if (arch == LLM_ARCH_GLM4 || arch == LLM_ARCH_GLM4_MOE || arch == LLM_ARCH_JAIS2) {
+            // GLM4, GLM4_MOE, and JAIS2 seem to have numerical issues with half-precision accumulators
+            ggml_mul_mat_set_prec(cur, GGML_PREC_F32);
+        }
+    }
+
+    if (down_b) {
+        cb(cur, "ffn_down", il);
+    }
+
+    if (down_b) {
+        cur = ggml_add(ctx0, cur, down_b);
+    }
+
+    if (down_s) {
+        cur = ggml_mul(ctx0, cur, down_s);
+        cb(cur, "ffn_down_s", il);
+    }
+
+    return cur;
+}
+```
+
+* `cur`输入张量，维度是`[n_embd, n_tokens]`.
+* `up`,$W_{up}$.维度是`[n_embd, n_ff]`
+* `gate`,$W_{gate}$,维度是`[n_embd, n_ff]`.
+* `down`,$W_{down}$,`[n_ff, n_embd]`
+
+`build_ffn`实际进行多种`FFN`计算.对于当前的来说就是
+
+$$
+\operatorname{FFN}(x) = W_{down}(\operatorname{SiLU}(W_{gate}x) \odot W_{up}x)
+$$
+
+```CPP
+ggml_tensor * tmp = up ? build_lora_mm(up, cur) : cur;
+// ...
+if (gate) {
+    switch (type_gate) {
+        case LLM_FFN_PAR:
+            {
+                cur = build_lora_mm(gate, cur);
+            } break;
+    }
+    // gate_b / gate_s if present
+}
+switch (type_op) {
+    case LLM_FFN_SILU:
+        if (gate && type_gate == LLM_FFN_PAR) {
+            cur = ggml_swiglu_split(ctx0, cur, tmp);
+            type_gate = LLM_FFN_SEQ;
+        }
+        // ...
+}
+if (down) {
+    cur = build_lora_mm(down, cur);
+}
+```
+
+先计算$W_{up}x$，再计算$W_{gate}x$.
+
+`ggml_swiglu_split`是一个融合算子，它计算$\operatorname{SiLU}(cur)\odot tmp$
 
 ## 视频解码器
 
