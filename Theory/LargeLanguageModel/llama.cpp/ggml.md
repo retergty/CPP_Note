@@ -862,3 +862,107 @@ static void ggml_compute_forward_mul_mat_one_chunk(
 ```
 
 实际调用`vec_dot`计算矩阵乘法.
+
+### `GGML_OP_FLASH_ATTN_EXT`
+
+```CPP
+struct ggml_tensor * ggml_flash_attn_ext(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q,
+        struct ggml_tensor  * k,
+        struct ggml_tensor  * v,
+        struct ggml_tensor  * mask,
+        float                 scale,
+        float                 max_bias,
+        float                 logit_softcap)
+```
+
+`GGML_OP_FLASH_ATTN_EXT`进行`flash attention`的实现.它将`Q/K/V`和`mask`融合计算注意力，不物化完整的`KQ`矩阵：
+
+$$
+\operatorname{Attn}(Q,K,V)=\operatorname{softmax}(\operatorname{scale} \cdot QK^T+ \operatorname{mask})V
+$$
+
+输入布局：
+
+* `q`：`[head_dim, n_seq_tokens, n_head, n_stream]`
+* `k`：`[head_dim, n_kv, n_head_kv, n_stream]`
+* `v`：`[head_dim, n_kv, n_head_kv, n_stream]`.
+* `mask`：可选，必须是连续的`F16`，维度`[n_kv, n_seq_tokens, 1, n_stream]`
+* `scale`：注意力缩放，通常`1/\sqrt{head_dim}`
+* `max_bias`：`ALiBi`斜率上界，`>0`时必须提供`mask`
+* `logit_softcap`：对`logits`做`tanh`软截断，`0`表示关闭
+
+输出`res`：`[head_dim, n_head, n_seq_tokens, n_stream]`
+
+约束：
+
+* `q.ne[0] == k.ne[0]`，`q.ne[3] == k.ne[3] == v.ne[3]`
+* `GQA`广播：`n_head % n_head_kv == 0`，`n_head % mask.ne[2] == 0`，`n_stream % mask.ne[3] == 0`
+
+调用后还可以：
+
+* `ggml_flash_attn_ext_set_prec`：设置累加精度，`llama.cpp`里通常设为`GGML_PREC_F32`
+* `ggml_flash_attn_ext_add_sinks`：附加`Attention Sink`，长度等于`n_head`
+
+#### ggml_compute_forward_flash_attn_ext_f16
+
+这个函数是`CPU Flash Attention`的调度入口.按照输入的`qkv`矩阵的维度选择使用什么切分方法.对于`Prefill`阶段，按照`Q`的行切分,对于单个Token的Decode阶段，按照`KV`切分.
+
+```CPP
+// When use_ref is set, force the vec-only reference implementation (no tiling, no KV-chunking)
+const bool use_ref = params->use_ref;
+
+const bool kv_is_f32_or_f16 = (k->type == GGML_TYPE_F32 || k->type == GGML_TYPE_F16);
+const bool use_split_kv_path = !use_ref && (neq1 == 1 && neq3 == 1) && kv_is_f32_or_f16 && (k->type == v->type) && q->type == GGML_TYPE_F32 && nek1 >= 512;
+```
+
+* `use_ref`测试开关，用来强制使用vec实现，不走`tiling`和`kv-chunking`.
+* `use_split_kv_path`,如果是单解码情况，且没有进行kv的量化，同时是长解码时，使用`split-kv`分支
+
+```CPP
+if (use_split_kv_path) {
+    const int64_t chunk_size = (nek1 + nth - 1) / nth;
+
+    // Partials buffer layout: [q_head][kv_chunk][M, S, VKQ]
+    const int64_t partial_size  = 2 + DV;
+    float *       partials_base = (float *) params->wdata + nth * (DK + 2*DV + CACHE_LINE_SIZE_F32);
+
+    const int64_t ic_start = ith * chunk_size;
+    const int64_t ic_end   = std::min(ic_start + chunk_size, nek1);
+
+    const int64_t partial_stride = nth * partial_size;
+    float *       chunk_partials = partials_base + ith * partial_size;
+
+    if (ic_start < nek1) {
+        for (int64_t q_head = 0; q_head < neq2; q_head++) {
+            ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+                params, dst, q_head, q_head + 1, ic_start, ic_end,
+                chunk_partials, partial_stride);
+        }
+    } else {
+        for (int64_t q_head = 0; q_head < neq2; q_head++) {
+            float * q_partials = chunk_partials + q_head * partial_stride;
+            q_partials[0] = -INFINITY;  // M
+            q_partials[1] = 0.0f;       // S
+        }
+    }
+
+    ggml_barrier(params->threadpool);
+    ggml_flash_attn_ext_reduce_partials(params, dst, nth, chunk_size);
+}
+```
+
+这是长`decode`的`split-KV`：把`n_kv`切成`nth`段，每线程先算自己那段的`(M, S, O)`，`barrier`后再合成。还不写最终`dst`
+
+首先先按照`kv`进行划分，`chunk_size = ceil(n_kv / nth)`,
+
+给每个线程保留`DK + 2*DV + CACHE_LINE_SIZE_F32`的工作内存，用来存储:
+
+1. 还未能归一化的O，长度为DV(head_dim)
+2. 转成F32的O，长度为DV(head_dim)
+3. 类型转换后的Q向量，长度为DK(head_dim).
+
+之后给每个线程分配`partial`用来存储自己那段的`(M, S, O)`的内存，长度是`2 + head_dim`
+
+之后循环每个head，调用`ggml_compute_forward_flash_attn_ext_f16_one_chunk`计算注意力.

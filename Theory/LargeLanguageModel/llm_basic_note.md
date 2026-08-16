@@ -799,16 +799,9 @@ m=\max_i s_i
 $$
 
 $$
-\ell
-=
-\sum_i e^{s_i-m}
-$$
-
-$$
 o
 =
-\frac{1}{\ell}
-\sum_i e^{s_i-m}v_i
+\frac{\sum_i e^{s_i-m}v_i}{\sum_i e^{s_i-m}}
 $$
 
 对完整序列，标准实现通常会把分数矩阵$S=QK^T/\sqrt D+M$以及注意力概率矩阵$A=\operatorname{softmax}(S)$写入显存。二者的形状均为：

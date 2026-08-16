@@ -1934,7 +1934,7 @@ kq = ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
 ggml_soft_max_add_sinks(kq, sinks);
 ```
 
-`ggml_soft_max_ext`进行`softmax`.加入`kq_mask`,`kq_scale`这些.
+`ggml_soft_max_ext`沿着`n_kv`的维度进行`softmax`.加入`kq_mask`,`kq_scale`这些.
 
 ```CPP
 ggml_tensor * kqv = ggml_mul_mat(ctx0, v, kq);
