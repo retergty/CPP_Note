@@ -1156,6 +1156,7 @@ for (int ir = ir0; ir < ir1; ++ir) {
 
     const float * pq = (const float *) ((char *) q->data + (iq1*nbq1 + iq2*nbq2 + iq3*nbq3));
     q_to_vec_dot(pq, Q_q, DK);
+}
 ```
 
 这是外循环，沿着Q的行遍历。
@@ -1184,46 +1185,75 @@ for (int ir = ir0; ir < ir1; ++ir) {
 
 ```CPP
 for (int64_t ic = ic_start; ic < ic_end; ++ic) {
-    const float mv = mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
-    if (mv == -INFINITY) {
-        continue;
+    ...
+}
+```
+
+进行`online softmax`.针对一个固定的`Q`行，扫`KV`区间`[ic_start, ic_end)`，使用`online softmax`累加`attention`输出，不生成完整的`QK`矩阵.
+
+固定的q行就是`Q[:, iq1, iq2, iq3]`.它会和`k`的`[：，ic_start : ic_end, ik2, ik3]`,`v`的`[:, ic_start : ic_end, iv2, iv3]`.交互
+
+```CPP
+const float mv = mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
+if (mv == -INFINITY) {
+    continue;
+}
+
+float s; // KQ value
+
+const char * k_data = (const char *) k->data + ( ic*nbk1 + ik2*nbk2 + ik3*nbk3);
+kq_vec_dot(DK, &s, 0, k_data, 0, Q_q, 0, 1);
+
+s = s*scale; // scale KQ value
+```
+
+获取`mask`，`mv`如果是`-INF`直接跳过即可.
+
+计算`kq`,`q: [:, iq1, iq2, iq3]`和`k: [:, ic, ik2, ik3]`进行点积乘法.获得对`ic`位置的`token`的`query`.并进行`scale`.
+
+```CPP
+if (logit_softcap != 0.0f) {
+    s = logit_softcap*tanhf(s);
+}
+
+s += mv; // apply mask
+
+const float Mold = M;
+
+float ms = 1.0f; // upon new higher max val, scale VKQ and KQ sum with this value
+float vs = 1.0f; // post-softmax KQ value, expf(s - M)
+
+const char * v_data = ((const char *) v->data + (ic*nbv1 + iv2*nbv2 + iv3*nbv3));
+```
+
+将`query`应用`mask`.将当前最大值保存在`Mold`，`ms`是对`S`的缩放系数，如果有更大的值出现，那么就要用这个值缩放.`vs`是对`V`的缩放系数。获取对应的`v: [:, ic, iv2, iv3]`.
+
+```CPP
+if (v->type == GGML_TYPE_F16) {
+    if (s > M) {
+        // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
+        M = s;
+        ms = expf(Mold - M);
+
+        // V = V*expf(Mold - M)
+        ggml_vec_scale_f16(DV, VKQ16, ms);
+    } else {
+        // no new maximum, ms == 1.0f, vs != 1.0f
+        vs = expf(s - M);
     }
 
-    float s; // KQ value
+    // V += v*expf(s - M)
+    ggml_vec_mad_f16(DV, VKQ16, (const ggml_fp16_t *) v_data, vs);
+} 
+```
 
-    const char * k_data = (const char *) k->data + ( ic*nbk1 + ik2*nbk2 + ik3*nbk3);
-    kq_vec_dot(DK, &s, 0, k_data, 0, Q_q, 0, 1);
+这是当`v`的类型是`F16`时走的路径，先看当前计算出来的`s`是否比最大值`M`要大.如果大于，就说明这个是新的最大值，需要保存最大值至`M`，同时计算`ms`，将之前计算出来的注意力分数缩放`ms`;如果不大于，那就需要缩放计算`vs`，大于的时候最大值就是其本身，所以不用缩放`vs`.最后累加至`VKQ16`.
 
-    s = s*scale; // scale KQ value
-
-    if (logit_softcap != 0.0f) {
-        s = logit_softcap*tanhf(s);
-    }
-
-    s += mv; // apply mask
-
-    const float Mold = M;
-
-    float ms = 1.0f; // upon new higher max val, scale VKQ and KQ sum with this value
-    float vs = 1.0f; // post-softmax KQ value, expf(s - M)
-
-    const char * v_data = ((const char *) v->data + (ic*nbv1 + iv2*nbv2 + iv3*nbv3));
-
+```CPP
+for (int64_t ic = ic_start; ic < ic_end; ++ic) {
+...
     if (v->type == GGML_TYPE_F16) {
-        if (s > M) {
-            // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
-            M = s;
-            ms = expf(Mold - M);
-
-            // V = V*expf(Mold - M)
-            ggml_vec_scale_f16(DV, VKQ16, ms);
-        } else {
-            // no new maximum, ms == 1.0f, vs != 1.0f
-            vs = expf(s - M);
-        }
-
-        // V += v*expf(s - M)
-        ggml_vec_mad_f16(DV, VKQ16, (const ggml_fp16_t *) v_data, vs);
+    ...
     } else {
         if (s > M) {
             // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
@@ -1249,13 +1279,23 @@ for (int64_t ic = ic_start; ic < ic_end; ++ic) {
 
     S = S*ms + vs; // scale and increment sum with partial sum
 }
+```
 
+这是当`v`类型不是`F16`时走的路径，类似于`F16`的路径，也是判断`s`和`M`的大小.将`v`转换为`float`,再使用`ggml_vec_mad_f32`.累加至`VKQ16`.
+
+同时累加分母`S`.
+
+```CPP
 if (v->type == GGML_TYPE_F16) {
     for (int64_t d = 0; d < DV; ++d) {
         VKQ32[d] = GGML_CPU_FP16_TO_FP32(VKQ16[d]);
     }
 }
+```
 
+将`v`转为`F16`.
+
+```CPP
 // sinks - apply only on the first kv-chunk
 if (sinks && ic_start == 0) {
     const float s = ((float *)((char *) sinks->data))[h];
@@ -1273,7 +1313,11 @@ if (sinks && ic_start == 0) {
 
     S = S*ms + vs;
 }
+```
 
+这个是`attention sink`的操作，特定模型会使用.
+
+```CPP
 if (write_partials) {
     // Write M, S, VKQ to partials for later reduction
     // partials layout: [M, S, VKQ[DV]] per query head
@@ -1281,6 +1325,16 @@ if (write_partials) {
     partial[0] = M;
     partial[1] = S;
     memcpy(partial + 2, VKQ32, DV * sizeof(float));
+} 
+```
+
+这个是将`n_kv`给分成多段的时候的`Flash Decoding`.
+
+写入`partial`,`[M | S | VKQ32(head_dim)]`.
+
+```CPP
+if (write_partials) {
+...
 } else {
     // V /= S
     const float S_inv = S == 0.0f ? 0.0f : 1.0f/S;
@@ -1296,6 +1350,326 @@ if (write_partials) {
 }
 ```
 
-进行`online softmax`.针对一个固定的Q行，遍历一段`KV`，使用`online softmax`累加`attention`输出，不生成完整的`QK`矩阵.
+首先对`VKQ32`除去`S`.
 
-固定的q行就是`Q[:, iq1, iq2, iq3]`.
+拷贝至输出，`dst`并重新排列.`dst`的维度是`[head_dim, n_head, n_seq_tokens, n_stream]`.所以需要拷贝到正确的维度上，也就是`[:, iq2, iq1, iq3]`.
+
+#### `ggml_flash_attn_ext_reduce_partials`
+
+```CPP
+static void ggml_flash_attn_ext_reduce_partials(
+        const ggml_compute_params * params,
+        ggml_tensor * dst,
+        const int64_t n_chunks,
+        const int64_t chunk_size)
+```
+
+这个函数是`Flash Decoding`的第二阶段.多线程按照head并行,将数据写入最后dst.
+
+* `params`当前线程的计算上下文
+* `dst`,输出向量.维度是`[head_dim, n_head, n_seq_tokens, n_stream]`.
+* `n_chunks`,KV的分段数.
+* `chunk_size`,一个chunk的长度.
+
+```CPP
+const ggml_tensor * q = dst->src[0];
+const ggml_tensor * k = dst->src[1];
+const ggml_tensor * v = dst->src[2];
+
+const int64_t DK        = k->ne[0];
+const int64_t DV        = v->ne[0];
+const int64_t nek1      = k->ne[1];
+const int64_t n_q_heads = q->ne[2];
+
+const int ith = params->ith;
+const int nth = params->nth;
+const int64_t wdata_per_thread = DK + 2*DV + CACHE_LINE_SIZE_F32;
+float *       thread_wdata     = (float *) params->wdata + ith * wdata_per_thread;
+
+const int64_t partials_offset  = nth * (DK + 2*DV + CACHE_LINE_SIZE_F32);
+const int64_t partial_size     = 2 + DV;
+const float * partials_base    = (const float *) params->wdata + partials_offset;
+
+// Output layout
+const int64_t ne1 = dst->ne[1];
+const int64_t ne2 = dst->ne[2];
+const size_t  nb1 = dst->nb[1];
+```
+
+读取相关数据`wdata`的布局是`[ 每线程工作区 × nth ][ partials ]`
+
+* `q`：`[head_dim, n_seq_tokens, n_head, n_stream]`.
+* `k`：`[head_dim, n_kv, n_head_kv, n_stream]`.
+* `v`：`[head_dim, n_kv, n_head_kv, n_stream]`.
+* `wdata_per_thread`是每个线程在`wdata`中的私有数据大小.
+* `thread_wdata`当前线程私有数据位置.
+
+```CPP
+// Each thread reduces a subset of query heads
+for (int64_t q_head = ith; q_head < n_q_heads; q_head += nth) {
+    float   M_final   = -INFINITY;
+    float   S_final   = 0.0f;
+    float * VKQ_final = thread_wdata;
+    memset(VKQ_final, 0, DV * sizeof(float));
+
+    // Combine partials from all chunks
+    for (int64_t chunk_idx = 0; chunk_idx < n_chunks; ++chunk_idx) {
+        const int64_t ic_start = chunk_idx * chunk_size;
+        if (ic_start >= nek1) continue;
+
+        const float * partial   = partials_base + (q_head * n_chunks + chunk_idx) * partial_size;
+        const float   M_chunk   = partial[0];
+        const float   S_chunk   = partial[1];
+        const float * VKQ_chunk = partial + 2;
+
+        if (S_chunk == 0.0f) continue;
+
+        const float M_new     = fmaxf(M_final, M_chunk);
+        const float scale_old = expf(M_final - M_new);
+        const float scale_new = expf(M_chunk - M_new);
+
+        for (int64_t d = 0; d < DV; ++d) {
+            VKQ_final[d] = VKQ_final[d] * scale_old + VKQ_chunk[d] * scale_new;
+        }
+        S_final = S_final * scale_old + S_chunk * scale_new;
+        M_final = M_new;
+    }
+
+    // Normalize and write to output
+    if (S_final != 0.0f) {
+        const float S_inv = 1.0f / S_final;
+        ggml_vec_scale_f32(DV, VKQ_final, S_inv);
+    }
+    // iq1=0, iq3=0 for decode
+    memcpy((char *) dst->data + (0*ne2*ne1 + q_head + 0*ne1)*nb1, VKQ_final, nb1);
+}
+```
+
+沿着`q`的`head`进行多线程处理.一个循环写入`dst: [:, q_head, n_seq_tokens, n_streams]`.
+
+首先清空`VKQ_final`
+
+对某个`head`,第`chunk_idx`段存的是一段`kv`的结果.
+
+$$
+M_c \\
+S_c = \sum_{j \in c} \exp(s_j - M_c) \\
+o_c = \sum_{j \in c} \exp(s_j - M_c)v_j
+$$
+
+合并逻辑是
+
+$$
+M \leftarrow \max (M_a, M_b) \\
+o \leftarrow \exp(M_a - M)o_a + \exp(Mb - M)o_b \\
+S \leftarrow \exp(M_a - M)S_a + \exp(Mb - M)S_b
+$$
+
+#### `ggml_compute_forward_flash_attn_ext_f16_one_chunk`
+
+```CPP
+static void ggml_compute_forward_flash_attn_ext_tiled(
+        const ggml_compute_params * params,
+        ggml_tensor * dst,
+        int ir0, int ir1)
+```
+
+这个函数是`CPU`上的`tiled flash attention`。
+
+* `params`线程上下文.
+* `dst`输出向量.维度是`[head_dim, n_head, n_seq_tokens, n_stream]`.
+* `[ir0,ir1)`当前函数需要处理的Q行区间.
+
+```CPP
+const ggml_tensor * q     = dst->src[0];
+const ggml_tensor * k     = dst->src[1];
+const ggml_tensor * v     = dst->src[2];
+const ggml_tensor * mask  = dst->src[3];
+const ggml_tensor * sinks = dst->src[4];
+
+GGML_TENSOR_LOCALS(int64_t, neq, q,   ne)
+GGML_TENSOR_LOCALS(size_t,  nbq, q,   nb)
+GGML_TENSOR_LOCALS(int64_t, nek, k,   ne)
+GGML_TENSOR_LOCALS(size_t,  nbk, k,   nb)
+GGML_TENSOR_LOCALS(int64_t, nev, v,   ne)
+GGML_TENSOR_LOCALS(size_t,  nbv, v,   nb)
+GGML_TENSOR_LOCALS(int64_t, ne,  dst, ne)
+GGML_TENSOR_LOCALS(size_t,  nb,  dst, nb)
+
+const int64_t DK = nek0;
+const int64_t DV = nev0;
+const int64_t N  = neq1;
+
+GGML_ASSERT(ne0 == DV);
+GGML_ASSERT(ne2 == N);
+
+// input tensor rows must be contiguous
+GGML_ASSERT(nbq0 == ggml_type_size(q->type));
+GGML_ASSERT(nbk0 == ggml_type_size(k->type));
+GGML_ASSERT(nbv0 == ggml_type_size(v->type));
+
+GGML_ASSERT(neq0 == DK);
+GGML_ASSERT(nek0 == DK);
+GGML_ASSERT(nev0 == DV);
+
+GGML_ASSERT(neq1 == N);
+
+// dst cannot be transposed or permuted
+GGML_ASSERT(nb0 == sizeof(float));
+GGML_ASSERT(nb0 <= nb1);
+GGML_ASSERT(nb1 <= nb2);
+GGML_ASSERT(nb2 <= nb3);
+
+GGML_ASSERT(k->type == v->type);
+const ggml_type kv_type = k->type;
+```
+
+* `q`：`[head_dim, n_seq_tokens, n_head, n_stream]`.
+* `k`：`[head_dim, n_kv, n_head_kv, n_stream]`.
+* `v`：`[head_dim, n_kv, n_head_kv, n_stream]`.
+* `mask`:`[n_kv, n_seq_tokens, n_head_h, n_stream_h]`
+
+进行一系列判断.
+
+```CPP
+// broadcast factors
+const int64_t rk2 = neq2/nek2;
+const int64_t rk3 = neq3/nek3;
+
+const int64_t rv2 = neq2/nev2;
+const int64_t rv3 = neq3/nev3;
+```
+
+计算比值，实现GQA的广播.
+
+例如
+
+```text
+n_head = 32
+n_head_kv = 8
+rk2 = rv2 = 32 / 8 = 4
+```
+
+```CPP
+float scale         = 1.0f;
+float max_bias      = 0.0f;
+float logit_softcap = 0.0f;
+
+memcpy(&scale,         (float *) dst->op_params + 0, sizeof(float));
+memcpy(&max_bias,      (float *) dst->op_params + 1, sizeof(float));
+memcpy(&logit_softcap, (float *) dst->op_params + 2, sizeof(float));
+
+if (logit_softcap != 0) {
+    scale /= logit_softcap;
+}
+```
+
+读取注意力计算的参数.
+
+```CPP
+int ith = params->ith;
+
+static constexpr int Q_TILE_SZ  = ggml_fa_tile_config::Q;
+static constexpr int KV_TILE_SZ = ggml_fa_tile_config::KV;
+```
+
+获取当前线程号和`Q_TILE_SZ = 64`,`KV_TILE_SZ = 64`.
+
+```CPP
+int ir = ir0;
+while (ir < ir1) {
+    ...
+}
+```
+
+这是`tiled flash attention`的外层循环，一次处理一块Q.
+
+```CPP
+while(ir < ir1){
+    // q indices for the start of this tile
+    const int iq3 = ir/(neq2*neq1);
+    const int iq2 = (ir - iq3*neq2*neq1)/neq1;
+    const int iq1 = (ir - iq3*neq2*neq1 - iq2*neq1);
+
+    // Number of valid rows in this tile:
+    // - limited by tile size (Q_TILE_SZ)
+    // - limited by chunk boundary (ir1 - ir)
+    // - limited by head boundary (neq1 - iq1) to avoid crossing into next head
+    const int tile_rows = MIN(Q_TILE_SZ, MIN((int)(ir1 - ir), (int)(neq1 - iq1)));
+    GGML_ASSERT(tile_rows > 0);
+
+    const uint32_t h = iq2; // head index
+    const float slope = (max_bias > 0.0f) ? h < n_head_log2 ? powf(m0, h + 1) : powf(m1, 2*(h - n_head_log2) + 1) : 1.0f;
+
+    float S[Q_TILE_SZ];
+    float M[Q_TILE_SZ];
+
+    for (int i = 0 ; i < Q_TILE_SZ; ++i) {
+        S[i] = 0.;
+        M[i] = -INFINITY;
+    }
+    ...
+}
+```
+
+将展平的q行还原，就是`q:[:, iq1, iq2, iq3]`.
+
+计算`tile_rows`,是满`64`行、不超出本`chunk`、不跨`head`。
+
+生成为每一个tile生成`S`和`M`。
+
+```CPP
+while(ir < ir1){
+...
+    // Per-thread scratch layout:
+    // Q_q:    Q_TILE_SZ * DK (converted Q tile — F32 for GEMM, KV type for scalar)
+    // KQ:     Q_TILE_SZ * KV_TILE_SZ (attention scores in float)
+    // mask:   Q_TILE_SZ * KV_TILE_SZ (mask in float)
+    // VKQ32:  Q_TILE_SZ * DV (FP32 output accumulator)
+    // V32:    KV_TILE_SZ * DV (F32 buffer for V tile)
+    // K_f32:  KV_TILE_SZ * DK (F32 buffer for K tile — GEMM path)
+    float * base  = (float *) params->wdata + ith*(Q_TILE_SZ*DK + 2*Q_TILE_SZ*KV_TILE_SZ + Q_TILE_SZ*DV + KV_TILE_SZ*DV + KV_TILE_SZ*DK + CACHE_LINE_SIZE_F32);
+
+    void  * Q_q    = base;
+    float * KQ     = (float *)((char *)base + Q_TILE_SZ * DK * sizeof(float));
+    float * mask32 = KQ + Q_TILE_SZ * KV_TILE_SZ;
+    float * VKQ32  = mask32 + Q_TILE_SZ * KV_TILE_SZ;
+    float * V32    = VKQ32 + Q_TILE_SZ * DV;
+    float * K_f32  = V32 + KV_TILE_SZ * DV;
+
+    memset(VKQ32, 0, Q_TILE_SZ * DV * sizeof(float));
+    memset(mask32, 0, Q_TILE_SZ * KV_TILE_SZ * sizeof(float));
+
+    // k indices
+    const int ik3 = iq3 / rk3;
+    const int ik2 = iq2 / rk2;
+
+    // v indices
+    const int iv3 = iq3 / rv3;
+    const int iv2 = iq2 / rv2;
+
+    {
+        float * Q_f32 = (float *)Q_q;
+        for (int tq = 0; tq < tile_rows; tq++) {
+            const float * pq = (const float *) ((char *) q->data + ((iq1 + tq)*nbq1 + iq2*nbq2 + iq3*nbq3));
+            memcpy(Q_f32 + tq * DK, pq, DK * sizeof(float));
+        }
+        for (int tq = tile_rows; tq < Q_TILE_SZ; tq++) {
+            memset(Q_f32 + tq * DK, 0, DK * sizeof(float));
+        }
+    }
+
+    memset(K_f32, 0, DK * KV_TILE_SZ * sizeof(float));
+    memset(V32,   0, KV_TILE_SZ * DV * sizeof(float));
+...
+}
+```
+
+获取线程私有工作区.
+
+* `Q_q`维度是`[Q_TILE_SZ, head_dim]`当前`Q tile`
+* `KQ`维度是`[Q_TILE_SZ, KV_TILE_SZ]`,`scores`，`softmax`后变权重
+* `mask`维度是`[Q_TILE_SZ, KV_TILE_SZ]`,F32 mask
+* `VKQ32`维度是`[Q_TILE_SZ, head_dim]`,输出累加器
+* `V32`维度是`[KV_TILE_SZ, head_dim]`,当前`V tile`
+* `K_f32`维度是`[KV_TILE_SZ, head_dim]`,当前`K tile`
