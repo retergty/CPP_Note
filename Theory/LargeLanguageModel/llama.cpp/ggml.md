@@ -1465,7 +1465,7 @@ o \leftarrow \exp(M_a - M)o_a + \exp(Mb - M)o_b \\
 S \leftarrow \exp(M_a - M)S_a + \exp(Mb - M)S_b
 $$
 
-#### `ggml_compute_forward_flash_attn_ext_f16_one_chunk`
+#### `ggml_compute_forward_flash_attn_ext_tiled`
 
 ```CPP
 static void ggml_compute_forward_flash_attn_ext_tiled(
@@ -1614,7 +1614,7 @@ while(ir < ir1){
 
 将展平的q行还原，就是`q:[:, iq1, iq2, iq3]`.
 
-计算`tile_rows`,是满`64`行、不超出本`chunk`、不跨`head`。
+计算`tile_rows`,是满`64`行、不超出本`chunk`、不跨`head`的最小值.
 
 生成为每一个tile生成`S`和`M`。
 
@@ -1667,9 +1667,271 @@ while(ir < ir1){
 
 获取线程私有工作区.
 
-* `Q_q`维度是`[Q_TILE_SZ, head_dim]`当前`Q tile`
-* `KQ`维度是`[Q_TILE_SZ, KV_TILE_SZ]`,`scores`，`softmax`后变权重
-* `mask`维度是`[Q_TILE_SZ, KV_TILE_SZ]`,F32 mask
-* `VKQ32`维度是`[Q_TILE_SZ, head_dim]`,输出累加器
-* `V32`维度是`[KV_TILE_SZ, head_dim]`,当前`V tile`
+* `Q_q`维度是`[head_dim, Q_TILE_SZ]`当前`Q tile`
+* `KQ`维度是`[KV_TILE_SZ, Q_TILE_SZ]`,`scores`，`softmax`后变权重
+* `mask32`维度是`[KV_TILE_SZ, Q_TILE_SZ]`,F32 mask
+* `VKQ32`维度是`[head_dim, Q_TILE_SZ]`,输出累加器
+* `V32`维度是`[head_dim, KV_TILE_SZ]`,当前`V tile`
 * `K_f32`维度是`[KV_TILE_SZ, head_dim]`,当前`K tile`
+
+获取`k`和`q`的后两维的index，使用了广播.
+
+将`q: [:, iq1:iq1+tile_rows, iq2, iq3]`拷贝到`Q_q:[:,0:tile_rows]`，同时清空`Q_q`中的`[:,tile_rows: Q_TILE_SZ]`.
+
+同时清空`K_f32`,`V32`,`VKQ32`,`mask32`.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    const int kv_tile = (int)std::min((int64_t)KV_TILE_SZ, nek1 - ic);
+    ...
+}
+```
+
+按照`KV_TILE_SZ`滑动计算完整的`KV`序列.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    // skip the tile entirely if all the masks are -inf
+    if (mask) {
+        bool can_skip = true;
+        for (int tq = 0; tq < tile_rows; tq++) {
+            const ggml_fp16_t * mp_row = (const ggml_fp16_t *)((const char *) mask->data + (iq1 + tq)*mask->nb[1] + (iq2%mask->ne[2])*mask->nb[2] + (iq3%mask->ne[3])*mask->nb[3]);
+            for (int tk = 0; tk < kv_tile; tk++) {
+                mask32[tq * KV_TILE_SZ + tk] = slope * GGML_CPU_FP16_TO_FP32(mp_row[ic + tk]);
+                if (mask32[tq * KV_TILE_SZ + tk] != -INFINITY) {
+                    can_skip = false;
+                }
+            }
+            // Pad remaining mask entries with -inf
+            for (int tk = kv_tile; tk < KV_TILE_SZ; tk++) {
+                mask32[tq * KV_TILE_SZ + tk] = -INFINITY;
+            }
+        }
+
+        if (can_skip) {
+            continue;
+        }
+    }
+    ...
+}
+```
+
+先填充`mask32:[0:kv_tile, 0:tile_rows]`,使用`mask:[ic:kv_tile, iq1:iq1+tile_rows, iq2_k, iq3_k]`.同时把`mask32:[kv_tile: KV_TILE_SZ,0:tile_rows]`设置为`-INF`.
+
+同时计算如果这个块中都是`-INF`直接跳过对这个块的注意力分数计算.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    // Pack K tile transposed: K_f32[dk][kv] so KV_TILE is contiguous (SIMD dim)
+    // Zero-pad the last tile so the GEMM always operates on KV_TILE_SZ columns
+    for (int tk = 0; tk < kv_tile; tk++) {
+        const char * k_data = (const char *)k->data + (ic + tk)*nbk1 + ik2*nbk2 + ik3*nbk3;
+        if (kv_type == GGML_TYPE_F16) {
+            const ggml_fp16_t * k_f16 = (const ggml_fp16_t *)k_data;
+            for (int64_t dk = 0; dk < DK; dk++) {
+                K_f32[dk * KV_TILE_SZ + tk] = GGML_CPU_FP16_TO_FP32(k_f16[dk]);
+            }
+        } else {
+            const float * k_f32_src = (const float *)k_data;
+            for (int64_t dk = 0; dk < DK; dk++) {
+                K_f32[dk * KV_TILE_SZ + tk] = k_f32_src[dk];
+            }
+        }
+    }
+    memset(KQ, 0, Q_TILE_SZ * KV_TILE_SZ * sizeof(float));
+    simd_gemm(KQ, (const float *)Q_q, K_f32, Q_TILE_SZ, DK, KV_TILE_SZ);
+    ggml_vec_scale_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, scale);
+    ...
+}
+```
+
+将`k:[:, ic:ic+kv_tile, ik2, ik3]`拷贝至`k_f32:[0:kv_tile,:]`,做了一次转置.
+
+清零`KQ:[KV_TILE_SZ, Q_TILE_SZ]`.
+
+使用`simd_gemm`计算注意力分数.
+
+```CPP
+// C[M x N] += A[M x K] * B[K x N]
+static void simd_gemm(
+    float       * GGML_RESTRICT C,
+    const float * GGML_RESTRICT A,
+    const float * GGML_RESTRICT B,
+    int M, int K, int N)
+{
+    static constexpr int KN = GGML_F32_EPR;
+
+    int64_t ii = 0;
+    for (; ii + GEMM_RM <= M; ii += GEMM_RM) {
+        int64_t jj = 0;
+        for (; jj + GEMM_RN * KN <= N; jj += GEMM_RN * KN) {
+            simd_gemm_ukernel<GEMM_RM, GEMM_RN>(C + jj, A, B + jj, K, N);
+        }
+        for (; jj + KN <= N; jj += KN) {
+            simd_gemm_ukernel<GEMM_RM, 1>(C + jj, A, B + jj, K, N);
+        }
+        for (; jj < N; jj++) {
+            for (int64_t i = 0; i < GEMM_RM; i++) {
+                float a = C[i * N + jj];
+                for (int64_t kk = 0; kk < K; kk++) {
+                    a += A[i * K + kk] * B[kk * N + jj];
+                }
+                C[i * N + jj] = a;
+            }
+        }
+
+        A += GEMM_RM * K;
+        C += GEMM_RM * N;
+    }
+
+    // Tail rows: one at a time
+    for (; ii < M; ii++) {
+        int64_t jj = 0;
+        for (; jj + GEMM_RN * KN <= N; jj += GEMM_RN * KN) {
+            simd_gemm_ukernel<1, GEMM_RN>(C + jj, A, B + jj, K, N);
+        }
+        for (; jj + KN <= N; jj += KN) {
+            simd_gemm_ukernel<1, 1>(C + jj, A, B + jj, K, N);
+        }
+        for (; jj < N; jj++) {
+            float a = C[jj];
+            for (int64_t kk = 0; kk < K; kk++) {
+                a += A[kk] * B[kk * N + jj];
+            }
+            C[jj] = a;
+        }
+
+        A += K;
+        C += N;
+    }
+}
+```
+
+这是`AVX/NEON`路径下的，计算行主序的
+
+$$
+C_{M \times N} \leftarrow C_{M \times N} + A_{M \times K} B_{K \times N}
+$$
+
+按照`ggml`的习惯，与当前输入，就是
+
+* `C: [KV_TILE_SZ, Q_TILE_SZ]`.
+* `A: [head_dim, Q_TILE_SZ]`.
+* `B: [KV_TILE_SZ, head_dim]`.
+* `M: Q_TILE_SZ`.
+* `K: head_dim`.
+* `N: KV_TILE_SZ`.
+
+使用`simd`指令加速,参数是
+
+* `KN`:一个SIMD寄存器装几个`float`（AVX2=8，NEON=4，AVX-512=16）
+* `GEMM_RM`:微核一次算`C`的多少行
+* `GEMM_RN`微核一次沿`N`用多少个向量.
+
+首先处理C中满`GEMM_RM`行的数据，在其中先处理满`GEMM_RN * KN`列，`KN`列，剩余的列.
+
+之后再处理C中剩余的行数据，还是先处理满`GEMM_RN * KN`列，`KN`列，剩余的列.
+
+```CPP
+template <int RM, int RN>
+static inline void simd_gemm_ukernel(
+    float       * GGML_RESTRICT C,
+    const float * GGML_RESTRICT A,
+    const float * GGML_RESTRICT B,
+    int K, int N)
+{
+    static constexpr int KN = GGML_F32_EPR;
+
+    GGML_F32_VEC acc[RM][RN];
+    for (int64_t i = 0; i < RM; i++) {
+        for (int r = 0; r < RN; r++) {
+            acc[i][r] = GGML_F32_VEC_LOAD(C + i * N + r * KN);
+        }
+    }
+
+    for (int64_t kk = 0; kk < K; kk++) {
+        GGML_F32_VEC Bv[RN];
+        for (int r = 0; r < RN; r++) {
+            Bv[r] = GGML_F32_VEC_LOAD(B + kk * N + r * KN);
+        }
+        for (int64_t i = 0; i < RM; i++) {
+            GGML_F32_VEC p = GGML_F32_VEC_SET1(A[i * K + kk]);
+            for (int r = 0; r < RN; r++) {
+                acc[i][r] = GGML_F32_VEC_FMA(acc[i][r], Bv[r], p);
+            }
+        }
+    }
+
+    for (int64_t i = 0; i < RM; i++) {
+        for (int r = 0; r < RN; r++) {
+            GGML_F32_VEC_STORE(C + i * N + r * KN, acc[i][r]);
+        }
+    }
+}
+```
+
+这是GEMM微核，计算
+
+$$
+C_{R_M \times (R_M \cdot K_N)} \gets C_{R_M \times (R_M \cdot K_N)} + A_{R_M \times K}B_{K \times (R_M \cdot K_N)}
+$$
+
+但是$C$,$A$,$B$都是子块,所以计算跨行步长时，需要使用`K`和`N`.
+
+先将对应的$C$加载到`acc`工作区中.
+
+接着计算矩阵乘法,就是A的每个标量乘上B的行向量的逻辑
+
+$$
+AB
+=
+\begin{pmatrix}
+a_{00} & a_{01} & \cdots & a_{0,K-1} \\
+a_{10} & a_{11} & \cdots & a_{1,K-1} \\
+\vdots & \vdots & \ddots & \vdots \\
+a_{R_M-1,0} & a_{R_M-1,1} & \cdots & a_{R_M-1,K-1}
+\end{pmatrix}
+\begin{pmatrix}
+\mathbf{b}_0 \\
+\mathbf{b}_1 \\
+\vdots \\
+\mathbf{b}_{K-1}
+\end{pmatrix}
+=
+\sum_{k=0}^{K-1}
+\begin{pmatrix}
+a_{0k} \\
+a_{1k} \\
+\vdots \\
+a_{R_M-1,k}
+\end{pmatrix}
+\mathbf{b}_k
+$$
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    // Set padded KQ entries to -inf so softmax gives them zero weight
+    if (kv_tile < KV_TILE_SZ) {
+        for (int tq = 0; tq < Q_TILE_SZ; tq++) {
+            for (int tk = kv_tile; tk < KV_TILE_SZ; tk++) {
+                KQ[tq * KV_TILE_SZ + tk] = -INFINITY;
+            }
+        }
+    }
+
+    if (logit_softcap != 0.0f) {
+        ggml_vec_tanh_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, KQ);
+        ggml_vec_scale_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, logit_softcap);
+    }
+
+    if (mask) {
+        ggml_vec_add_f32(tile_rows * KV_TILE_SZ, KQ, KQ, mask32);
+    }
+    ...
+}
+```
+
+设置将KQ的空隙设置为`-INF`同时应用`mask`.
