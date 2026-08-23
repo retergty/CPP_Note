@@ -1935,3 +1935,110 @@ for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
 ```
 
 设置将KQ的空隙设置为`-INF`同时应用`mask`.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    bool skip[Q_TILE_SZ] = {};
+
+    for (int tq = 0; tq < Q_TILE_SZ; tq++) {
+        float * kq_row = KQ + tq * KV_TILE_SZ;
+
+        float tile_max;
+        ggml_vec_max_f32(KV_TILE_SZ, &tile_max, kq_row);
+
+        if (tile_max == -INFINITY) {
+            skip[tq] = true;
+            continue;
+        }
+
+        const float Mold = M[tq];
+        const float Mnew = fmaxf(Mold, tile_max);
+
+        if (Mnew > Mold) {
+            const float ms = expf(Mold - Mnew);
+            ggml_vec_scale_f32(DV, VKQ32 + tq * DV, ms);
+            S[tq] *= ms;
+        }
+        M[tq] = Mnew;
+
+
+        S[tq] += ggml_vec_soft_max_f32(KV_TILE_SZ, kq_row, kq_row, Mnew);
+    }
+    ...
+}
+```
+
+当前块的分数`KQ:[KV_TILE_SZ, Q_TILE_SZ]`已经算完,对每个`KQ`行，做`online softmax`,首先对新加入的`KV_TILE_SZ`个`KQ`查找最大值，重新缩放`S`,`M`.然后原地计算$\exp(KQ[tk]-M_{new})$并返回$\sum_k \exp(KQ[tk]-M_{new})$累加`S`.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    // V accumulation: VKQ32 += softmax(KQ) * V
+    // Pack V tile to contiguous F32, zero-padded
+    for (int tk = 0; tk < kv_tile; tk++) {
+        const char * v_data = (const char *)v->data + (ic + tk)*nbv1 + iv2*nbv2 + iv3*nbv3;
+        if (kv_type == GGML_TYPE_F16) {
+            ggml_fp16_to_fp32_row((const ggml_fp16_t *)v_data, V32 + tk * DV, DV);
+        } else {
+            memcpy(V32 + tk * DV, v_data, DV * sizeof(float));
+        }
+    }
+    for (int tq = 0; tq < Q_TILE_SZ; tq++) {
+        if (skip[tq]) {
+            memset(KQ + tq * KV_TILE_SZ, 0, KV_TILE_SZ * sizeof(float));
+        }
+    }
+    simd_gemm(VKQ32, KQ, V32, Q_TILE_SZ, KV_TILE_SZ, DV);
+    ...
+}
+```
+
+计算注意力分数，也就是计算`softmax(KQ) * V`并累加`VKQ32: [head_dim, Q_TILE_SZ]`.
+
+填充`V32:[:, ic: ic + kv_tile, iv2, iv3]`,将`V32:[:, ic: ic + Q_TILE_SZ, iv2, iv3]`和上文中的`KQ:[KV_TILE_SZ, Q_TILE_SZ]`相乘，累加到`VKQ32: [head_dim, Q_TILE_SZ]`上.
+
+```CPP
+for (int64_t ic = 0; ic < nek1; ic += KV_TILE_SZ) {
+    ...
+    // sinks (apply only to valid rows in the tile)
+    if (sinks) {
+        const float s = ((float *)((char *) sinks->data))[h];
+
+        for (int tq = 0; tq < tile_rows; tq++) {
+            float ms = 1.0f;
+            float vs = 1.0f;
+
+            if (s > M[tq]) {
+                ms = expf(M[tq] - s);
+                ggml_vec_scale_f32(DV, VKQ32 + tq * DV, ms);
+            } else {
+                vs = expf(s - M[tq]);
+            }
+
+            S[tq] = S[tq] * ms + vs;
+        }
+    }
+
+    for (int tq = 0; tq < tile_rows; tq++) {
+        // V /= S
+        const float S_inv = S[tq] == 0.0f ? 0.0f : 1.0f / S[tq];
+        ggml_vec_scale_f32(DV, VKQ32 + tq * DV, S_inv);
+
+        // dst indices
+        const int i1 = iq1 + tq;
+        const int i2 = iq2;
+        const int i3 = iq3;
+
+        // permute(0, 2, 1, 3)
+        memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32 + tq * DV, nb1);
+    }
+
+    ir += tile_rows;
+    ...
+}
+```
+
+进行可选的`attention sink`.
+
+用进行`VKQ32: [head_dim, Q_TILE_SZ]`,按照每行，计算`VKQ32:[:,tq]/S[tq]`.同时进行重排列，输出到对应位置.
