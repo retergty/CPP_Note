@@ -130,6 +130,108 @@ ggml_build_forward_expand(gf, cur)
 
   每个`Token`都会激活全部`FFN`参数，不使用路由器或稀疏专家，执行路径比`MoE`更直接。
 
+### 输入输出张量分析
+
+```CPP
+inpL = build_inp_embd(model.tok_embd);
+```
+
+* 权重词嵌入矩阵,`tok_embd:[n_embd, n_vocab]`.
+* 输入`token: [n_tokens]`.
+* 词嵌入后的输出`inpL:[n_embd, n_tokens]`.
+
+```CPP
+ggml_tensor * inp_pos     = build_inp_pos();
+ggml_tensor * inp_out_ids = build_inp_out_ids();
+```
+
+* 输入`token`的位置索引`inp_pos: [n_tokens * n_pos_per_embd]`.
+* 需要输出结果的下标`inp_out_ids: [n_outputs]`.
+
+```CPP
+for (int il = 0; il < n_layer; ++il) {
+    ...
+    cur = build_norm(inpL, model.layers[il].attn_norm, nullptr, LLM_NORM_RMS, il);
+    ...
+}
+```
+
+* 输入`inpL: [n_embd, n_tokens]`
+* 输出`cur: [n_embd, n_tokens]`
+
+```CPP
+for (int il = 0; il < n_layer; ++il) {
+    ...
+    if (hparams.is_recr(il)) {
+        // Linear attention layer (gated delta net)
+        cur = build_layer_attn_linear(inp->get_recr(), cur, il);
+    } else {
+        // Full attention layer
+        cur = build_layer_attn(inp->get_attn(), cur, inp_pos, sections, il);
+    }
+    ...
+}
+```
+
+* 输入输出维度相同`cur:[n_embd, n_tokens]`，但是在`build_layer_attn`中会先变成`[head_dim * n_head, n_tokens]`再变回`[n_embd, n_tokens]`;在`build_layer_attn_linear`中先变成`[d_inner, n_tokens]`,再变回`[n_embd, n_tokens]`.
+
+```CPP
+for (int il = 0; il < n_layer; ++il) {
+    ...
+    if (il == n_layer - 1 && inp_out_ids && cparams.embeddings_nextn_masked) {
+        cur   = ggml_get_rows(ctx0, cur,   inp_out_ids);
+        inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
+    }
+    ...
+}
+```
+
+* 输入`cur: [n_embd, n_tokens]`,输出`cur: [n_embd, n_outputs]`
+* 输入`inpSA: [n_embd, n_tokens]`,输出`inpSA: [n_embd, n_outputs]`
+
+```CPP
+for (int il = 0; il < n_layer; ++il) {
+    ...
+    // Residual connection
+    cur = ggml_add(ctx0, cur, inpSA);
+    cb(cur, "attn_residual", il);
+
+    // Save the tensor before post-attention norm for residual connection
+    ggml_tensor * ffn_residual = cur;
+
+    // Post-attention norm
+    ggml_tensor * attn_post_norm = build_norm(cur, model.layers[il].attn_post_norm, nullptr, LLM_NORM_RMS, il);
+    cb(attn_post_norm, "attn_post_norm", il);
+
+    // Dense FFN layer - without residual connection
+    cur = build_layer_ffn(attn_post_norm, il);
+    cb(cur, "ffn_out", il);
+
+    // Residual connection for FFN - add to the tensor from before post_attention_layernorm
+    cur = ggml_add(ctx0, cur, ffn_residual);
+    cb(cur, "post_ffn", il);
+
+    cur = build_cvec(cur, il);
+    cb(cur, "l_out", il);
+
+    // Input for next layer
+    inpL = cur;
+}
+cur = inpL;
+
+cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);
+```
+
+维度没有变化，都是`cur: [n_embd, n_tokens]`如果是最后一层，那就是`cur: [n_embd, n_outputs]`
+
+```CPP
+// LM head
+cur = build_lora_mm(model.output, cur, model.output_s);
+```
+
+* 输入`cur: [n_embd, n_outputs]`,`model.output: [n_embd, n_vocab]`
+* 输出`logits: [n_vocab, n_outputs]`
+
 #### build_inp_embd
 
 ##### 源码
