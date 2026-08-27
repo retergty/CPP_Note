@@ -409,19 +409,6 @@ c = vqmovn_s16(t);                     // {100, 127, 127, -128, -128, 127, 127, 
     c = vpaddlq_s16((int16x8_t){1,2,3,4,5,6,7,8}); // {3, 7, 11, 15}  加宽成 int32
     ```
 
-* `vshrq_n_`右移
-
-    ```CPP
-    int16x8_t a = {256, 257, 511, 512, -16, -256, 1000, 8};
-
-    c = vshrq_n_s16(a, 8);    // 仍是 int16x8_t
-                          // {1, 1, 1, 2, -1, -1, 3, 0}
-                          // 有符号：算术右移，符号位填入
-
-    c = vshrn_n_s16(a, 8);    // 变成 int8x8_t
-                          // {1, 1, 1, 2, -1, -1, 3, 0}
-    ```
-
 * `vaddvq`/`vaddlvq`/`vmaxvq`规约运算
 
     ```CPP
@@ -490,8 +477,146 @@ c = vminq_f16(a, b);
 c = vminnmq_f16(a, b);
 ```
 
+##### 移位运算
+
+* `vshrq_n_`右移，移位量必须是编译期常量。
+
+    ```CPP
+    int16x8_t a = {256, 257, 511, 512, -16, -256, 1000, 8};
+
+    c = vshrq_n_s16(a, 8);    // 仍是 int16x8_t
+                          // {1, 1, 1, 2, -1, -1, 3, 0}
+                          // 有符号：算术右移，符号位填入
+
+    c = vshrn_n_s16(a, 8);    // 变成 int8x8_t
+                          // {1, 1, 1, 2, -1, -1, 3, 0}
+    ```
+
+* `vshlq_n_`左移，移位量必须是编译器常量，右边补`0`，高位丢掉（回绕，不饱和）.
+
+    ```CPP
+    uint8x16_t x = vdupq_n_u8(0x03);
+    uint8x16_t y = vshlq_n_u8(x, 4);   // 每个 lane: 0x30
+
+    int8x8_t a = {10, 100, 40, -50, 1, 2, 3, 4};
+
+    int8x8_t q = vqshlq_n_s8(a, 2);   // 饱和移位100*4 -> 127; 40*4 -> 127; -50*4 -> -128
+    ```
+
+* `vshlq_`可变移位，每个`lane`的移位量来自 另一个向量，可以各不相同。大于零左移，小于零右移，等于零不移动.
+
+    ```CPP
+    int16x8_t a = {1, 1, 1, 1, 16, 16, 16, 16};
+    int16x8_t s = {1, 2, 3, 8, -1, -2, -4, 0};
+
+    int16x8_t r = vshlq_s16(a, s);
+    // {2, 4, 8, 256, 8, 4, 1, 16}
+    ```
+
+* `vsraq_n_`右移并累加,
+
+    ```CPP
+    int32x4_t acc = {10, 20, 30, 40};
+    int32x4_t v   = {256, 512, 768, 1024};
+
+    int32x4_t r = vsraq_n_s32(acc, v, 8);
+    // acc + (v >> 8) = {11, 22, 33, 44}
+    ```
+
 ##### 逻辑计算
+
+* `vandq`/`vorrq`/`veorq`/`vmvnq`按位逻辑运算
+
+    ```CPP
+    uint8x16_t vandq_u8(uint8x16_t a, uint8x16_t b);  // a & b
+    uint8x16_t vorrq_u8(uint8x16_t a, uint8x16_t b);  // a | b
+    uint8x16_t veorq_u8(uint8x16_t a, uint8x16_t b);  // a ^ b
+    uint8x16_t vmvnq_u8(uint8x16_t a);                 // ~a   (move not)
+    ```
+
+* `vbic`/`vorn`带有NOT的按位逻辑运算
+
+    ```CPP
+    uint8x16_t vbicq_u8(uint8x16_t a, uint8x16_t b);  // a & ~b   bit clear
+    uint8x16_t vornq_u8(uint8x16_t a, uint8x16_t b);  // a | ~b
+    ```
 
 ##### 比较计算
 
-##### 
+* `vceq`/`vcgt`/`vcge`/`vclt`/`vcle`普通比较
+
+    ```CPP
+    uint32x4_t vceqq_f32(float32x4_t a, float32x4_t b);  // ==
+    uint32x4_t vcgtq_f32(float32x4_t a, float32x4_t b);  // a > b
+    uint32x4_t vcgeq_f32(float32x4_t a, float32x4_t b);  // a >= b
+    uint32x4_t vcltq_f32(float32x4_t a, float32x4_t b);  // a < b
+    uint32x4_t vcleq_f32(float32x4_t a, float32x4_t b);  // a <= b
+    ```
+
+* `vcagtq_f32 `绝对值比较
+
+    ```CPP
+    float32x4_t x = {3.f, -9.f, 1.f, -2.f};
+    uint32x4_t  m = vcagtq_f32(x, vdupq_n_f32(5.f));
+    // |3|>5? 否
+    // |-9|>5? 是  -> 全1
+    // |1|>5? 否
+    // |-2|>5? 否
+    ```
+
+#### 关键扩展
+
+##### FEAT_DotProd
+
+* `vdotq_s32`每`4`个`int8`点积进`1`个`int32`lane
+
+    ```CPP
+    int32x4_t vdotq_s32(int32x4_t acc, int8x16_t a, int8x16_t b);
+    // 返回 acc + 点积，不就地改 acc
+    int8x16_t  a = {1,2,3,4,  1,1,1,1,  0,0,0,0,  10,0,0,0};
+    int8x16_t  b = {1,1,1,1,  2,2,2,2,  9,9,9,9,   1,0,0,0};
+    int32x4_t  r = vdotq_s32(vdupq_n_s32(0), a, b);
+    // r = {10, 8, 0, 10}
+    ```
+
+* `vdotq_laneq_s32`一边整条，一边只取4个int8广播，lane必须是编译期常量
+
+    ```CPP
+    int32x4_t vdotq_laneq_s32(int32x4_t acc, int8x16_t v, int8x16_t idx, const int lane);
+
+    int8x16_t v   = {1,1,1,1,   2,2,2,2,   0,0,0,1,   10,0,0,0};
+    int8x16_t idx = {1,2,3,4,   10,20,30,40,   5,5,5,5,   0,0,0,1};
+    //               lane0        lane1          lane2       lane3
+
+    int32x4_t r0 = vdotq_laneq_s32(vdupq_n_s32(0), v, idx, 0); // r0 = {10, 20, 4, 10}
+    ```
+
+##### FEAT_I8MM
+
+* `vmmlaq_s32`进行类似矩阵乘法的操作.
+
+    ```CPP
+    int32x4_t vmmlaq_s32(int32x4_t acc, int8x16_t a, int8x16_t b);
+
+    //acc[0] += a[0..7]  · b[0..7]     // (行0, 列0)
+    //acc[1] += a[0..7]  · b[8..15]    // (行0, 列1)
+    //acc[2] += a[8..15] · b[0..7]     // (行1, 列0)
+    //acc[3] += a[8..15] · b[8..15]    // (行1, 列1)
+
+    int8x16_t a = {1,1,1,1,1,1,1,1,   2,2,2,2,2,2,2,2};
+    int8x16_t b = {1,1,1,1,1,1,1,1,   3,3,3,3,3,3,3,3};
+
+    int32x4_t r = vmmlaq_s32(vdupq_n_s32(0), a, b);
+    // r[0] = 8*1  = 8
+    // r[1] = 8*3  = 24
+    // r[2] = 8*2  = 16
+    // r[3] = 8*6  = 48
+    ```
+
+##### FEAT_FP16
+
+对FP16的原生支持.
+
+##### SME/SME2
+
+SME/SME2 是`ARM`的矩阵扩展，需要进入流式模式，没有内建函数.
