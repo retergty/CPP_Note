@@ -1137,6 +1137,247 @@ $$
 
 当$\phi$使用`SiLU`时，该结构通常称为`SwiGLU`。门控支路控制哪些中间特征被传递，值支路提供待变换的内容。
 
+## 稀疏专家混合 Mixture of Experts
+
+`Mixture of Experts`简称`MoE`。在 Transformer 中，MoE 通常用多个`Expert FFN`替换原来的单个稠密 FFN，并由`Router`为每个 token 选择少量 expert：
+
+```text
+Hidden States
+    ↓
+Router
+    ↓
+Top-K Experts
+    ↓
+加权合并 Expert 输出
+```
+
+MoE 不改变 attention 结构，也不会让 FFN 在 token 之间直接交换信息。不同 token 可以选择不同 expert，但每个 expert 仍然对分配给它的 token 独立执行 FFN。
+
+### Router 与 Top-K 路由
+
+将 batch 和 sequence 维展平，记 token 数量为：
+
+$$
+N_{\text{tok}}=BT
+$$
+
+设 expert 数量为$N_{\text{expert}}$，第$n$个 token 的隐藏向量为$x_n\in\mathbb{R}^{1\times C}$。Router 通常是一个线性层：
+
+$$
+r_n=x_nW_{\text{router}},
+\qquad
+W_{\text{router}}
+\in
+\mathbb{R}^{C\times N_{\text{expert}}}
+$$
+
+其中$r_n\in\mathbb{R}^{1\times N_{\text{expert}}}$是各 expert 的路由分数。对分数执行`softmax`：
+
+$$
+p_{n,i}
+=
+\frac{\exp(r_{n,i})}
+{\sum_{j=1}^{N_{\text{expert}}}\exp(r_{n,j})}
+$$
+
+然后为每个 token 选择分数最高的$K_{\text{route}}$个 expert：
+
+$$
+\mathcal{S}_n
+=
+\operatorname{TopK}(p_n,K_{\text{route}})
+$$
+
+一种常见做法是只在被选中的 expert 之间重新归一化权重：
+
+$$
+g_{n,i}
+=
+\begin{cases}
+\displaystyle
+\frac{p_{n,i}}
+{\sum_{j\in\mathcal{S}_n}p_{n,j}},
+&
+i\in\mathcal{S}_n
+\\
+0,
+&
+i\notin\mathcal{S}_n
+\end{cases}
+$$
+
+因此每个 token 只激活$K_{\text{route}}$个 expert，而不是计算全部$N_{\text{expert}}$个 expert。常见配置包括`Top-1`和`Top-2`。不同模型也可能使用`sigmoid`分数、未重新归一化的权重或额外的路由缩放因子。
+
+### Expert 计算与输出合并
+
+每个 expert 都是独立的 FFN。以无偏置`SwiGLU`为例，第$i$个 expert 可以写为：
+
+$$
+W_{gate}^{(i)},W_{up}^{(i)}
+\in
+\mathbb{R}^{C\times C_{ff}},
+\qquad
+W_{down}^{(i)}
+\in
+\mathbb{R}^{C_{ff}\times C}
+$$
+
+$$
+\operatorname{Expert}_i(x)
+=
+\left[
+\operatorname{SiLU}(xW_{gate}^{(i)})
+\odot
+(xW_{up}^{(i)})
+\right]
+W_{down}^{(i)}
+$$
+
+Router 选择 expert 后，对其输出加权求和：
+
+$$
+y_n
+=
+\sum_{i=1}^{N_{\text{expert}}}
+g_{n,i}\operatorname{Expert}_i(x_n)
+=
+\sum_{i\in\mathcal{S}_n}
+g_{n,i}\operatorname{Expert}_i(x_n)
+$$
+
+由于未选中 expert 的$g_{n,i}=0$，实际只需计算$K_{\text{route}}$次 expert FFN。将展平的 token 维恢复为 batch 和 sequence 两个维度后，最终输出仍满足：
+
+$$
+Y\in\mathbb{R}^{B\times T\times C}
+$$
+
+因此 MoE 可以直接替换 Transformer Block 中的稠密 FFN，并继续使用原来的残差连接。
+
+### Shared Expert
+
+部分 MoE 模型同时使用`Shared Expert`和`Routed Expert`：
+
+$$
+y_n
+=
+\operatorname{Expert}_{\text{shared}}(x_n)
++
+\sum_{i\in\mathcal{S}_n}
+g_{n,i}\operatorname{Expert}_i(x_n)
+$$
+
+`Shared Expert`对所有 token 都会激活，用于学习通用知识；`Routed Expert`只处理被 Router 选中的 token，更适合学习特定类型的特征。这样可以减少所有 routed expert 重复学习通用模式的需求。
+
+### Expert 负载均衡
+
+如果 Router 长期把大部分 token 分配给少数 expert，会出现：
+
+- 热门 expert 计算量过大，其他设备等待。
+- 部分 expert 很少获得训练样本，难以形成有效分工。
+- expert 容量溢出，部分 token 需要被丢弃或重新路由。
+
+训练时通常加入负载均衡损失。令：
+
+$$
+f_i
+=
+\frac{1}{K_{\text{route}}N_{\text{tok}}}
+\sum_{n=1}^{N_{\text{tok}}}
+\mathbf{1}[i\in\mathcal{S}_n]
+$$
+
+表示 expert$i$接收的 token-expert 分配占比，并令：
+
+$$
+q_i
+=
+\frac{1}{N_{\text{tok}}}
+\sum_{n=1}^{N_{\text{tok}}}
+p_{n,i}
+$$
+
+表示 Router 分配给 expert$i$的平均概率。一种示意性的均衡损失为：
+
+$$
+L_{\text{balance}}
+=
+N_{\text{expert}}
+\sum_{i=1}^{N_{\text{expert}}}
+f_iq_i
+$$
+
+当 token-expert 分配均匀时，$f_i$和$q_i$都接近$1/N_{\text{expert}}$。具体模型对该损失的定义和系数可能不同；部分模型使用可调节的 expert bias 改变 Top-K 选择，以减少辅助损失对主训练目标的影响。
+
+### Expert Capacity
+
+一个 batch 中共有$K_{\text{route}}N_{\text{tok}}$次 token-expert 分配。理想情况下，每个 expert 平均接收：
+
+$$
+\frac{K_{\text{route}}N_{\text{tok}}}
+{N_{\text{expert}}}
+$$
+
+个 token。部分实现为每个 expert 设置容量：
+
+$$
+\operatorname{Capacity}
+=
+\left\lceil
+\gamma
+\frac{K_{\text{route}}N_{\text{tok}}}
+{N_{\text{expert}}}
+\right\rceil
+$$
+
+其中$\gamma\ge1$是`capacity factor`。超过容量的 token 可以被丢弃、发送给备选 expert 或通过残差路径继续传播。`Dropless MoE`不丢弃 token，而是允许 expert 处理不等长的 token 集合，但负载不均衡时仍可能降低并行效率。
+
+### 参数量与计算量
+
+设每个 routed expert 的参数量为$P_{\text{expert}}$，shared expert 的参数量为$P_{\text{shared}}$，则 MoE 层的总参数量近似为：
+
+$$
+P_{\text{total}}
+\approx
+N_{\text{expert}}P_{\text{expert}}
++
+P_{\text{shared}}
++
+CN_{\text{expert}}
+$$
+
+其中$CN_{\text{expert}}$来自 Router。
+
+总参数仍然需要存储在内存或分布到多台设备上，因此 MoE 减少的是每个 token 激活的计算，不等于减少模型权重的总存储量。比较 Dense 模型和 MoE 模型时，还需要考虑 expert 中间维度、shared expert 和 Router 的额外开销。
+
+### Expert Parallelism
+
+推理和训练时通常先按 expert 对 token 重排，再批量执行各 expert 的矩阵乘法：
+
+```text
+Token Hidden States
+    ↓
+Router + Top-K
+    ↓
+Dispatch：按 Expert 分组
+    ↓
+Expert FFN
+    ↓
+Combine：恢复 Token 顺序并加权
+```
+
+当 expert 分布在不同设备上时，`Dispatch`和`Combine`通常需要`All-to-All`通信，这称为`Expert Parallelism`。MoE 的实际性能不仅取决于 FLOPs，还取决于 token 数量、负载均衡、设备间通信和 expert 矩阵乘法的批量大小。
+
+- `Prefill`或训练阶段 token 较多，容易形成较大的 expert batch。
+- `Decode`阶段每步 token 较少，可能出现 expert batch 太小和设备负载不均。
+- 增大并发 batch 可以提高 expert 计算效率，但也会增加显存占用和调度延迟。
+
+### 和 Dense FFN 的区别
+
+- `Dense FFN`对每个 token 使用同一组 FFN 参数，所有 FFN 参数都会参与计算。
+- `MoE`为每个 token 选择少量 expert，总参数量大，但单 token 只激活其中一部分。
+- `MoE`可以提高参数容量，但需要额外处理路由稳定性、负载均衡和跨设备通信。
+- MoE 的`稀疏`指 expert 激活稀疏，不表示 expert 内部的权重矩阵是稀疏矩阵。
+
 ## 输出层 LM Head
 
 经过$N$个`Transformer Block`和最终归一化后，得到隐藏状态：
