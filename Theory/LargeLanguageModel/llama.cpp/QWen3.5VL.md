@@ -232,9 +232,9 @@ cur = build_lora_mm(model.output, cur, model.output_s);
 * 输入`cur: [n_embd, n_outputs]`,`model.output: [n_embd, n_vocab]`
 * 输出`logits: [n_vocab, n_outputs]`
 
-#### build_inp_embd
+### build_inp_embd
 
-##### 源码
+#### 源码
 
 ```CPP
 // input embeddings with optional lora
@@ -328,7 +328,7 @@ ggml_tensor * llm_graph_context::build_inp_embd(ggml_tensor * tok_embd) const {
 }
 ```
 
-##### 解释
+#### 解释
 
 `build_inp_embd`将文本输入或者经过视觉编码器输出的输入转换为模型需要的`embedding`并处理`LoRA`、`DeepStack`和`Granite embedding scale`.
 
@@ -451,9 +451,9 @@ ggml_build_forward_expand(gf, cur);
 
 进行缩放并最终设置到输入，同时构建现有的计算图.
 
-#### build_inp_mem_hybrid
+### build_inp_mem_hybrid
 
-##### 源码
+#### 源码
 
 ```CPP
 llm_graph_input_mem_hybrid * llm_graph_context::build_inp_mem_hybrid() const {
@@ -468,7 +468,7 @@ llm_graph_input_mem_hybrid * llm_graph_context::build_inp_mem_hybrid() const {
 }
 ```
 
-##### 解释
+#### 解释
 
 `build_inp_mem_hybrid`这个函数为混合内存模型同时准备了两套推理状态输入,`Attention`层使用的`KV Cache`输入,`Recurrent/SSM/`线性注意力层使用的循环状态输入。
 
@@ -655,9 +655,9 @@ Query 5   Y  Y  Y  Y  Y  Y  N
 Query 6   Y  Y  Y  Y  Y  Y  Y
 ```
 
-#### build_inp_pos，build_inp_out_ids
+### build_inp_pos，build_inp_out_ids
 
-##### 代码
+#### 代码
 
 ```CPP
 ggml_tensor * llm_graph_context::build_inp_pos() const {
@@ -694,7 +694,7 @@ ggml_tensor * llm_graph_context::build_inp_out_ids() const {
 }
 ```
 
-##### 解释
+#### 解释
 
 `build_inp_pos`是每个输入`token`的位置索引，用于后续进行RoPE,QWen使用的`M-RoPE`每个`token`有`4`个位置维度.
 
@@ -730,9 +730,9 @@ inp_out_ids     = [3]
 inp_out_ids形状 = I32 [1]
 ```
 
-#### build_norm
+### build_norm
 
-##### 代码
+#### 代码
 
 ```CPP
 ggml_tensor * llm_graph_context::build_norm(
@@ -771,13 +771,13 @@ ggml_tensor * llm_graph_context::build_norm(
 }
 ```
 
-##### 解释
+#### 解释
 
 构建`RMS_Norm`.
 
-#### build_layer_attn_linear
+### build_layer_attn_linear
 
-##### 源码
+#### 源码
 
 ```CPP
 
@@ -916,7 +916,7 @@ ggml_tensor * llama_model_qwen35::graph::build_layer_attn_linear(
 }
 ```
 
-##### 解释
+#### 解释
 
 `build_layer_attn_linear`实现线性注意力层，具体算法是`Gated DeltaNet`,只用维护一个固定大小的卷积状态和矩阵状态，不需要完整KV Cache.
 
@@ -1418,9 +1418,9 @@ attn_out_norm = normalized * gate
 
 进行输出投影将`final_output`投影回模型隐藏维度`[n_embd, n_seq_tokens, n_seqs]`,最后合并`sequence`和`token`维度`[n_embd, n_seq_tokens * n_seqs]`和进入时保持一致。
 
-#### build_layer_attn
+### build_layer_attn
 
-##### 源码
+#### 源码
 
 ```CPP
 
@@ -1506,7 +1506,7 @@ ggml_tensor * llama_model_qwen35::graph::build_layer_attn(
 }
 ```
 
-##### 解释
+#### 解释
 
 这个函数计算全注意力层.
 
@@ -2067,9 +2067,9 @@ cb(cur, "attn_output", il);
 
 计算`gate`激活函数，乘上输出，最后进行输出投影，`wo`的维度是`[n_head * head_dim, n_embd]`,返回`[n_embd,n_tokens]`,保证后续计算维度正确.
 
-#### build_layer_ffn
+### build_layer_ffn
 
-##### 源码
+#### 源码
 
 ```CPP
 ggml_tensor * llama_model_qwen35::graph::build_layer_ffn(ggml_tensor * cur, const int il) {
@@ -2088,7 +2088,7 @@ ggml_tensor * llama_model_qwen35::graph::build_layer_ffn(ggml_tensor * cur, cons
 }
 ```
 
-##### 分析
+#### 分析
 
 ```CPP
 ggml_tensor * llm_graph_context::build_ffn(
@@ -2333,6 +2333,53 @@ if (down) {
 先计算$W_{up}x$，再计算$W_{gate}x$.
 
 `ggml_swiglu_split`是一个融合算子，它计算$\operatorname{SiLU}(cur)\odot tmp$
+
+### build_moe_ffn
+
+```CPP
+build_moe_ffn(
+         ggml_tensor * cur,
+         ggml_tensor * gate_inp,
+         ggml_tensor * up_exps,
+         ggml_tensor * gate_exps,
+         ggml_tensor * down_exps,
+         ggml_tensor * exp_probs_b,
+             int64_t   n_expert,
+             int64_t   n_expert_used,
+     llm_ffn_op_type   type_op,
+                bool   norm_w,
+               float   w_scale,
+         llama_expert_gating_func_type gating_op,
+                 int   il,
+         ggml_tensor * probs_in,
+         ggml_tensor * gate_up_exps,
+         ggml_tensor * up_exps_s,
+         ggml_tensor * gate_exps_s,
+         ggml_tensor * down_exps_s,
+         ggml_tensor * selected_experts_in)
+```
+
+这是`MoE`的FFN架构
+
+先计算要路由的专家
+
+$$
+z = W_rx \\
+p = \operatorname{softmax}(z) \\
+\mathcal{K}(x) = \operatorname{argtop-K}(p) \\
+\bar{w}_k = \frac{p_k}{\sum_{j\in \mathcal{K}}p_j}
+$$
+
+再对每个路由的专家和共享专家计算FFN并相加
+
+$$
+E_k(x) = W_{down}^{(k)}(\operatorname{SiLU}(W_{gate}^{(k)}x)\odot W_{up}^{(k)}x) \\
+S(x) =  W_{down}^{s}(\operatorname{SiLU}(W_{gate}^{s}x)\odot W_{up}^{s}x)) \\
+MoE(x) = \sum_{k\in \mathcal{K}}\bar{w}_kE_k(x) + \sigma(w_{sg}x)S(x)
+$$
+
+* `cur:[n_embd, n_tokens]`输入
+* `gate_inp:[n_embd, n_expert]`路由器
 
 ## 视频解码器
 
