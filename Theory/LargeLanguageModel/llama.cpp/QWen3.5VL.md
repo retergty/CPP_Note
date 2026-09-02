@@ -2378,8 +2378,23 @@ S(x) =  W_{down}^{s}(\operatorname{SiLU}(W_{gate}^{s}x)\odot W_{up}^{s}x)) \\
 MoE(x) = \sum_{k\in \mathcal{K}}\bar{w}_kE_k(x) + \sigma(w_{sg}x)S(x)
 $$
 
-* `cur:[n_embd, n_tokens]`输入
-* `gate_inp:[n_embd, n_expert]`路由器
+* `cur: [n_embd, n_tokens]`输入
+* `gate_inp: [n_embd, n_expert]`路由器
+* `up_exps: [n_embd, n_ff, n_expert]`专家权重$W_{up}$
+* `gate_exps: [n_embd, n_ff, n_expert]`专家权重$W_{gate}$
+* `down_exps: [n_ff, n_embd, n_expert]`专家权重$W_{down}$
+* `exp_probs_b: [n_expert]`选专家用的`bias`
+* `n_expert`专家总数
+* `n_expert_used`使用的专家数，`top-k`的$K$参数
+* `type_op`专家内部激活,使用SwiGLU.
+* `norm_w`为`true`时`top-k`的$p_k`再除以和.
+* `w_scale`归一化的`scale`
+* `gating_op`从`logit`到概率的operator，使用Softmax.
+* `il`层号
+* `probs_in`外部已经算好的`logits`，传`nullptr`.
+* `gate_up_exps: [n_embd, 2, n_ff, n_expert]`如果不为`nullptr`,将$W_{gate}$和$W_{up}$拼在一起的，可以一次`mat_mul`得出.
+* `up_exps_s`,`gate_exps_s`,`down_exps_s`,`[n_expert]`各个专家的全局scale.
+* `selected_experts_in: [K, n_tokens]`选择的专家，是`nullptr`
 
 ## 视频解码器
 
