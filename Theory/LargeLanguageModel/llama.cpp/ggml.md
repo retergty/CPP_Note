@@ -1875,7 +1875,7 @@ static inline void simd_gemm_ukernel(
 这是GEMM微核，计算
 
 $$
-C_{R_M \times (R_M \cdot K_N)} \gets C_{R_M \times (R_M \cdot K_N)} + A_{R_M \times K}B_{K \times (R_M \cdot K_N)}
+C_{R_M \times (R_N \cdot K_N)} \gets C_{R_M \times (R_N \cdot K_N)} + A_{R_M \times K}B_{K \times (R_N \cdot K_N)}
 $$
 
 但是$C$,$A$,$B$都是子块,所以计算跨行步长时，需要使用`K`和`N`.
