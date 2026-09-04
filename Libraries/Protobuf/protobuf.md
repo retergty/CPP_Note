@@ -32,7 +32,7 @@ message SearchRequest {
 
 `syntax`指明语法格式.
 
-每个字段都有一个独有的数字用于序列化标识.
+每个字段都有一个独有的数字用于序列化标识.比如`repeated int32 page_number`的序列号是`2`,`protobuf`中不存储名字，而是存储序列号。
 
 `optional`修饰符表示这是可选字段,如果没有设置，不会被序列化.
 
