@@ -535,11 +535,37 @@ cg::grid_group grid = cg::this_grid();
 grid.sync();
 ```
 
-## 设备端内置变量
+## 核函数编写
 
 参考文档
 
 * [Built-in Variables](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#built-in-variables)
+* [cuda 笔记 · 线程模型](./cuda_note.md#线程模型)
+
+核函数是 `__global__` 函数：主机 `<<<>>>` 启动，设备上每个线程执行同一份函数体，靠内置索引区分自己该处理哪份数据。启动配置见上一节；同步、原子、shared 见后文各节。
+
+### 声明
+
+```CPP
+__global__ void saxpy(int n, float a, const float* x, float* y);
+```
+
+  * 必须 `__global__`，必须返回 `void`
+  * 参数按值传递；指针必须指向设备可访问的存储（`cudaMalloc` / managed），不能是 `malloc` 的主机指针
+  * 参数总量有上限（当代工具链通常为数 KB 到 32KB 量级），大数组放设备缓冲里传指针
+  * 只能调用 `__device__` / `__global__`（动态并行），不能调用普通 `__host__` 函数
+  * 函数体里可用 `threadIdx` 等内置变量，主机函数里没有这些变量
+
+```CPP
+__device__ float fma_dev(float a, float b, float c) { return a * b + c; }
+
+__global__ void saxpy(int n, float a, const float* x, float* y) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] = fma_dev(a, x[i], y[i]);
+}
+```
+
+### 内置索引
 
 kernel 里只读、由硬件填好：
 
@@ -557,7 +583,105 @@ kernel 里只读、由硬件填好：
 int i = blockIdx.x * blockDim.x + threadIdx.x;
 ```
 
-`threadIdx` 的排列是 `x` 最先变，然后 `y`，然后 `z`。warp 按这个线性顺序切。
+二维（图像 / 矩阵，`x` 走列、`y` 走行）：
+
+```CPP
+int col = blockIdx.x * blockDim.x + threadIdx.x;
+int row = blockIdx.y * blockDim.y + threadIdx.y;
+```
+
+三维：
+
+```CPP
+int x = blockIdx.x * blockDim.x + threadIdx.x;
+int y = blockIdx.y * blockDim.y + threadIdx.y;
+int z = blockIdx.z * blockDim.z + threadIdx.z;
+```
+
+block 内三维压成线性 tid（shared memory 下标常用）：
+
+```CPP
+int tid = threadIdx.z * blockDim.x * blockDim.y
+        + threadIdx.y * blockDim.x
+        + threadIdx.x;
+```
+
+`threadIdx` 的排列是 `x` 最先变，然后 `y`，然后 `z`。warp 按这个线性顺序切：tid `0..31` 是 warp 0。要 coalesced 访问，让相邻 `threadIdx.x` 读相邻地址。
+
+### 越界
+
+`grid * block` 往往大于 `n`，多出来的线程必须自己挡住：
+
+```CPP
+__global__ void add_one(float* x, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) x[i] += 1.f;
+}
+```
+
+主机侧常用：
+
+```CPP
+add_one<<<(n + 255) / 256, 256>>>(d, n);
+```
+
+  `(n + 255) / 256` 是向上取整的 block 数，保证线程总数 `>= n`。最后几个 block 仍可能有 `i >= n` 的线程，所以 `if (i < n)` 不能省。
+
+block 大小常用 `128` / `256` / `512`，且为 `32` 的倍数。每 block 最多 `1024` 线程。
+
+### grid-stride
+
+元素数可能远大于一次能启动的线程数，或希望 grid 只铺满卡、每线程走多个元素：
+
+```CPP
+__global__ void saxpy(int n, float a, const float* x, float* y) {
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < n;
+         i += gridDim.x * blockDim.x) {
+        y[i] = a * x[i] + y[i];
+    }
+}
+```
+
+  步长 `gridDim.x * blockDim.x` 是本次启动的线程总数。每个线程处理一组等间隔元素，越界仍用 `i < n` 挡住。这是最常见的 1D 映射。
+
+二维同类写法：
+
+```CPP
+int stride_x = gridDim.x * blockDim.x;
+int stride_y = gridDim.y * blockDim.y;
+for (int row = blockIdx.y * blockDim.y + threadIdx.y; row < H; row += stride_y)
+    for (int col = blockIdx.x * blockDim.x + threadIdx.x; col < W; col += stride_x)
+        out[row * W + col] = ...;
+```
+
+铺满卡的 grid 可配合 [Occupancy 查询](#occupancy-查询)：
+
+```CPP
+int blocks_per_sm = 0;
+cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocks_per_sm, saxpy, 256, 0);
+int grid = blocks_per_sm * prop.multiProcessorCount;
+saxpy<<<grid, 256>>>(n, a, d_x, d_y);
+```
+
+### 核函数里能做什么
+
+可以：
+
+* 读写设备指针、`__shared__` / `__constant__` / 寄存器
+* 调用 `__device__`、设备数学库（`sinf`、`sqrtf` 等）、原子、warp 原语
+* `printf`（输出经驱动缓冲，主机同步后才完整看到）
+* `assert`（失败表现为异步设备错误，同步后才能在主机上看到）
+
+不要：
+
+* 解引用主机 `malloc` 指针
+* 调用普通主机函数 / 大部分 C++ 标准库
+* 在分歧路径里只有部分线程执行 `__syncthreads()`（死锁）
+* 假设 `blockIdx.x == 0` 先于 `blockIdx.x == 1` 执行
+* 用 kernel 返回值把结果传回主机（必须 `void`，结果写设备内存再 `cudaMemcpy`）
+
+同 block 协作（tiling、归约）用 `__shared__` + `__syncthreads()`；跨 block 默认不同步，写 global 后结束本次 kernel 再 launch，或用原子 / cooperative grid sync。见 [设备端同步](#设备端同步)、[原子](#原子)。
 
 ## 设备端同步
 
