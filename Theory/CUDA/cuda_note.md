@@ -83,7 +83,7 @@ int y = blockIdx.y * blockDim.y + threadIdx.y;
 int z = blockIdx.z * blockDim.z + threadIdx.z;
 ```
 
-block 内部把三维坐标压成线性 tid（shared memory 下标常用）：
+block 内部把三维坐标压成线性 `tid`（shared memory 下标常用）：
 
 ```cuda
 int tid = threadIdx.z * blockDim.x * blockDim.y
@@ -92,6 +92,28 @@ int tid = threadIdx.z * blockDim.x * blockDim.y
 ```
 
 `threadIdx` 的排列是 `x` 最先变，然后 `y`，然后 `z`。warp 按这个线性顺序切：tid `0..31` 是 warp 0，`32..63` 是 warp 1。要 coalesced 访问，让相邻 `threadIdx.x` 读相邻地址。
+
+同样先把三维 `blockIdx` 压成线性 `bid`，再与 `tid` 组合，即可给本次启动的每个线程一个唯一的线性 `global_tid`：
+
+```cuda
+size_t bid = static_cast<size_t>(blockIdx.z) * gridDim.x * gridDim.y
+           + static_cast<size_t>(blockIdx.y) * gridDim.x
+           + blockIdx.x;
+
+size_t threads_per_block =
+    static_cast<size_t>(blockDim.x) * blockDim.y * blockDim.z;
+
+size_t global_tid = bid * threads_per_block + tid;
+```
+
+若访问逻辑尺寸为 `width × height × depth` 的数组，应使用真实数据尺寸计算下标并检查边界：
+
+```cuda
+if (x < width && y < height && z < depth) {
+    size_t index = (static_cast<size_t>(z) * height + y) * width + x;
+    out[index] = /* ... */;
+}
+```
 
 ### grid-stride
 
@@ -109,14 +131,17 @@ __global__ void saxpy(int n, float a, const float* x, float* y) {
 
 步长`gridDim.x * blockDim.x`是整次启动的线程总数。每个线程处理一组等间隔元素，越界用 `i < n` 挡住。这是 CUDA 里最常见的 1D 映射。
 
-2D 同类写法：
+3D 同类写法：
 
 ```cuda
 int stride_x = gridDim.x * blockDim.x;
 int stride_y = gridDim.y * blockDim.y;
-for (int row = blockIdx.y * blockDim.y + threadIdx.y; row < H; row += stride_y)
-    for (int col = blockIdx.x * blockDim.x + threadIdx.x; col < W; col += stride_x)
-        out[row * W + col] = ...;
+int stride_z = gridDim.z * blockDim.z;
+
+for (int z = blockIdx.z * blockDim.z + threadIdx.z; z < D; z += stride_z)
+    for (int y = blockIdx.y * blockDim.y + threadIdx.y; y < H; y += stride_y)
+        for (int x = blockIdx.x * blockDim.x + threadIdx.x; x < W; x += stride_x)
+            out[(z * H + y) * W + x] = ...;
 ```
 
 ### Block 与 SM
@@ -178,7 +203,7 @@ SM 划分为若干处理子分区，每个子分区有独立的 warp scheduler�
 
 因此 4 个 scheduler 意味着一个 SM 每个时钟周期最多向 4 个 warp 各发射一条指令；其余驻留 warp 在该周期不发射。
 
-`ld.global` 的延迟通常为数百个时钟周期。warp 发射该指令后暂时离开 eligible 集合，scheduler 改为向其他已驻留且 eligible 的 warp 发射；数据返回后，原 warp 重新进入 eligible 集合。这是延迟隐藏（latency hiding）：用足够多的驻留 warp，使部分 warp 等待访存时仍可能存在可发射的 warp。若驻留过少，可能出现所有 warp 均非 eligible、该周期无指令可发射。
+warp 发射该指令后暂时离开 eligible 集合，scheduler 改为向其他已驻留且 eligible 的 warp 发射；数据返回后，原 warp 重新进入 eligible 集合。这是延迟隐藏（latency hiding）：用足够多的驻留 warp，使部分 warp 等待访存时仍可能存在可发射的 warp。若驻留过少，可能出现所有 warp 均非 eligible、该周期无指令可发射。
 
 | 状态 | 是否驻留 | 是否 eligible |
 |------|----------|----------------|
@@ -361,15 +386,58 @@ extern __shared__ float smem[];         // 动态，大小来自 launch 第 3 �
 
 同一 block 里，thread A 写入 shared，thread B 要读，必须 `__syncthreads()`。没有这条，即使「感觉上 A 应该先执行」也不成立。`__syncthreads()` 必须 **所有线程都执行到**（或按文档在同一条件路径上），否则死锁。分歧路径里一边 sync、一边不 sync 是经典错误。
 
-硬件把 shared memory 划成若干 **bank**（常见 32 个，按 32-bit 字交错）。同一周期、同一 warp 里：
+#### Bank conflict
 
-* 各 lane 打不同 bank：并行
-* 多 lane 打同一 bank 的**不同地址**：**bank conflict**，访问被串行化
-* 多 lane 读**同一地址**：broadcast，不冲突
+硬件把 shared memory 划成若干独立的 **bank**，使一个 warp 的多个线程可以并行访问。现代 GPU 通常有 32 个 bank，相邻 32-bit 字映射到相邻 bank，超过 bank 31 后循环回 bank 0。在这个常见配置下：
 
-tiling 时常把二维 tile 做成 `[32][33]`，加一列 padding，让 `tile[threadIdx.x][i]` 这类步长 32 的访问错开 bank。
+```text
+bank = (byte_address / 4) % 32
+```
 
-有的架构上 L1 与 shared 共享同一块片上容量，可配置划分；对正确性仍按「shared 是程序员同步的片上缓冲」来用。
+例如
+
+```text
+smem[0]   → bank 0
+smem[1]   → bank 1
+...
+smem[31]  → bank 31
+smem[32]  → bank 0
+```
+
+bank conflict 只在**同一个 warp 的同一条 shared memory 指令**中判断：
+
+* 各 lane 访问不同 bank：一次并行完成
+* 多个 lane 访问同一 bank 的不同地址：请求被拆成多次，形成 bank conflict
+* 多个 lane 读取同一地址：由 broadcast 完成，不冲突
+* 不同 warp 之间不合并成一次 bank conflict；它们由 warp 调度器分别发射
+
+若 lane `i` 访问 `base[i * stride]`，且元素是 32-bit，则可用 `gcd(stride, 32)` 快速判断冲突程度（`stride != 0` 且各 lane 地址不同）：
+
+* `stride = 1`：连续访问 32 个 bank，无冲突
+* `stride = 2`：只命中 16 个 bank，2-way conflict
+* `stride = 4`：只命中 8 个 bank，4-way conflict
+* `stride = 32`：全部命中同一个 bank，32-way conflict
+* `stride = 33`：`33 % 32 == 1`，重新均匀分布，无冲突
+
+对 64-bit 数据、向量类型或跨多个 32-bit 字的访问，应按一条指令实际覆盖的 32-bit 字和目标架构分析，不能直接套用上面的元素步长。
+
+矩阵转置是最典型的例子：
+
+```cuda
+__shared__ float tile[32][32];
+
+tile[threadIdx.y][threadIdx.x] = in[...];  // 按行写，通常无冲突
+__syncthreads();
+float v = tile[threadIdx.x][threadIdx.y];  // 按列读，步长为 32
+```
+
+假设 `blockDim.x == 32`，warp 内相邻 lane 对应相邻的 `threadIdx.x`。`float tile[32][32]` 的每行占 32 个 32-bit 字，因此这个 warp 按列读时，各 lane 的地址相差 32 个字，全部落到同一 bank。给每行增加一个 padding 元素即可改变行步长：
+
+```cuda
+__shared__ float tile[32][33];
+```
+
+此时按列访问的步长是 33，相邻 lane 会落到不同 bank。padding 会略微增加 shared memory 用量，可能影响 occupancy，因此仍应比较修改前后的 kernel 时间。
 
 ### Global memory
 
