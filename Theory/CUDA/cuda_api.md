@@ -40,9 +40,11 @@ struct uint3 { unsigned int x, y, z; };
 ```CPP
 typedef struct CUstream_st* cudaStream_t;
 typedef struct CUevent_st*  cudaEvent_t;
+typedef struct CUgraph_st*   cudaGraph_t;
+typedef struct CUgraphExec_st* cudaGraphExec_t;
 ```
 
-  Stream 与 Event 的不透明句柄。`0` / `cudaStreamDefault` 表示默认 stream。
+  Stream、Event 与 CUDA Graph 的不透明句柄。`cudaGraph_t` 是可修改的图定义，`cudaGraphExec_t` 是实例化后可反复启动的可执行图。`0` / `cudaStreamDefault` 表示默认 stream。
 
 ```CPP
 enum cudaMemcpyKind {
@@ -494,6 +496,105 @@ cudaEventElapsedTime(&ms, start, stop);
 
 有数据依赖的两项必须排在同一 stream，或用 event 显式等待；排进两条 stream 且不加 event，是数据竞争。
 
+## CUDA Graph
+
+参考文档
+
+* [Graph Management](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__GRAPH.html)
+* [Stream Capture](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__STREAM.html)
+
+CUDA Graph 把 kernel、拷贝等操作以及它们的依赖记录成 DAG，再实例化为可反复提交的 `cudaGraphExec_t`。适合训练 step、推理或迭代算法这类**操作序列基本固定且重复很多次**的场景，主要减少 CPU 逐项 launch 和驱动调度开销；不会让单个 kernel 本身更快。
+
+最简单的构图方式是捕获一条 stream 上的操作：
+
+```CPP
+__host__ cudaError_t cudaStreamBeginCapture(cudaStream_t stream,
+                                            cudaStreamCaptureMode mode)
+__host__ cudaError_t cudaStreamEndCapture(cudaStream_t stream,
+                                          cudaGraph_t* pGraph)
+```
+
+`cudaStreamBeginCapture` 之后入队到捕获域中的操作暂不执行，而是成为图节点；必须在发起捕获的同一条 stream 上调用 `cudaStreamEndCapture`。捕获不能从 legacy 默认 stream 开始，通常使用显式创建的 `cudaStreamNonBlocking` stream。
+
+常见捕获模式：
+
+* `cudaStreamCaptureModeGlobal`：限制最严格，捕获期间会检查其它线程中的潜在不安全 CUDA 调用
+* `cudaStreamCaptureModeThreadLocal`：只对发起捕获的主机线程做上述限制
+* `cudaStreamCaptureModeRelaxed`：限制最少，由调用方保证捕获期间没有破坏依赖的操作
+
+```CPP
+__host__ cudaError_t cudaGraphInstantiate(cudaGraphExec_t* pGraphExec,
+                                          cudaGraph_t graph,
+                                          unsigned long long flags = 0)
+```
+
+把图定义检查并实例化为可执行图。实例化可能有明显开销，应在循环外完成。`flags` 没有特殊需求时传 `0`。
+
+```CPP
+__host__ __device__ cudaError_t cudaGraphLaunch(cudaGraphExec_t graphExec,
+                                                cudaStream_t stream)
+```
+
+把整张可执行图异步提交到 `stream`。调用返回只表示已入队；主机要等结果仍需 `cudaStreamSynchronize`、Event 或其它同步手段。
+
+```CPP
+__host__ cudaError_t cudaGraphUpload(cudaGraphExec_t graphExec,
+                                     cudaStream_t stream)
+```
+
+提前把执行图所需资源上传到设备，避免第一次 `cudaGraphLaunch` 才做准备。上传与随后在同一 stream 中的 launch 有序；普通场景可以不显式调用。
+
+完整的 stream capture 调用序，其中 `h_x` / `h_y` 是 `cudaMallocHost` 等方式得到的 pinned 主机内存：
+
+```CPP
+cudaStream_t s;
+cudaGraph_t graph;
+cudaGraphExec_t graph_exec;
+
+cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+
+cudaStreamBeginCapture(s, cudaStreamCaptureModeGlobal);
+cudaMemcpyAsync(d_x, h_x, bytes, cudaMemcpyHostToDevice, s);
+kernel<<<grid, block, 0, s>>>(d_x, d_y, n);
+cudaMemcpyAsync(h_y, d_y, bytes, cudaMemcpyDeviceToHost, s);
+cudaStreamEndCapture(s, &graph);
+
+cudaGraphInstantiate(&graph_exec, graph, 0);
+
+for (int iter = 0; iter < iterations; ++iter)
+    cudaGraphLaunch(graph_exec, s);
+
+cudaStreamSynchronize(s);
+```
+
+捕获期间不要调用 `cudaDeviceSynchronize`、`cudaStreamSynchronize` 或会引入隐式同步的同步 API。图会保存 kernel 参数值和指针地址；重复 launch 前必须保证对应内存仍然有效。需要改变参数或图定义时，可以重新捕获，或更新已有执行图：
+
+```CPP
+__host__ cudaError_t cudaGraphExecUpdate(
+    cudaGraphExec_t graphExec,
+    cudaGraph_t graph,
+    cudaGraphExecUpdateResultInfo* resultInfo)
+```
+
+当新图与原执行图的拓扑和节点类型兼容时原地更新；不兼容时应重新 `cudaGraphInstantiate`。`resultInfo` 返回更新结果及失败位置。
+
+不用后按依赖关系释放句柄：
+
+```CPP
+__host__ cudaError_t cudaGraphExecDestroy(cudaGraphExec_t graphExec)
+__host__ cudaError_t cudaGraphDestroy(cudaGraph_t graph)
+```
+
+```CPP
+cudaGraphExecDestroy(graph_exec);
+cudaGraphDestroy(graph);
+cudaStreamDestroy(s);
+```
+
+实例化完成后，`graphExec` 不依赖原 `graph` 的生命周期，因此也可以更早销毁 `graph`。同一个 Graph 对象不保证多主机线程并发访问安全，需要由调用方串行化。
+
+除了 stream capture，也可以用 `cudaGraphCreate`、`cudaGraphAddKernelNode`、`cudaGraphAddMemcpyNode`、`cudaGraphAddDependencies` 显式构造复杂 DAG；日常固定流水线优先用 capture，代码更短且不需要手工填写节点参数结构体。
+
 ## Kernel 启动
 
 参考文档
@@ -769,25 +870,50 @@ int __popc(unsigned int x)
 
 * [Memory Fence Functions](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#memory-fence-functions)
 
-这些只约束**当前线程自己的写何时对别人可见**，不召唤其他线程，也不能当 barrier 用。
+内存栅栏约束当前线程栅栏前后的内存访问顺序及作用范围，不召唤其他线程，也不能当 barrier 用。只有与原子操作等同步机制配合建立 happens-before，另一个线程才能据此安全读取普通内存。
 
 ```CPP
 void __threadfence_block()
 ```
 
-  本线程对 shared / global 的写，对同 block 可见。
+  block 作用域的顺序一致栅栏。等价于：
+
+```CPP
+cuda::atomic_thread_fence(cuda::memory_order_seq_cst,
+                          cuda::thread_scope_block);
+```
 
 ```CPP
 void __threadfence()
 ```
 
-  本线程对 global 的写，对设备上其他线程可见（实现上到达 L2）。
+  device 作用域的顺序一致栅栏。等价于：
+
+```CPP
+cuda::atomic_thread_fence(cuda::memory_order_seq_cst,
+                          cuda::thread_scope_device);
+```
 
 ```CPP
 void __threadfence_system()
 ```
 
-  再扩展到主机、peer 设备。
+  system 作用域的顺序一致栅栏，范围扩展到主机和 peer 设备。等价于：
+
+```CPP
+cuda::atomic_thread_fence(cuda::memory_order_seq_cst,
+                          cuda::thread_scope_system);
+```
+
+使用 `<cuda/atomic>` 可以分别选择内存序和作用域：
+
+* `cuda::memory_order_relaxed`：只保证原子性，不为周围的普通内存访问建立顺序
+* `cuda::memory_order_acquire`：该操作之后的访问不能移动到它之前，常用于读取已发布的数据
+* `cuda::memory_order_release`：该操作之前的访问不能移动到它之后，常用于发布数据
+* `cuda::memory_order_acq_rel`：同时具有 acquire 和 release 语义
+* `cuda::memory_order_seq_cst`：最强的顺序一致语义
+
+`cuda::thread_scope_block`、`cuda::thread_scope_device`、`cuda::thread_scope_system` 分别限定保证覆盖同 block、同设备和整个系统。作用域应取能够覆盖通信双方的最小范围，范围越大通常同步代价越高。
 
 典型错误：block 0 写 global，然后 `__threadfence()`，以为 block 1 一定已经能读。fence 不保证对方已经执行到读之前，也不保证对方已经启动。跨 block 通信还要原子标志或拆成两个 kernel。
 
@@ -797,13 +923,13 @@ void __threadfence_system()
 
 * [Atomic Functions](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions)
 
-保证对该地址的读改写不被拆开。原子**不等于**「所有线程都执行到这里」，也不替代 `__syncthreads()`。默认设备作用域；计算能力足够时还有 `_block` / `_system` 变体。
+保证对该地址的读改写不被拆开。原子**不等于**「所有线程都执行到这里」，也不替代 `__syncthreads()`。传统 `atomicAdd`、`atomicCAS` 等接口默认是 device 作用域、relaxed 内存序；后缀 `_block` / `_system` 分别改变为 block / system 作用域。
 
 ```CPP
 T atomicAdd(T* address, T val)
 ```
 
-  `*address += val`，返回旧值。`T` 常见 `int`、`unsigned`、`unsigned long long`、`float`；`double` 需要 CC 6.0+。
+  `*address += val`，返回旧值。`T` 常见 `int`、`unsigned`、`unsigned long long`、`float`、`double`。
 
 ```CPP
 T atomicSub(T* address, T val)
@@ -817,7 +943,7 @@ T atomicOr(T* address, T val)
 T atomicXor(T* address, T val)
 ```
 
-  * `atomicExch`：交换，返回旧值，常用来发布标志
+  * `atomicExch`：交换并返回旧值；传统接口本身是 relaxed 内存序
   * `atomicInc`：`(*address >= val) ? 0 : (*address + 1)`，无符号
   * `atomicDec`：`((*address == 0) || (*address > val)) ? val : (*address - 1)`，无符号
 
@@ -835,17 +961,23 @@ do {
 } while (assumed != old);
 ```
 
-需要「先写数据、再发布标志」时：
+需要「先写数据、再发布标志」时，优先用 `cuda::atomic` / `cuda::atomic_ref` 直接表达 acquire-release 关系：
 
 ```CPP
+#include <cuda/atomic>
+
+cuda::atomic_ref<int, cuda::thread_scope_device> ready(*flag);
+
+// 生产者
 data[i] = v;
-__threadfence();
-atomicExch(flag, 1);
+ready.store(1, cuda::memory_order_release);
+
+// 消费者
+if (ready.load(cuda::memory_order_acquire) == 1)
+    use(data[i]);
 ```
 
-读侧原子观察到标志后再读数据。无 fence、只靠普通 store 再普通 load 一个 `int flag`，可能看到「flag 已置位、data 仍是旧值」。
-
-Pascal 以后也可以用 `cuda::atomic` / `cuda::std::atomic` 的 `memory_order_acquire` / `release`，语义接近主机侧 C++。
+当 acquire load 读到 release store 写入的值时，生产者在 release 之前对 `data[i]` 的写 happens-before 消费者之后的读取。`flag` 必须是原子对象或通过满足对齐要求的 `atomic_ref` 访问；普通 store/load 即使夹着 fence，也不能替代原子同步。
 
 ## 设备端内存限定符
 
