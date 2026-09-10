@@ -808,6 +808,85 @@ void __syncwarp(unsigned mask = 0xffffffff)
 
   warp 内屏障：`mask` 里的 lane 都执行到这里，此前这些 lane 对 shared / global 的写对彼此可见，PC 重新对齐。`mask` 必须和实际活跃 lane 一致，否则未定义。Volta / Turing 及以后应显式使用带 mask 的 warp 原语。
 
+## Named barrier 与 `cuda::barrier`
+
+参考文档
+
+* [PTX: bar / barrier](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-bar)
+* [Asynchronous Barriers](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-barriers.html)
+* [libcu++ cuda::barrier](https://nvidia.github.io/cccl/libcudacxx/extended_api/synchronization_primitives/barrier.html)
+
+C++ 对象在 shared memory 里。必须先由一个线程初始化，再用 `__syncthreads()`（或等价的全员同步）做启动同步，之后才能参加。
+
+```CPP
+#include <cuda/barrier>
+
+__shared__ cuda::barrier<cuda::thread_scope_block> bar;
+
+if (threadIdx.x == 0)
+    init(&bar, expected_arrivals);
+__syncthreads();
+```
+
+`expected_arrivals` 是本阶段期望的 `arrive` 次数，不是 `blockDim` 的默认值。
+
+```CPP
+cuda::barrier<cuda::thread_scope_block>::arrival_token
+    token = bar.arrive();
+bar.wait(cuda::std::move(token));
+bar.arrive_and_wait();
+bar.arrive_and_drop();
+```
+
+  `arrive` 不阻塞，返回当前 phase 的 token。`wait` 等到该 phase 完成（倒数到 0 并复位）。`arrive_and_wait` 合并两步。`arrive_and_drop` 完成本阶段义务，并降低后续 phase 的期望人数，供提前退出的线程使用。token 只能用于当前或紧邻的上一 phase，否则未定义。
+
+全员到齐仍应优先 `__syncthreads()`。只约一部分 warp、或要在 arrive 和 wait 之间插入无关计算时，再用 named barrier / `cuda::barrier`。
+
+## mbarrier 与 TMA
+
+参考文档
+
+* [Asynchronous Barriers：Tracking Asynchronous Memory Operations](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-barriers.html)
+* [Asynchronous Data Copies / TMA](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-copies.html)
+* [PTX: mbarrier](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier)
+* [PTX: cp.async.bulk](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk)
+
+Hopper（CC 9.0）上的 transaction barrier（`mbarrier`）在 arrive 之外再跟踪 **事务计数**（通常是字节）。阶段完成 = 期望的 arrive 到齐 **且** 登记过的异步字节搬完。对象是 shared memory 中 8 字节对齐的硬件状态。概念见 [cuda 笔记](./cuda_note.md#mbarrier-与-tma)。
+
+```CPP
+#include <cuda/ptx>
+
+__shared__ uint64_t bar;
+
+if (threadIdx.x == 0)
+    cuda::ptx::mbarrier_init(&bar, arrival_count);
+__syncthreads();
+```
+
+```CPP
+cuda::ptx::mbarrier_arrive(&bar);
+cuda::ptx::mbarrier_expect_tx(&bar, nbytes);
+cuda::ptx::mbarrier_arrive_expect_tx(/* sem, scope, space, */ &bar, /* arrive */, nbytes);
+
+while (!cuda::ptx::mbarrier_try_wait(&bar, token)) {}
+while (!cuda::ptx::mbarrier_try_wait_parity(&bar, phase_parity)) {}
+```
+
+  `arrive` 只减到达计数。`expect_tx` 只增加本阶段要等到的字节。`arrive_expect_tx` 两步合成一次。`try_wait` 按 token 等当前 phase；`try_wait_parity` 按 phase 奇偶（0/1）等，适合「一个线程 arrive+expect_tx，其余线程只 wait」。未完成时 `try_wait*` 可能返回 false，需要重试。
+
+`cuda::barrier` 在 SM90 上可走同一硬件。高层登记事务：
+
+```CPP
+#include <cuda/barrier>
+
+cuda::device::barrier_expect_tx(
+    cuda::device::barrier_native_handle(bar), nbytes);
+auto token = cuda::device::barrier_arrive_tx(bar, /* arrive */ 1, nbytes);
+bar.wait(cuda::std::move(token));
+```
+
+TMA 把 global 上的整块（或 tensor tile）异步拷进 shared。完成时硬件对绑定的 mbarrier 做 `complete_tx`（按字节）。`cuda::memcpy_async(..., bar)` 会自动 `expect_tx` / `complete_tx`。`cuda::device::memcpy_async_tx` 与 `cuda::ptx::cp_async_bulk` 必须自己 `expect_tx`。
+
 ## Warp 原语
 
 参考文档
