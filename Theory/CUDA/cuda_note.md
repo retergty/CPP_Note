@@ -232,6 +232,54 @@ occupancy 高不等于一定快，但过低时访存等待期间可能没有其�
 * 先保证算法对（索引、sync、边界），再用 Nsight Compute 看 occupancy 是受寄存器还是 shared memory 限制
 * `blockDim` 取到 `1024` 可能导致每个 SM 只能驻留 1 个 block，`__syncthreads()` 期间该 SM 可能没有其他 eligible warp
 
+### Warp specialization
+
+同一个 block 里的不同 warp **不再执行同一套指令流**，而是按角色分工。最常见的是生产者 / 消费者：
+
+| 角色 | 谁 | 做什么 |
+|------|----|--------|
+| Producer | 少数 warp | 从 global 搬数据进 shared memory |
+| Consumer | 其余 warp | 从 shared memory 取数做计算 |
+
+它利用的是前面已经成立的事实：硬件按 warp 调度，不同 warp 可以同时停在不同的 PC 上，见 [SM 如何调度 warp](#sm-如何调度-warp)。按整个 warp 选择角色时，每个 warp 内部路径一致，**不是** [warp divergence](#warp-与-simt)。
+
+日常 tiled GEMM 通常让全部 warp 做同一件事，用 `__syncthreads()` 切开阶段：
+
+```text
+所有 warp:  load tile → __syncthreads__ → compute → __syncthreads__ → 下一 tile
+```
+
+Specialization 把流水拆开，使搬运和计算重叠：
+
+```text
+Producer:  load tile 0 → load tile 1 → load tile 2 → ...
+Consumer:  等 tile 0 就绪 → 算 → 等 tile 1 就绪 → 算 → ...
+```
+
+角色按 `warp_id` 划分，不要按 lane 的奇偶划分：
+
+```cuda
+const int warp_id = threadIdx.x / warpSize;
+
+if (warp_id == 0) {
+    // 整个 warp 0 都走这条，无 intra-warp 分歧
+    load_tile_from_global();
+} else {
+    compute_from_shared();
+}
+```
+
+`if (threadIdx.x & 1)` 那种 lane 级分支才是 divergence。
+
+`__syncthreads()` 要求 **block 内所有线程** 都执行到。Producer 和 Consumer 若只在各自的 `if` 分支里同步，另一侧永远到不了，会死锁。正确做法是：
+
+* 两侧都执行到**同一条** `__syncthreads()`（角色分支在屏障之外）；或
+* 使用只同步指定 warp 集合的机制：见 [Warp 间原语](#warp-间原语)
+
+Producer 在等访存、Consumer 在等数据就绪时都保持驻留，继续占用寄存器和 shared memory，见 [Occupancy](#occupancy)。Specialization 的收益之一是：Consumer 不必同时扛「地址计算 + 大块累加器」，Producer 也不必为 MMA 预留大量寄存器。
+
+适合kernel 同时有高延迟搬数和重计算，寄存器或 shared memory 紧张的情况.
+
 ### 同步与协作
 
 #### 单线程
@@ -302,17 +350,134 @@ int n = __popc(mask);  // 这个 warp 里有多少 lane 的 pred 为真
 
 全 warp 对同一份 `mask` 做 `__popc`，每个 lane 得到的 `n` 相同。
 
-#### `__syncthreads()`
+这些原语到不了其他 warp。跨 warp 见 [Warp 间原语](#warp-间原语)。
 
-block 内屏障：该 block **所有** 线程都到达，并且此前对本 block 可见的 shared/global 写，对块内其他线程可见。这是同 block 协作（shared tiling、block 归约）的默认手段。
+#### Warp 间原语
+
+不同 warp 看不到彼此的寄存器。`__shfl_*` / `__syncwarp` 只服务本 warp 的 32 个 lane，过不了 warp 边界。Warp 之间传的是 **shared memory 里的数据 + 一条同步协议**：「tile 就绪」是约定的人到齐（或字节到齐），不是把某个寄存器扔给另一个 warp。
+
+* [`__syncthreads()`](#__syncthreads)：整个 block 所有 warp 到齐，日常默认
+* [Named barrier / `cuda::barrier`](#named-barrier-与-cudabarrier)：只约一部分 warp，arrive 和 wait 可拆开
+* [mbarrier 与 TMA](#mbarrier-与-tma)：还可以等异步拷贝字节，供 [Warp specialization](#warp-specialization) 使用
+
+##### `__syncthreads()`
+
+block 内屏障：该 block **所有** 线程都到达，并且此前对本 block 可见的 shared/global 写，对块内其他线程可见。这是同 block 协作（shared tiling、block 归约）的默认手段，也是最粗的跨 warp 同步。
 
 ```cuda
 __syncthreads();
 ```
 
-必须所有线程都执行到（或按文档在同一条件路径上），否则死锁。分歧路径里一边 sync、一边不 sync 是经典错误。它不管其他 block，也不能拿来等 `blockIdx.x == 1`。
+必须所有线程都执行到（或按文档在同一条件路径上），否则会死锁。分歧路径里一边 sync、一边不 sync 是经典错误。
 
 调度上：已经到达的 warp 会暂时不再 eligible，但仍占着寄存器和 shared。
+
+全员到齐应优先用它，比 named barrier 便宜。只约一部分 warp、或要把「报到」和「等待」拆开，用后面两节。
+
+##### Named barrier 与 `cuda::barrier`
+
+`__syncthreads()` 是「整个 block、一条固定屏障」。Named barrier 用 **屏障编号 + 参加线程数**，只约一部分线程到齐，并保证这些线程此前对 shared 的写彼此可见。这是 [Warp specialization](#warp-specialization) 里「等 tile 就绪」的常规手段：信号不是 shuffle，而是「约定的人到齐」。
+
+PTX（Fermi 起）。每个 CTA 通常有 16 个逻辑屏障，编号 `0..15`（以当前架构文档为准）：
+
+```text
+bar.sync   id, count   // 报到，并等到 count 个线程到齐
+bar.arrive id, count   // 只报到，自己不等
+```
+
+`count` 必须和**实际会执行到这条指令的线程数**一致，一般是参加的 warp 数 × 32。Volta 及以后按线程计数，不是按「到了几个 warp」估算。参加集合或 `count` 不一致，结果未定义，常见表现是死等。
+
+```cuda
+// 只让前 64 个线程（2 个 warp）在屏障 1 上汇合
+if (threadIdx.x < 64) {
+    asm volatile("bar.sync %0, %1;" :: "r"(1), "r"(64) : "memory");
+}
+```
+
+C++ 侧用 libcu++ 的 `cuda::barrier`（`<cuda/barrier>`）。对象放在 shared memory。先由**一个**线程 `init`，再用 `__syncthreads()` 做一次启动同步，之后才能 `arrive` / `wait`：
+
+```cuda
+#include <cuda/barrier>
+
+__shared__ cuda::barrier<cuda::thread_scope_block> bar;
+
+if (threadIdx.x == 0)
+    init(&bar, /* expected arrivals */ 64);
+__syncthreads();
+
+auto token = bar.arrive();   // 不阻塞
+// 可以夹一段与这次同步无关的计算
+bar.wait(cuda::std::move(token));
+// 或：bar.arrive_and_wait();
+```
+
+`init` 的第二个参数是**本阶段期望的 `arrive` 次数**，不是「block 里有多少线程」。只让 2 个 warp 参加就写 `64`。
+
+`arrive` 与 `wait` 可拆开：报到后去干别的，需要数据时再等。倒数到 0 后屏障自动复位，进入下一 phase。某线程要提前退出协议用 `arrive_and_drop()`，否则剩下的人会按旧的期望人数空等。
+
+全员到齐仍应优先 `__syncthreads()`，更便宜。Named barrier / `cuda::barrier` 的价值是：参加者可以是子集，且 arrive 不必立刻 wait。
+
+双缓冲 producer / consumer 至少要两套屏障：
+
+```text
+ready[slot]    Consumer arrive：这块 shared 可以覆盖
+               Producer wait 后写入
+filled[slot]   Producer arrive：这块已经写完
+               Consumer wait 后读取
+```
+
+这就是 specialization 时间线里「等 tile 就绪 / 等空间空闲」的实现。每一侧都必须对这两个屏障履行 arrive 义务；`init` 的计数按**实际会调用 arrive 的线程数**设。接口摘要见 [cuda api](./cuda_api.md#named-barrier-与-cudabarrier)。
+
+##### mbarrier 与 TMA
+
+Hopper（CC 9.0）把 shared memory 里的异步屏障升级成 **transaction barrier**（`mbarrier`）：在「等人 arrive」之外，再记一笔 **事务计数**（通常是字节）。阶段完成条件变成：
+
+```text
+所有期望的 arrive 都到了，并且登记过的异步拷贝字节都搬完了
+```
+
+对象是 shared 里对齐的 8 字节硬件状态。`cuda::barrier` 在 SM90 上可以走到这条路径；也可以直接用 `uint64_t` + `cuda::ptx::mbarrier_*`。
+
+| | Named barrier / 只等人的 `cuda::barrier` | `mbarrier`（SM90+ 事务屏障） |
+|--|------------------------------------------|------------------------------|
+| 等什么 | 线程 arrive | 线程 arrive **和/或** 异步拷贝字节 |
+| 典型搭档 | 自己 `ld` / `st` shared | **TMA**（`cp.async.bulk` / `cp.async.bulk.tensor`） |
+| 架构 | Fermi 起即可用 named barrier | 事务计数是 Hopper 及以后 |
+
+**TMA**（Tensor Memory Accelerator）是 Hopper 上的拷贝引擎。一个选举出的线程发出「把这块 global 拷进 shared」，硬件在后台搬，完成后用 `mbarrier::complete_tx::bytes` 把事务计数减回去。发起线程不必自己一条条 `ld.global`。
+
+「等 tile 就绪」在这里等于：在这个 mbarrier 上 wait。
+
+```text
+init(bar, arrival_count)
+选出的线程:  发出 TMA，并把本次字节数 expect_tx 到 bar
+参加的线程:  arrive
+wait        —— 人到齐且字节到齐之后，shared 里的 tile 可读
+```
+
+高层写法：把 `cuda::memcpy_async` 绑到 `cuda::barrier` 上，由 API 自动登记和完成事务。
+
+```cuda
+#include <cuda/barrier>
+
+__shared__ alignas(16) float tile[/* ... */];
+__shared__ cuda::barrier<cuda::thread_scope_block> bar;
+
+if (threadIdx.x == 0)
+    init(&bar, blockDim.x);
+__syncthreads();
+
+if (/* 选举出的单个线程 */) {
+    cuda::memcpy_async(tile, global_ptr,
+                       cuda::aligned_size_t<16>(sizeof(tile)), bar);
+}
+
+auto token = bar.arrive();
+bar.wait(cuda::std::move(token));
+// 此后 tile 可读
+```
+
+`cuda::device::memcpy_async_tx` 和 `cuda::ptx::cp_async_bulk` **不会**自动 `expect_tx`，发出拷贝后要显式登记字节数，或使用融合的 `cuda::device::barrier_arrive_tx` / `cuda::ptx::mbarrier_arrive_expect_tx`。
 
 #### `atomic*`
 
@@ -543,6 +708,8 @@ kernel **正常结束** 后，该 kernel 对 global 的写，对同一 stream �
 | 同一线程 | 自己 | 按程序顺序，对那条依赖链成立 |
 | 同一 warp | 寄存器 | shuffle / ballot，不经内存 |
 | 同一 block | shared / global | `__syncthreads()`（屏障 + 块内 fence） |
+| 同一 block 的子集 warp | shared | named barrier / `cuda::barrier`（约定人数到齐） |
+| 同一 block（TMA 拷贝） | shared | `mbarrier` wait（人到齐 **且** 字节到齐） |
 | 不同 block | global | 本 kernel 结束；或原子 + fence 的特定协议；或 cooperative grid sync |
 | 设备 | 主机 | `cudaMemcpy` / 同 stream 后续操作 / `__threadfence_system` + 主机侧同步 |
 
@@ -596,6 +763,8 @@ PTX/CUDA 有接近 C++ 的一致性模型。`cuda::std::atomic`（libcu++）上�
 日常 kernel 不必从 seq_cst 写起：
 
 * 同 block 协作：shared + `__syncthreads()`
+* 子集 warp 或 arrive / wait 拆开：named barrier / `cuda::barrier`
+* Hopper 上 TMA 搬砖：`mbarrier` 事务屏障
 * 全卡一轮计算：写 global，结束 kernel，再 launch
 * 计数、唯一下标：`atomicAdd`
 * 真要在一个 kernel 里跨 block 发信号：原子 + fence，或 cooperative groups
@@ -720,6 +889,8 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 
 * 独立线程调度、带 mask 的 `__syncwarp` / shuffle：Volta（7.0）及以后，含 Turing 7.5。
 * 每 block 最多 1024 线程：Fermi 以后的常见上限。
+* 按 warp 分工的 [Warp specialization](#warp-specialization)：Fermi（2.0）即可写；TMA、WGMMA、warp-specialized GEMM 主循环是 Hopper（9.0）及以后的硬件组合。
+* [Warp 间原语](#warp-间原语)：[Named barrier](#named-barrier-与-cudabarrier) 从 Fermi（2.0）起可用 `bar.sync`；`cuda::barrier` 的 arrive / wait 拆开是 libcu++ API。[mbarrier 事务计数与 TMA](#mbarrier-与-tma) 是 Hopper（9.0）及以后。
 * 每 SM 最大驻留线程/warp、shared memory 容量：随架构变化，用 `prop.maxThreadsPerMultiProcessor`、`prop.sharedMemPerBlock` 等查询，不要写死。
 
 需要设备链接（`__device__` 跨翻译单元调用）时打开 relocatable device code（`nvcc -rdc=true` / `CMAKE_CUDA_SEPARABLE_COMPILATION`），并做设备链接。单文件 kernel 不必开。
