@@ -1,0 +1,11 @@
+-x
+cuda
+--cuda-path=/usr/local/cuda
+--cuda-gpu-arch=sm_75
+--cuda-host-only
+--no-cuda-version-check
+-Wno-unknown-cuda-version
+-std=c++17
+-Iinclude
+-isystem
+/usr/local/cuda/include

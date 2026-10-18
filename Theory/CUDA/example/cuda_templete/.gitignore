@@ -1,0 +1,51 @@
+# Build directories and CMake-generated files
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+CMakeUserPresets.json
+
+# Generated compilation databases and language-server caches
+compile_commands.json
+.cache/
+.clangd.cache/
+
+# C/C++ and CUDA build artifacts
+*.o
+*.obj
+*.so
+*.so.*
+*.a
+*.lib
+*.dll
+*.dylib
+*.out
+*.exe
+*.ptx
+*.cubin
+*.fatbin
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local editor state and temporary files
+.vscode/*.log
+.vscode/*.db
+.vscode/*.db-*
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local environment, credentials, and agent runtime state
+.env
+.env.*
+!.env.example
+/.aws/
+/.codex/
+/.agents/

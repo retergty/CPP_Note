@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "nvcc: build current file",
+      "type": "shell",
+      "command": "mkdir -p \"${workspaceFolder}/build\" && /usr/local/cuda/bin/nvcc -std=c++17 -arch=sm_75 -O2 -I\"${workspaceFolder}/include\" \"${file}\" -o \"${workspaceFolder}/build/${fileBasenameNoExtension}\" && python3 \"${workspaceFolder}/scripts/gen_clangd_cdb.py\"",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "CUDA_HOME": "/usr/local/cuda"
+        }
+      },
+      "problemMatcher": ["$gcc"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+      "label": "nvcc: debug current file",
+      "type": "shell",
+      "command": "mkdir -p \"${workspaceFolder}/build\" && /usr/local/cuda/bin/nvcc -std=c++17 -arch=sm_75 -g -G -O0 -I\"${workspaceFolder}/include\" \"${file}\" -o \"${workspaceFolder}/build/${fileBasenameNoExtension}\" && python3 \"${workspaceFolder}/scripts/gen_clangd_cdb.py\"",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "nvcc: run current file",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/${fileBasenameNoExtension}",
+      "dependsOn": "nvcc: build current file",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "LD_LIBRARY_PATH": "/usr/local/cuda/lib64"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "cmake: configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+      ],
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "cmake: build all",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build",
+        "-j"
+      ],
+      "dependsOn": "cmake: configure",
+      "problemMatcher": ["$gcc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

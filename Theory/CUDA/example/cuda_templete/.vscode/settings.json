@@ -1,0 +1,52 @@
+{
+  "files.associations": {
+    "*.cu": "cuda-cpp",
+    "*.cuh": "cuda-cpp"
+  },
+  "files.exclude": {
+    "build/CMakeFiles": true,
+    "build/.cmake": true
+  },
+  "clangd.path": "${env:HOME}/.local/opt/clangd/bin/clangd",
+  "clangd.enable": true,
+  "clangd.onConfigChanged": "restart",
+  "clangd.detectExtensionConflicts": true,
+  "clangd.arguments": [
+    "--background-index",
+    "--clang-tidy=false",
+    "--header-insertion=never",
+    "--completion-style=detailed",
+    "--pch-storage=memory",
+    "--compile-commands-dir=${workspaceFolder}/clangd",
+    "--query-driver=/usr/bin/clang++,/usr/bin/g++*,/usr/local/cuda/bin/nvcc"
+  ],
+  "clangd.fallbackFlags": [
+    "--cuda-path=/usr/local/cuda",
+    "--cuda-gpu-arch=sm_75",
+    "--cuda-host-only",
+    "-Wno-unknown-cuda-version",
+    "-std=c++17",
+    "-xcuda",
+    "-I${workspaceFolder}/include",
+    "-isystem",
+    "/usr/local/cuda/include"
+  ],
+  "C_Cpp.intelliSenseEngine": "Disabled",
+  "C_Cpp.autocomplete": "Disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "C_Cpp.formatting": "disabled",
+  "C_Cpp.autoAddFileAssociations": false,
+  "[cuda-cpp]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "editor.formatOnSave": false,
+    "editor.suggest.snippetsPreventQuickSuggestions": false
+  },
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureOnOpen": false,
+  "cmake.generator": "Unix Makefiles",
+  "terminal.integrated.env.linux": {
+    "CUDA_HOME": "/usr/local/cuda",
+    "PATH": "/usr/local/cuda/bin:${env:PATH}",
+    "LD_LIBRARY_PATH": "/usr/local/cuda/lib64:${env:LD_LIBRARY_PATH}"
+  }
+}

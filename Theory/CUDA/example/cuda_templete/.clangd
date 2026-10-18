@@ -1,0 +1,57 @@
+# CMake/nvcc 写入的 compile_commands 需改写成 clang 的 CUDA 前端。
+# 参考：https://github.com/NVIDIA/cccl/blob/main/.clangd
+CompileFlags:
+  Compiler: clang++
+  CompilationDatabase: clangd
+  Add:
+    - -x
+    - cuda
+    - --cuda-path=/usr/local/cuda
+    - --cuda-gpu-arch=sm_75
+    - --cuda-host-only
+    - --no-cuda-version-check
+    - -Wno-unknown-cuda-version
+    - -Wno-unknown-warning-option
+    - -isystem
+    - /usr/local/cuda/include
+    - -I
+    - include
+    - -std=c++17
+    - -Xclang=-fcuda-allow-variadic-functions
+  Remove:
+    - -forward-unknown-to-host-compiler
+    - --generate-code*
+    - --compiler-options*
+    - --compiler-bindir*
+    - --expt-*
+    - --extended-lambda
+    - --relocatable-device-code*
+    - -Xcompiler*
+    - -Xcudafe*
+    - -Xfatbin*
+    - -ccbin*
+    - -dc
+    - -dlink
+    - -rdc=*
+    - -gencode*
+    - --
+---
+If:
+  PathExclude: build/.*
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - unknown-cuda-version
+  ClangTidy:
+    Remove: "*"
+Index:
+  Background: Build
+  StandardLibrary: Yes
+Completion:
+  AllScopes: Yes
+Hover:
+  ShowAKA: Yes
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
