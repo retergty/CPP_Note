@@ -1,0 +1,66 @@
+name: px4-${ENV_NAME:?Select an env file}
+services:
+  px4:
+    image: px4-${ENV_NAME}:ubuntu24-jazzy
+    build:
+      context: .
+      network: host
+      args:
+        PX4_SOURCE_REL: ${WORKSPACE_DIR:?Set WORKSPACE_DIR}/${SOURCE_FOLDER:?Set SOURCE_FOLDER}
+        DEV_UID: ${DEV_UID:?Run scripts/prepare.sh first}
+        DEV_GID: ${DEV_GID:?Run scripts/prepare.sh first}
+        HTTP_PROXY: ${PROXY_URL:-http://127.0.0.1:7897}
+        HTTPS_PROXY: ${PROXY_URL:-http://127.0.0.1:7897}
+        http_proxy: ${PROXY_URL:-http://127.0.0.1:7897}
+        https_proxy: ${PROXY_URL:-http://127.0.0.1:7897}
+        NO_PROXY: localhost,127.0.0.1,::1
+      dockerfile: Dockerfile
+    network_mode: host
+    runtime: nvidia
+    init: true
+    shm_size: 2gb
+    working_dir: /workspaces
+    environment:
+      DISPLAY: ${HOST_DISPLAY:?Run scripts/prepare.sh first}
+      XAUTHORITY: /home/dev/.Xauthority
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: graphics,display,utility,compute
+      QT_X11_NO_MITSHM: '1'
+      QT_QPA_PLATFORM: xcb
+      HTTP_PROXY: ${PROXY_URL:-http://127.0.0.1:7897}
+      HTTPS_PROXY: ${PROXY_URL:-http://127.0.0.1:7897}
+      http_proxy: ${PROXY_URL:-http://127.0.0.1:7897}
+      https_proxy: ${PROXY_URL:-http://127.0.0.1:7897}
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
+      CCACHE_DIR: /home/dev/.cache/ccache
+      PX4_SOURCE_DIR: /workspaces/${SOURCE_FOLDER}
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:?Set ROS_DOMAIN_ID}
+      ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+    volumes:
+    - type: bind
+      source: ${WORKSPACE_DIR}
+      target: /workspaces
+    - type: bind
+      source: ./shared
+      target: /shared
+    - type: bind
+      source: ./scripts
+      target: /opt/px4-dev-scripts
+      read_only: true
+    - type: bind
+      source: /tmp/.X11-unix
+      target: /tmp/.X11-unix
+      read_only: true
+    - type: bind
+      source: ./state/Xauthority
+      target: /home/dev/.Xauthority
+      read_only: true
+    - ${WORKSPACE_DIR}/container-state/codex:/home/dev/.codex
+    - ${WORKSPACE_DIR}/container-state/cc-switch:/home/dev/.cc-switch
+    - ${WORKSPACE_DIR}/container-state/cache:/home/dev/.cache
+    - ${WORKSPACE_DIR}/container-state/gz:/home/dev/.gz
+    - ${WORKSPACE_DIR}/container-state/vscode-server:/home/dev/.vscode-server
+    command:
+    - sleep
+    - infinity

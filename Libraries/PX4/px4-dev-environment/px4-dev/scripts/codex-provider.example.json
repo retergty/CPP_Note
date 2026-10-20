@@ -1,0 +1,6 @@
+{
+  "auth": {
+    "OPENAI_API_KEY": "填写你的API密钥"
+  },
+  "config": "model_provider = \"my_api\"\nmodel = \"填写模型名\"\n\n[model_providers.my_api]\nname = \"MyGPT\"\nbase_url = \"https://你的API地址/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n"
+}

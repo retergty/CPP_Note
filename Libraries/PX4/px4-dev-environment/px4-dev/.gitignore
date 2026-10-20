@@ -1,0 +1,10 @@
+.env
+.secrets/
+state/
+shared/
+PX4_NEW/
+PX4_BACKUP/
+*.zip
+**/container-state/
+**/ros2_ws/
+**/build/
